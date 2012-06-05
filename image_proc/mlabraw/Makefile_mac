@@ -1,0 +1,8 @@
+all: mlabraw.so
+
+mlabraw.so: mlabraw.cpp
+	g++ -fPIC -c mlabraw.cpp -I/Applications/MATLAB_R2010b.app/extern/include -I/Library/Frameworks/EPD64.framework/Versions/Current/include/python2.7 -I/Library/Frameworks/EPD64.framework/Versions/7.1/lib/python2.7/site-packages/numpy/core/include -D_V6_5_OR_LATER=1    
+	g++ -shared -o mlabraw.so mlabraw.o -leng -lmx -L/Applications/MATLAB_R2010b.app/bin/maci64 -L/Library/Frameworks/EPD64.framework/Versions/7.1/lib -lpython2.7
+	install_name_tool -change @loader_path/libeng.dylib @rpath/libeng.dylib
+	install_name_tool -change @loader_path/libmx.dylib @rpath/libmx.dylib
+	install_name_tool -add_rpath /Applications/MATLAB_R2010b.app/bin/maci64

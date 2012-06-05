@@ -1,0 +1,18 @@
+PYLINT
+--------
+
+pylint --disable=C --reports=n --output-format=colorized module_name
+pylint -E --output-format=colorized module_name
+
+
+PROFILING
+-----------
+
+python -m cProfile --sort cumulative script_to_profile.py
+kernprof.py -l -v script_to_profile.py
+(or use lprun)
+
+IPYTHON
+--------
+
+%hist ~1/1-100

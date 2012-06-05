@@ -1,0 +1,28 @@
+<Environment>
+  <Robot file="robots/pr2-beta-static.zae">
+
+<jointvalues>
+0 0 0 0 0 
+0 0 0 0 0 
+0 0 .31 0 0 
+0 0 0 0 0 
+0 0 0 0 0 
+0 0 0 0 0 
+0 0 0 0 0 
+0 0 0 0
+</jointvalues>
+
+  </Robot>
+
+  <KinBody name="table">
+    <Body type="static">
+      <Geom type="box">
+	<Translation> 1.4 0 .65 </Translation>
+	<!-- <extents> 1.1 1 .1 </extents> -->
+	<extents> 1.2 1.1 .1 </extents>
+      </Geom>
+    </Body>
+  </KinBody>
+
+
+</Environment>

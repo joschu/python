@@ -1,0 +1,6 @@
+all: mlabraw.so
+
+mlabraw.so: mlabraw.cpp
+	g++ -fPIC -c mlabraw.cpp -I/opt/matlab/extern/include -I/usr/include/python2.6 -I/usr/lib/python2.6/site-packages/numpy/core/include -D_V6_5_OR_LATER=1    
+	g++ -shared -o mlabraw.so mlabraw.o -leng -lmx -L/opt/matlab/bin/glnxa64 -L/usr/lib/python2.6 -lpython2.6 -Wl,-rpath,/opt/matlab/bin/glnxa64
+
