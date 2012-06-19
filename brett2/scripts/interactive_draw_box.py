@@ -18,6 +18,7 @@ class Box(HasTraits):
     def __init__(self, rviz):
         HasTraits.__init__(self)
         self.rviz = rviz
+        self.marker_handle = None
     
     @on_trait_change("cx,cy,cz,sx,sy,sz,theta")
     def draw(self):
@@ -31,7 +32,7 @@ class Box(HasTraits):
         print "(%.3f, %.3f, %.3f), (%.3f, %.3f, %.3f, %.3f), (%.3f, %.3f, %.3f)"%(
             self.cx, self.cy, self.cz, quat[0], quat[1], quat[2], quat[3], self.sx/2., self.sy/2., self.sz/2.)
         #rviz.draw_marker(ps, 0, type=Marker.CUBE, rgba=(0,1,0,.25), scale=(self.sx,self.sy,self.sz))
-        rviz.place_kin_tree_from_link(ps, "base_link")
+        self.marker_handle = rviz.place_kin_tree_from_link(ps, "base_link")
         
     view = View(
         VGroup(

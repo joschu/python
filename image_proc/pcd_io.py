@@ -56,7 +56,12 @@ def load_xyzrgb(f):
     "it's actually xyzbgr"
     arr = load_pcd(f)
     xyz = np.concatenate([arr['x'][:,:,None],arr['y'][:,:,None],arr['z'][:,:,None]],2)
-    rgb = unpack_rgb(arr['rgba'])
+    if 'rgba' in arr.dtype.fields:
+        rgb = unpack_rgb(arr['rgba'])
+    elif 'rgb' in arr.dtype.fields:
+        rgb = unpack_rgb(arr['rgb'])
+    else:
+        raise Exception("can't find rgb or rgba field")
     return xyz,rgb
     
 def unpack_rgb(arr):

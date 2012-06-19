@@ -1,3 +1,9 @@
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--fmt",choices=["txt","npy"],default="txt")
+parser.add_argument("cloud_in")
+args = parser.parse_args()
+
 import roslib;
 roslib.load_manifest("rospy")
 import rospy
@@ -11,10 +17,11 @@ while not rospy.is_shutdown():
     fname = raw_input("filename?: ")
     
     print "waiting for point cloud on input topic"
-    msg = rospy.wait_for_message("cloud_in", sm.PointCloud2)
+    msg = rospy.wait_for_message(args.cloud_in, sm.PointCloud2)
     print "ok"
     
     xyz,_ = pc2xyzrgb(msg)
-    np.savetxt(fname, np.squeeze(xyz))
+    if args.fmt == "txt": np.savetxt(fname, np.squeeze(xyz))
+    elif args.fmt == "npy": np.save(fname, np.squeeze(xyz))
     
 

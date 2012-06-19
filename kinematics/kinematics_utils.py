@@ -20,12 +20,9 @@ def closer_ang(x,a,dir=0):
         return a + (x-a)%(2*pi) - 2*pi
 
 def closer_joint_angles(pos,seed):
-    print "pos",pos
-    print "seed",seed
     result = np.array(pos)
     for i in [2,4,6]:
         result[i] = closer_ang(pos[i],seed[i],0)
-    print "result",result
     return result
 
 

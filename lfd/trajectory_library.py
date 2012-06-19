@@ -32,8 +32,8 @@ class TrajectoryLibrary(object):
             raise Exception("mode must be 'read' or 'write'")
         
         self.root = h5py.File(join(self.library_dir, dbname),filemode)
-        if "segments" not in self.root: self.root.create_group("segments")
-        if "demos" not in self.root: self.root.create_group("demos")
+        if mode=="write" and "segments" not in self.root: self.root.create_group("segments")
+        if mode=="write" and "demos" not in self.root: self.root.create_group("demos")
         
     def create_segments(self):
         "break demos into segments"
@@ -95,7 +95,7 @@ def interactive_select_demo(library):
     # get kb input
     import matplotlib.pyplot as plt
     plt.ion()
-    segment_group = library.root["segments"]
+    segment_group = library.root
     
     n_segs = len(segment_group.keys())
     n_rows = int(round(np.sqrt(n_segs)))
@@ -107,7 +107,7 @@ def interactive_select_demo(library):
             points_n3 = data["object_points"][0]
         else:
             print "rope field is deprecated. use object points"
-            points_n3 = data["rope"][0]
+            points_n3 = data["cloud_xyz"][0]
         plt.plot(points_n3[:,1], points_n3[:,0],'.')
         plt.title(name)
         

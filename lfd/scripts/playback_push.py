@@ -16,12 +16,11 @@ import geometry_msgs.msg as gm
 from utils import conversions
 
 if rospy.get_name()=="/unnamed":
-    rospy.init_node("execute_action")
-    rospy.sleep(.5)
+    rospy.init_node("playback_demo")
 
-pr2 = PR2.create()
 rviz = RvizWrapper.create()
-rospy.sleep(.5)
+pr2 = PR2.create()
+rospy.sleep(1)
 
 
 traj = h5py.File(args.file, 'r')[args.group]
@@ -46,22 +45,23 @@ n_waypoints = 20
 xyzquat = np.c_[traj["gripper_positions"],traj["gripper_orientations"]]
 xyzquat_rs = kinematics_utils.unif_resample(xyzquat, n_waypoints, weights = np.ones(7), tol=.001)
 times = np.linspace(0,10,n_waypoints)
-pr2.update_rave()
-joint_positions = trajectories.make_joint_traj(xyzquat_rs[:,0:3], xyzquat_rs[:,3:7], pr2.rarm.manip, filter_options = 18)
-joint_velocities = kinematics_utils.get_velocities(joint_positions, times, tol=.001)
+
 pr2.torso.go_up()
 pr2.join_all()
-#pr2.rarm.follow_timed_joint_trajectory(joint_positions, joint_velocities, times)
+pr2.update_rave()
+joint_positions,_ = trajectories.make_joint_traj(xyzquat_rs[:,0:3], xyzquat_rs[:,3:7], pr2.rarm.manip, 'base_link', 'r_wrist_roll_link', filter_options = 18)
+joint_velocities = kinematics_utils.get_velocities(joint_positions, times, tol=.001)
+pr2.rarm.follow_timed_joint_trajectory(joint_positions, joint_velocities, times)
 
-for xyzq in xyzquat_rs:
-    xyz = xyzq[:3]
-    quat = xyzq[3:]
-    hmat = conversions.trans_rot_to_hmat(xyz,quat)
-    try:
-        pr2.rarm.goto_pose_matrix(hmat, 'base_link', 'r_wrist_roll_link')
-        pr2.join_all()
-    except IKFail:
-        pass
+#for xyzq in xyzquat_rs:
+    #xyz = xyzq[:3]
+    #quat = xyzq[3:]
+    #hmat = conversions.trans_rot_to_hmat(xyz,quat)
+    #try:
+        #pr2.rarm.goto_pose_matrix(hmat, 'base_link', 'r_wrist_roll_link')
+        #pr2.join_all()
+    #except IKFail:
+        #pass
 
 pr2.join_all()
                              

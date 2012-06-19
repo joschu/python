@@ -11,7 +11,7 @@ from rope_vision.object_recognition_lol import determine_object_type
 import numpy as np
 import cv2
 
-
+marker_handles = {}
 
 def handle_initialization_request(req):
     "rope initialization service"
@@ -54,7 +54,7 @@ def handle_initialization_request(req):
         pose_array = gm.PoseArray()
         pose_array.header = req.cloud.header
         pose_array.poses = [gm.Pose(position=point, orientation=gm.Quaternion(0,0,0,1)) for point in rope.nodes]
-        rviz.draw_curve(pose_array, 0)
+        marker_handles[0] = rviz.draw_curve(pose_array,0)
 
         
     

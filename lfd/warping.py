@@ -1,53 +1,79 @@
 import numpy as np
 from utils import conversions
+from utils.conversions import quats2mats, mats2quats
 
-
-def transform_poses(xyzs,quats,F):
-    x,y,z = xyzs.T
-    xyzp = F.eval(x,y,z)
-    jacs = F.grad(x,y,z)    
+def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):
+    grid_handles = []
     
-    new_quats = []
-    for (quat,jac) in zip(quats,jacs):
-        old_rot_mat = conversions.quat2mat(quat)
-        new_rot_mat = np.dot(jac, old_rot_mat)
-        q,r = np.linalg.qr(new_rot_mat.T)
-        new_rot_mat_orth = np.sign(np.diag(r))[:,None]* q.T
-        new_quat = conversions.mat2quat(new_rot_mat_orth)
-        new_quats.append(new_quat)
-    return xyzp, np.array(new_quats)
+    xmin, ymin, zmin = mins
+    xmax, ymax, zmax = maxes
 
-def mats2quats(mats):
-    return np.array([conversions.mat2quat(mat) for mat in mats])
-def quats2mats(quats):
-    return np.array([conversions.quat2mat(quat) for quat in quats])
+    ncoarse = 10
+    nfine = 30
+    xcoarse = np.arange(xmin, xmax, xres)
+    ycoarse = np.arange(ymin, ymax, yres)
+    zcoarse = np.arange(zmin, zmax, zres)
+    xfine = np.linspace(xmin, xmax, nfine)
+    yfine = np.linspace(ymin, ymax, nfine)
+    zfine = np.linspace(zmin, zmax, nfine)
+    
+    lines = []
+    
+    for x in xcoarse:
+        for y in ycoarse:
+            xyz = np.zeros((nfine, 3))
+            xyz[:,0] = x
+            xyz[:,1] = y
+            xyz[:,2] = zfine
+            lines.append(f(xyz))
 
-def transform_demo(reg, demo, left=True, right=True, rope=False):
+    for y in ycoarse:
+        for z in zcoarse:
+            xyz = np.zeros((nfine, 3))
+            xyz[:,0] = xfine
+            xyz[:,1] = y
+            xyz[:,2] = z
+            lines.append(f(xyz))
+        
+    for z in zcoarse:
+        for x in xcoarse:
+            xyz = np.zeros((nfine, 3))
+            xyz[:,0] = x
+            xyz[:,1] = yfine
+            xyz[:,2] = z
+            lines.append(f(xyz))
+
+    for line in lines:
+        grid_handles.append(rviz.draw_curve(conversions.array_to_pose_array(line, frame_id),width=.001,rgba=(1,1,0,1)))
+                                
+    return grid_handles
+
+def transform_demo(reg, demo, left=True, right=True, cloud_xyz=False):
     """
     reg: NonrigidRegistration object
-    demo: array with the following fields: xyz_r, xyz_l, quat_r, quat_l, rope
+    demo: array with the following fields: r_gripper_xyzs, l_gripper_xyzs, r_gripper_quats, l_gripper_quats, cloud_xyz
     
-    (todo: replace 'rope' with 'object_points')
+    (todo: replace 'cloud_xyz' with 'object_points')
     """
     
-    warped_demo = np.asarray(demo).copy()
+    warped_demo = dict([(key,np.asarray(value)) for (key, value) in demo.items()])
     
     if left:
-        xyz_l_warped, rot_l_warped = reg.transform_poses(demo["xyz_l"], quats2mats(demo["quat_l"]))
-        quat_l_warped = mats2quats(rot_l_warped)
-        warped_demo["xyz_l"] = xyz_l_warped
-        warped_demo["quat_l"] = quat_l_warped
+        l_gripper_xyzs_warped, rot_l_warped = reg.transform_frames(demo["l_gripper_xyzs"], quats2mats(demo["l_gripper_quats"]))
+        l_gripper_quats_warped = mats2quats(rot_l_warped)
+        warped_demo["l_gripper_xyzs"] = l_gripper_xyzs_warped
+        warped_demo["l_gripper_quats"] = l_gripper_quats_warped
 
     if right:
-        xyz_r_warped, rot_r_warped = reg.transform_poses(demo["xyz_r"], quats2mats(demo["quat_r"]))
-        quat_r_warped = mats2quats(rot_r_warped)
-        warped_demo["xyz_r"] = xyz_r_warped
-        warped_demo["quat_r"] = quat_r_warped
+        r_gripper_xyzs_warped, rot_r_warped = reg.transform_frames(demo["r_gripper_xyzs"], quats2mats(demo["r_gripper_quats"]))
+        r_gripper_quats_warped = mats2quats(rot_r_warped)
+        warped_demo["r_gripper_xyzs"] = r_gripper_xyzs_warped
+        warped_demo["r_gripper_quats"] = r_gripper_quats_warped
         
-    if rope:
-        old_rope_pts = demo["rope"].reshape(-1,3)
-        new_rope_pts = reg.transform_points(old_rope_pts)
-        warped_demo["rope"] = new_rope_pts.reshape(demo["rope"].shape)
+    if cloud_xyz:
+        old_cloud_xyz_pts = demo["cloud_xyz"].reshape(-1,3)
+        new_cloud_xyz_pts = reg.transform_points(old_cloud_xyz_pts)
+        warped_demo["cloud_xyz"] = new_cloud_xyz_pts.reshape(demo["cloud_xyz"].shape)
         
         
         

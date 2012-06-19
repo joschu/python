@@ -1,4 +1,6 @@
-
+import numpy as np
+import mlabraw
+import os, lfd
     
     
 def put3d(handle, name, array):

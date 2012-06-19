@@ -15,10 +15,11 @@ import std_msgs.msg as stdm
 from visualization_msgs.msg import Marker, MarkerArray
 
 from StringIO import StringIO
-
+import traceback
 from utils.func_utils import once
 from utils import conversions, transformations
 import urdf
+import time
 
 def pc2xyzrgb(pc):
     arr = np.fromstring(pc.data,dtype='float32').reshape(pc.height,pc.width,8)
@@ -30,6 +31,8 @@ def pc2xyzrgb(pc):
     return xyz,rgb
 
 def xyzrgb2pc(xyz,bgr,frame_id):
+    xyz = np.asarray(xyz)
+    bgr = np.asarray(bgr)
     height= xyz.shape[0]
     width = xyz.shape[1]
     assert bgr.shape[0] == height
@@ -64,10 +67,18 @@ def transformPointCloud2(cloud, listener, to_frame, from_frame):
     pc = xyzrgb2pc(xyz_tf, rgb, to_frame)
     return pc
 
-def transform_points(xyz, listener, to_frame, from_frame):
-    rospy.sleep(.5)
-    listener.waitForTransform(to_frame, from_frame, rospy.Time.now(), rospy.Duration(1))
-    trans, rot = listener.lookupTransform(to_frame, from_frame, rospy.Time(0))
+def transform_points(xyz, listener, to_frame, from_frame,n_tries=10):
+    #listener.waitForTransform(to_frame, from_frame, rospy.Time.now(), rospy.Duration(1))
+    for i in xrange(n_tries):
+        try:
+            trans, rot = listener.lookupTransform(to_frame, from_frame, rospy.Time(0))
+            break
+        except Exception:
+            print "tf exception:"
+            traceback.print_exc()
+            rospy.sleep(.1)
+            time.sleep(.05)
+    if i == n_tries-1: raise Exception("fuck tf")
     hmat = conversions.trans_rot_to_hmat(trans,rot)
 
     xyz1 = np.c_[xyz.reshape(-1,3), np.ones((xyz.size/3,1))]
@@ -140,7 +151,16 @@ def image2numpy(image):
     else:
         raise Exception
 
-
+class MarkerHandle(object):
+    disable_delete = False
+    def __init__(self, marker, pub):
+        self.pub = pub
+        self.marker = marker        
+    def __del__(self):
+        if not self.disable_delete:
+            self.marker.action = Marker.DELETE
+            self.pub.publish(self.marker)
+        
 class RvizWrapper:
     
     @once
@@ -150,13 +170,11 @@ class RvizWrapper:
     
     def __init__(self):
         self.pub = rospy.Publisher('visualization_marker', Marker)
-        self.array_pub = rospy.Publisher("visualization_marker_array", MarkerArray)
-        self.id2marker = {}
-        
-        
-    def draw_curve(self, pose_array, id, rgba = (0,1,0,1), width = .01, ns = "default_ns", duration=0):
-                
-        marker = Marker(type=Marker.LINE_STRIP,action=Marker.ADD)
+        self.array_pub = rospy.Publisher("visualization_marker_array", MarkerArray)        
+        self.ids = set([])
+    def draw_curve(self, pose_array, id=None, rgba = (0,1,0,1), width = .01, ns = "default_ns", duration=0, type=Marker.LINE_STRIP):
+        if id is None: id = self.get_unused_id()
+        marker = Marker(type=type,action=Marker.ADD)
         marker.header = pose_array.header
         marker.points = [pose.position for pose in pose_array.poses]
         marker.lifetime = rospy.Duration(0)
@@ -165,13 +183,15 @@ class RvizWrapper:
         marker.id = id
         marker.ns = ns
         self.pub.publish(marker)
-        self.id2marker[id] = marker
+        self.ids.add(id)        
+        return MarkerHandle(marker, self.pub)
                         
-    def draw_marker(self, ps, id, type=Marker.CUBE, ns='default_ns',rgba=(0,1,0,1), scale=(.03,.03,.03),text='',duration=0):
+    def draw_marker(self, ps, id=None, type=Marker.CUBE, ns='default_ns',rgba=(0,1,0,1), scale=(.03,.03,.03),text='',duration=0):
         """
         If markers aren't showing up, it's probably because the id's are being overwritten. Make sure to set
         the ids and namespace.
         """
+        if id is None: id = self.get_unused_id()
         marker = Marker(type=type, action=Marker.ADD)
         marker.ns = ns
         marker.header = ps.header
@@ -182,27 +202,28 @@ class RvizWrapper:
         marker.text = text
         marker.lifetime = rospy.Duration(duration)
         self.pub.publish(marker)
-        self.id2marker[id] = marker
-        
-    def remove_id(self, id):
-        marker = self.id2marker[id]
-        marker.action = Marker.DELETE
-        self.pub.publish(marker)
+        self.ids.add(id)        
+        return MarkerHandle(marker, self.pub)        
        
-    
-    def place_kin_tree_from_link(self, ps, linkname, id=0, ns = "default_ns"):
+    def get_unused_id(self):
+        while True:
+            id = np.random.randint(0,2147483647)
+            if id not in self.ids: return id
+       
+    def place_kin_tree_from_link(self, ps, linkname, ns = "default_ns"):
         markers = make_kin_tree_from_link(ps, linkname)
         marker_array = MarkerArray()
         marker_array.markers = markers
-        for (i,marker) in enumerate(markers):
-            self.id2marker[i] = marker
-            marker.id = i+id
+        handles = []
+        for marker in enumerate(markers):
+            id = self.get_unused_id()
+            self.ids.add(id)
+            marker.id = id
+            handles.append(MarkerHandle(marker, self.pub))
             self.pub.publish(marker)
-            
-    def __del__(self):
-        print "removing all"
-        for id in self.id2marker:
-            self.remove_id(id)
+            self.ids.add(id)            
+        return handles
+                
     #def place_gripper(ps,open_frac=.5,ns='rviz_utils'):
         
         #origFromTool = bumu.msg2arr(ps.pose)

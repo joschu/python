@@ -71,6 +71,10 @@ def mat2quat(mat33):
     mat44 = np.eye(4)
     mat44[:3,:3] = mat33
     return transformations.quaternion_from_matrix(mat44)
+def mats2quats(mats):
+    return np.array([mat2quat(mat) for mat in mats])
+def quats2mats(quats):
+    return np.array([quat2mat(quat) for quat in quats])
 
 def rod2mat(rod):
     theta = np.linalg.norm(rod)
