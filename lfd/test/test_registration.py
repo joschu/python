@@ -124,7 +124,7 @@ def test_registration_3d():
     plt.title("corr_sums")
     np.savez("cross_registration_results", distmat = distmat1, names = files)
 
-def test_cups():
+if __name__ == "__main__":
     import rospy, itertools, glob
     from utils.colorize import colorize
     from image_proc.pcd_io import load_xyzrgb

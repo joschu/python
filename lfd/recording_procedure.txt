@@ -1,0 +1,11 @@
+on the robot:
+
+roslaunch knot_tying_perception_reality.launch
+cm stop r_arm_controller l_arm_controller
+rosbag record /joint_states /tf /preprocessor/points
+
+Move bag file to ~/Data/lfd
+
+create yaml file like knot0.yaml in ~/python/lfd/data
+update makefile
+run makefile

@@ -55,16 +55,21 @@ traj_times = np.asarray(traj["times"])-t_start_bag
 for (i_seg,seg_dict) in enumerate(seg_dicts):
     i_start, i_stop = np.searchsorted(traj_times, (seg_dict["start"],seg_dict["stop"]))
     seg_name = "%s.%.2i"%(traj.name,i_seg)
-    if seg_name in traj: del traj[seg_name]
+    if seg_name in h5out: del traj[seg_name]
     seg = h5out.create_group(seg_name)
     for field in ["joints", "times", 
-                  "r_gripper_xyzs", "r_gripper_quats", "r_gripper_angles",
-                  "l_gripper_xyzs", "l_gripper_quats", "l_gripper_angles"]:
+                  "r_gripper_xyzs", "r_gripper_xyzs1", "r_gripper_xyzs2", "r_gripper_quats", "r_gripper_angles",
+                  "l_gripper_xyzs", "l_gripper_xyzs1", "l_gripper_xyzs2","l_gripper_quats", "l_gripper_angles"]:
         seg[field] = traj[field][i_start:i_stop+1]
     i_cloud = np.abs(cloud_times - seg_dict["look"]).argmin()    
     seg["cloud_xyz"] = cloud_xyzs[i_cloud]
     seg["cloud_bgr"] = cloud_bgrs[i_cloud]
     seg["arms_used"] = seg_dict["arms_used"]
+    
+done = h5out.create_group("done_%s"%traj.name.strip('/'))
+i_cloud = np.abs(cloud_times - yamlfile["done"]).argmin()
+done["cloud_xyz"] = cloud_xyzs[i_cloud]
+done["cloud_bgr"] = cloud_xyzs[i_cloud]
     
 h5in.close()
 h5out.close() 

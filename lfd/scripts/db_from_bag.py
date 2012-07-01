@@ -13,6 +13,10 @@ assert exists(args.bag)
 
 R_TOOL_FRAME = "r_gripper_tool_frame"
 L_TOOL_FRAME = "l_gripper_tool_frame"
+R1_FRAME = "r_gripper_r_finger_tip_link"
+R2_FRAME = "r_gripper_l_finger_tip_link"
+L1_FRAME = "l_gripper_r_finger_tip_link"
+L2_FRAME = "l_gripper_l_finger_tip_frame"
 REF_FRAME = "base_footprint"
 MIN_TIME = .1
 MIN_JOINT_CHANGE = .0025
@@ -80,15 +84,23 @@ traj["command"] = " ".join(sys.argv)
 traj["arms_used"] = args.arms_used
 
 r_tool_link = robot.GetLink(R_TOOL_FRAME)
+r1_link = robot.GetLink(R1_FRAME)
+r2_link = robot.GetLink(R2_FRAME)
 l_tool_link = robot.GetLink(L_TOOL_FRAME)
+l1_link = robot.GetLink(L1_FRAME)
+l2_link = robot.GetLink(L2_FRAME)
 r_gripper_joint = robot.GetJoint("r_gripper_joint")
 l_gripper_joint = robot.GetJoint("l_gripper_joint")
 
 joints = []
 times = []
 r_gripper_xyzs = []
+r_gripper_xyzs1 = []
+r_gripper_xyzs2 = []
 r_gripper_quats = []
 l_gripper_xyzs = []
+l_gripper_xyzs1 = []
+l_gripper_xyzs2 = []
 l_gripper_quats = []
 r_gripper_angles = []
 l_gripper_angles = []
@@ -118,12 +130,16 @@ for (topic, msg, t) in bag.read_messages(topics=['/joint_states']):
             xyz, quat = conversions.hmat_to_trans_rot(hmat)        
             r_gripper_angles.append(r_gripper_joint.GetValues()[0])
             r_gripper_xyzs.append(xyz)
+            r_gripper_xyzs1.append(r1_link.GetTransform()[:3,3])
+            r_gripper_xyzs2.append(r2_link.GetTransform()[:3,3])
             r_gripper_quats.append(quat)            
         if args.arms_used == "l" or args.arms_used == "b":            
             hmat = l_tool_link.GetTransform()
             xyz, quat = conversions.hmat_to_trans_rot(hmat)    
             l_gripper_angles.append(l_gripper_joint.GetValues()[0])
             l_gripper_xyzs.append(xyz)
+            l_gripper_xyzs1.append(l1_link.GetTransform()[:3,3])
+            l_gripper_xyzs2.append(l2_link.GetTransform()[:3,3])
             l_gripper_quats.append(quat)  
             
         prev_t = t
@@ -133,9 +149,13 @@ traj["joints"] = joints
 traj["times"] = times
 if args.arms_used == "r" or args.arms_used == "b":
     traj["r_gripper_xyzs"] = r_gripper_xyzs
+    traj["r_gripper_xyzs1"] = r_gripper_xyzs1
+    traj["r_gripper_xyzs2"] = r_gripper_xyzs2
     traj["r_gripper_quats"] = r_gripper_quats
     traj["r_gripper_angles"] = r_gripper_angles
 if args.arms_used == "l" or args.arms_used == "b":
     traj["l_gripper_xyzs"] = l_gripper_xyzs
+    traj["l_gripper_xyzs1"] = l_gripper_xyzs1
+    traj["l_gripper_xyzs2"] = l_gripper_xyzs2
     traj["l_gripper_quats"] = l_gripper_quats
     traj["l_gripper_angles"] = l_gripper_angles

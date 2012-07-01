@@ -1,6 +1,22 @@
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--obj", choices=["rope","cloth"])
+args = parser.parse_args()
+
+if args.obj == "rope":
+    DS_METHOD = "voxel"
+    DS_LENGTH = .025
+    H5FILE = "knot_segments.h5"
+    HEAD_TILT=.9
+if args.obj == "cloth":
+    DS_METHOD = "hull"
+    DS_LENGTH = .025
+    H5FILE = "fold_segments.h5"
+    HEAD_TILT=1.1
+
 import roslib; roslib.load_manifest("smach_ros")
 import smach
-from lfd import registration, trajectory_library, warping
+from lfd import registration, trajectory_library, warping, recognition
 import lfd
 from kinematics import reachability
 from utils.yes_or_no import yes_or_no
@@ -15,12 +31,15 @@ import numpy as np
 from utils import conversions
 from knot_tying import tps
 from image_proc.clouds import voxel_downsample
+from image_proc.alpha_shapes import get_concave_hull
 
 RVIZ_LPOS = 0
 RVIZ_RPOS = 1
 
-HUMAN_SELECT_DEMO=True
+HUMAN_SELECT_DEMO=False
 HUMAN_GET_ROPE=False
+
+    
 
 def human_get_rope():
     point_cloud = rospy.wait_for_message("/drop/points", sensor_msgs.msg.PointCloud2)
@@ -46,9 +65,9 @@ def draw_table():
                       
     
 def fix_gripper(g):
-    g = g.copy()
-    g[g < .04] = 0
-    g[g >= .04] = .08
+    g = np.asarray(g).copy()
+    g[g < .015] = 0
+    #g[g >= .04] = .08
     return g
 
 def fit_tps(pts0, pts1):
@@ -70,9 +89,9 @@ class Globals:
     @staticmethod
     def setup():
         if Globals.pr2 is None: 
-            Globals.pr2 = PR2.PR2()
+            Globals.pr2 = PR2.PR2.create()
             Globals.pr2.robot.GetEnv().Load(os.path.join(os.path.dirname(lfd.__file__), "data", "table.xml"))
-        if Globals.rviz is None: Globals.rviz = ros_utils.RvizWrapper()
+        if Globals.rviz is None: Globals.rviz = ros_utils.RvizWrapper.create()
 
 class LookAtObject(smach.State):
     def __init__(self):
@@ -88,9 +107,11 @@ class LookAtObject(smach.State):
         - move head to the right place
         - get a point cloud
         returns: success, failure
-        """        
+        """
+        global HANDLES
+        HANDLES=[]
         
-        Globals.pr2.head.set_pan_tilt(0, 1)
+        # Globals.pr2.head.set_pan_tilt(0, HEAD_TILT)
         Globals.pr2.larm.goto_posture('side')
         Globals.pr2.rarm.goto_posture('side')
         Globals.pr2.join_all()
@@ -110,6 +131,16 @@ class LookAtObject(smach.State):
                 
         return "success"
     
+def downsample(xyz):
+    if DS_METHOD == "voxel":        
+        xyz_ds, ds_inds = voxel_downsample(xyz, DS_LENGTH, return_inds = True)
+    elif DS_METHOD == "hull":
+        xyz = np.squeeze(xyz)
+        _, inds = get_concave_hull(xyz[:,0:2],.05)
+        xyz_ds = xyz[inds]
+        ds_inds = [[i] for i in inds]    
+    return xyz_ds, ds_inds
+    
         
 class SelectTrajectory(smach.State):
     f = None
@@ -119,7 +150,7 @@ class SelectTrajectory(smach.State):
             input_keys = ["points"],
             output_keys = ["trajectory", "left_used", "right_used"])
             
-        self.library = trajectory_library.TrajectoryLibrary("knot_segments.h5", "read")
+        self.library = trajectory_library.TrajectoryLibrary(H5FILE, "read")
         self.db = reachability.ReachabilityDatabase("read");
 
     def execute(self,userdata):
@@ -133,76 +164,90 @@ class SelectTrajectory(smach.State):
         - show all library states
         - warping visualization from matlab
         """
-        drawn_points = userdata.points
+        xyz_new = np.squeeze(np.asarray(userdata.points))
+        if args.obj == "cloth": xyz_new = voxel_downsample(xyz_new, .025)
+        
+        xyz_new_ds, ds_inds = downsample(xyz_new)
+        dists_new = recognition.calc_geodesic_distances_downsampled(xyz_new,xyz_new_ds, ds_inds)
+        
         if HUMAN_SELECT_DEMO:
             seg_name = trajectory_library.interactive_select_demo(self.library)
-            demo = self.library.root[seg_name]         
-            pts0 = voxel_downsample(np.asarray(demo["cloud_xyz"]),.025)
-            pts1 = voxel_downsample(np.asarray(userdata.points),.025)
+            best_demo = self.library.root[seg_name]         
+            pts0,_ = downsample(np.asarray(best_demo["cloud_xyz"]))
+            pts1,_ = downsample(xyz_new)
             self.f = registration.tps_icp(pts0, pts1, 
                                      plotting = 4, reg_init=1,reg_final=.025,n_iter=40)                
         else:
+            
             best_f = None
             best_cost = np.inf
             best_name = None
-            for (seg_name,candidate_demo) in self.library.root["segments"].items():
-                #f = registration.ThinPlateSpline()
-                #f.fit(trajectory["rope"][0], 
-                      #drawn_points, 1e-4,1e-4)
-                f = registration.tps_icp(np.asarray(candidate_demo["cloud_xyz"][0]), drawn_points, 
-                                         plotting = 4, reg_init=1,reg_final=.025,n_iter=200)                
-                print "seg_name: %s. cost: %s"%(seg_name, f.cost)
-                if f.cost < best_cost:
-                    best_cost = f.cost
-                    best_f = f
+            for (seg_name,candidate_demo) in self.library.root.items():
+                xyz_demo = np.squeeze(np.asarray(candidate_demo["cloud_xyz"]))
+                if args.obj == "cloth": xyz_demo = voxel_downsample(xyz_demo, .025)
+                xyz_demo_ds, ds_inds = downsample(xyz_demo)#voxel_downsample(xyz_demo, DS_LENGTH, return_inds = True)
+                dists_demo = recognition.calc_geodesic_distances_downsampled(xyz_demo, xyz_demo_ds, ds_inds)
+                cost = recognition.calc_match_score(xyz_new_ds, xyz_demo_ds, dists0 = dists_new, dists1 = dists_demo)
+                print "seg_name: %s. cost: %s"%(seg_name, cost)
+                if cost < best_cost:
+                    best_cost = cost
                     best_name = seg_name
-            seg_name = best_name
-            demo = self.library.root["segments"][seg_name][::5]
-            self.f = best_f
-            print "best segment:", seg_name
 
-        if seg_name == "stop": return "done"
+            if best_name.startswith("done"): return "done"
+            best_demo = self.library.root[best_name]
+            xyz_demo_ds,_ = downsample(np.asarray(best_demo["cloud_xyz"][0]))
+            self.f = registration.tps_icp(xyz_demo_ds, xyz_new_ds, 
+                            plotting = 10, reg_init=1,reg_final=.025,n_iter=200,verbose=True)                
 
-        orig_pose_array = conversions.array_to_pose_array(demo["cloud_xyz"][0], "base_footprint")
-        warped_pose_array = conversions.array_to_pose_array(self.f.transform_points(demo["cloud_xyz"][0]), "base_footprint")
+            print "best segment:", best_name
+
+        
+
+        orig_pose_array = conversions.array_to_pose_array(best_demo["cloud_xyz"][0], "base_footprint")
+        warped_pose_array = conversions.array_to_pose_array(self.f.transform_points(best_demo["cloud_xyz"][0]), "base_footprint")
         HANDLES.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),id=19024,type=Marker.CUBE_LIST))
         HANDLES.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),id=2983,type=Marker.CUBE_LIST))
 
-        mins = demo["cloud_xyz"][0].min(axis=0)
-        maxes = demo["cloud_xyz"][0].max(axis=0)
+        mins = best_demo["cloud_xyz"][0].min(axis=0)
+        maxes = best_demo["cloud_xyz"][0].max(axis=0)
         mins[2] -= .1
         maxes[2] += .1
         grid_handle = warping.draw_grid(Globals.rviz, self.f.transform_points, mins, maxes, 'base_footprint')
         HANDLES.append(grid_handle)
         #self.f = fit_tps(demo["rope"][0], userdata.points)
         
-        userdata.left_used = left_used = demo["arms_used"].value in "lb"
-        userdata.right_used = right_used = demo["arms_used"].value in "rb"
+        userdata.left_used = left_used = best_demo["arms_used"].value in "lb"
+        userdata.right_used = right_used = best_demo["arms_used"].value in "rb"
         print "left_used", left_used
         print "right_used", right_used
         
-        warped_demo = warping.transform_demo(self.f, demo, left=left_used, right=right_used)
-        trajectory = np.zeros(len(demo["times"]), dtype=trajectories.BodyState)                        
+        warped_demo = warping.transform_demo_with_fingertips(self.f, best_demo, left=left_used, right=right_used)
+        trajectory = np.zeros(len(best_demo["times"]), dtype=trajectories.BodyState)                        
         
         Globals.pr2.update_rave()          
-        if left_used:
+        if left_used:            
             l_arm_traj, feas_inds = trajectories.make_joint_traj(warped_demo["l_gripper_xyzs"], warped_demo["l_gripper_quats"], Globals.pr2.robot.GetManipulator("leftarm"),"base_footprint","l_gripper_tool_frame",1+16)            
             if len(feas_inds) == 0: return "failure"
             trajectory["l_arm"] = l_arm_traj
             rospy.loginfo("left arm: %i of %i points feasible", len(feas_inds), len(trajectory))
             trajectory["l_gripper"] = fix_gripper(warped_demo["l_gripper_angles"])
-            HANDLES.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(warped_demo["l_gripper_xyzs"], "base_footprint"), RVIZ_LPOS, width=.01, rgba = (1,0,0,1)))
+            for suffix in ["","1","2"]:
+                marker = Marker.LINE_STRIP
+                HANDLES.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(warped_demo["l_gripper_xyzs%s"%suffix], "base_footprint"), width=.001, rgba = (1,0,1,.4),type=marker))
         if right_used:
             r_arm_traj,feas_inds = trajectories.make_joint_traj(warped_demo["r_gripper_xyzs"], warped_demo["r_gripper_quats"], Globals.pr2.robot.GetManipulator("rightarm"),"base_footprint","r_gripper_tool_frame",1+16)            
             if len(feas_inds) == 0: return "failure"
             trajectory["r_arm"] = r_arm_traj
             rospy.loginfo("right arm: %i of %i points feasible", len(feas_inds), len(trajectory))            
             trajectory["r_gripper"] = fix_gripper(warped_demo["r_gripper_angles"])
-            HANDLES.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(warped_demo["r_gripper_xyzs"], "base_footprint"), RVIZ_RPOS, width=.01, rgba = (1,0,0,1)))
+            for suffix in ["","1","2"]:
+                marker = Marker.ARROW if suffix=="" else Marker.LINE_STRIP
+                HANDLES.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(warped_demo["r_gripper_xyzs%s"%suffix], "base_footprint"), width=.001, rgba = (1,0,1,.4),type=marker))
         userdata.trajectory = trajectory
         #userdata.base_xya = (x,y,0)
         # todo: draw pr2        
-        consent = yes_or_no("trajectory ok?")
+        # consent = yes_or_no("trajectory ok?")
+        consent = True
         if consent: return "not_done"
         else: return "failure"
             
@@ -285,8 +330,7 @@ if __name__ == "__main__":
         rospy.init_node("tie_knot",disable_signals=True)
     Globals.setup()
     draw_table()
-    #Globals.rviz.remove_all_markers()
-    Globals.pr2.torso.go_up()
+    #Globals.pr2.torso.go_up()
     Globals.pr2.join_all()
     tie_knot_sm = make_tie_knot_sm()
     tie_knot_sm.execute()

@@ -41,21 +41,20 @@ def show_object_and_trajectory(traj_xyz, obj_xyz, obj_quat, obj_dim, id):
         position = gm.Point(*obj_xyz),
         orientation = gm.Quaternion(*obj_quat)))
     ps.header.frame_id = 'base_footprint'
-    Globals.rviz.draw_marker(
+    HANDLES.append(Globals.rviz.draw_marker(
         ps,
-        id=id+1000,
         type=Marker.CYLINDER,
         rgba = COLORS[id],
-        scale = asarray(obj_dim))       
+        scale = asarray(obj_dim)))
     pose_array = conversions.array_to_pose_array(asarray(traj_xyz), 'base_footprint')
-    Globals.rviz.draw_curve(
+    HANDLES.append(Globals.rviz.draw_curve(
         pose_array,
-        id=id,
-        rgba = COLORS[id])
+        rgba = COLORS[id]))
 
 
 
 if __name__ == "__main__":
+    HANDLES = []
     rospy.init_node("push_service")
     Globals.setup()
 
@@ -75,7 +74,9 @@ if __name__ == "__main__":
 
     
 
-    def callback(request):        
+    def callback(request):  
+        global HANDLES
+        HANDLES = []
         xyzs, _ = pc2xyzrgb(request.point_cloud)
         new_mins = xyzs.reshape(-1,3).min(axis=0)
         new_maxes = xyzs.reshape(-1,3).max(axis=0)
