@@ -82,10 +82,13 @@ def follow_body_traj(pr2, traj, times=None, r_arm = False, l_arm = False, r_grip
         raise NotImplementedError
     pr2.join_all()
     
+    vel_mult = .2
+    
     if times is None:
-        vel_limits = np.r_[pr2.rarm.vel_limits, pr2.larm.vel_limits, .02, .02, pr2.head.vel_limits, [.2,.2,.2]]
+        vel_limits = np.r_[pr2.rarm.vel_limits*vel_mult, pr2.larm.vel_limits*vel_mult, .02, .02, pr2.head.vel_limits*vel_mult, [.2,.2,.2]]
         acc_limits = np.r_[pr2.rarm.acc_limits, pr2.larm.acc_limits, np.inf, np.inf, pr2.head.acc_limits, [1,1,1]]
-        times, inds = retiming.retime(flatten_compound_dtype(traj), vel_limits, acc_limits)
+        #times, inds = retiming.retime(flatten_compound_dtype(traj), vel_limits, acc_limits)
+        times, inds = retiming.retime2(flatten_compound_dtype(traj), vel_limits)
         traj = traj[inds]
 
     if r_arm:

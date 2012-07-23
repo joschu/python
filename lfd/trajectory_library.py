@@ -1,3 +1,8 @@
+"""
+Mostly deprecated
+"""
+
+
 from __future__ import division
 import lfd
 import numpy as np

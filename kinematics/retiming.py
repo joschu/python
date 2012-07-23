@@ -32,6 +32,15 @@ def remove_duplicate_rows(mat):
 def loglinspace(a,b,n):
     return np.exp(np.linspace(np.log(a),np.log(b),n))
 
+def retime2(positions, vel_limits_j):
+    good_inds = np.r_[True,(abs(positions[1:] - positions[:-1]) >= 1e-6).any(axis=1)]
+    positions = positions[good_inds]
+    
+    move_nj = positions[1:] - positions[:-1]
+    dur_n = (np.abs(move_nj) / vel_limits_j[None,:]).max(axis=1) # time according to velocity limit
+    times = np.cumsum(np.r_[0,dur_n])
+    return times, good_inds    
+
 def retime(positions, vel_limits_j, acc_limits_j):
     positions, vel_limits_j, acc_limits_j = np.asarray(positions), np.asarray(vel_limits_j), np.asarray(acc_limits_j)
     

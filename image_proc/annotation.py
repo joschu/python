@@ -28,7 +28,7 @@ class ImageWindow(object):
     def step(self):
         if self.image is not None:
             cv2.imshow(self.windowName,self.image)
-            keycode = cv2.waitKey(10)
+            keycode = cv2.waitKey(10) % 256
             if keycode != -1:
                 try: 
                     char = chr(keycode)
@@ -138,7 +138,7 @@ class LabelWindow(ImageWindow):
 
 
     def paint(self,event, x, y, flags, param):
-        if flags == cv2.EVENT_LBUTTONDOWN:
+        if flags & cv2.EVENT_LBUTTONDOWN:
             cv2.circle(self.label,(x,y),self.brushSize,self.currentLabel,thickness=-1)
             self.updateLabelPatch(x,y,self.brushSize)
     def toggleColorView(self):
@@ -148,7 +148,7 @@ class LabelWindow(ImageWindow):
         # create number callback function
         # add number callbacks
         print "type new label (0-9)"
-        keycode = cv2.waitKey(0)
+        keycode = cv2.waitKey(0) % 256
         try: 
             self.currentLabel = int(chr(keycode))
             print "new label", self.currentLabel
@@ -167,7 +167,7 @@ class LabelWindow(ImageWindow):
             print fmt%(i, (i-1)*15)
     def removeBorders(self):
         print "what's the radius of the structuring element? (pixels)"
-        keycode = cv2.waitKey(0)   
+        keycode = cv2.waitKey(0)  % 256
         try: 
             radius = int(chr(keycode))
         except ValueError: 

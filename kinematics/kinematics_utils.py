@@ -35,8 +35,6 @@ def get_velocities(positions, times, tol):
     velocities = np.r_[si.splev(times,tck,der=1)].T    
     return velocities
 
-
-
 def unif_resample(x,n,weights,tol=.001,deg=3):    
     x = np.atleast_2d(x)
     weights = np.atleast_2d(weights)

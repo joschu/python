@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+"""
+Deprecated
+"""
+
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("file")

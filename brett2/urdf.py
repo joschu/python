@@ -50,7 +50,7 @@ class Collision:
             elif child.localName == 'origin':
                 c.origin = Pose.parse(child)
             else:
-                print("Unknown collision element '%s'"%child.localName)
+                pass#print("Unknown collision element '%s'"%child.localName)
         return c
 
     def to_xml(self, doc):

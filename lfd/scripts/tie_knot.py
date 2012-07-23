@@ -1,3 +1,10 @@
+#!/usr/bin/env python
+
+"""
+Perform deformable object manipulation task, where data is stored in some h5 file
+Currently works for tying an overhand knot or folding up a laid-out towel
+"""
+
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--obj", choices=["rope","cloth"])
@@ -142,6 +149,13 @@ def downsample(xyz):
     return xyz_ds, ds_inds
     
         
+def alternate(arr1, arr2):
+    assert arr1.shape == arr2.shape
+    out = np.zeros((2*arr1.shape[0], arr1.shape[1]),arr1.dtype)
+    out[0::2] = arr1
+    out[1::2] = arr2
+    return out
+        
 class SelectTrajectory(smach.State):
     f = None
     def __init__(self):
@@ -175,7 +189,7 @@ class SelectTrajectory(smach.State):
             best_demo = self.library.root[seg_name]         
             pts0,_ = downsample(np.asarray(best_demo["cloud_xyz"]))
             pts1,_ = downsample(xyz_new)
-            self.f = registration.tps_icp(pts0, pts1, 
+            self.f = registration.tps_rpm(pts0, pts1, 
                                      plotting = 4, reg_init=1,reg_final=.025,n_iter=40)                
         else:
             
@@ -193,11 +207,11 @@ class SelectTrajectory(smach.State):
                     best_cost = cost
                     best_name = seg_name
 
-            if best_name.startswith("done"): return "done"
+            #if best_name.startswith("done"): return "done"
             best_demo = self.library.root[best_name]
             xyz_demo_ds,_ = downsample(np.asarray(best_demo["cloud_xyz"][0]))
-            self.f = registration.tps_icp(xyz_demo_ds, xyz_new_ds, 
-                            plotting = 10, reg_init=1,reg_final=.025,n_iter=200,verbose=True)                
+            self.f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, 
+                            plotting = 10, reg_init=1,reg_final=.01,n_iter=200,verbose=True)                
 
             print "best segment:", best_name
 
@@ -231,18 +245,22 @@ class SelectTrajectory(smach.State):
             trajectory["l_arm"] = l_arm_traj
             rospy.loginfo("left arm: %i of %i points feasible", len(feas_inds), len(trajectory))
             trajectory["l_gripper"] = fix_gripper(warped_demo["l_gripper_angles"])
-            for suffix in ["","1","2"]:
-                marker = Marker.LINE_STRIP
-                HANDLES.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(warped_demo["l_gripper_xyzs%s"%suffix], "base_footprint"), width=.001, rgba = (1,0,1,.4),type=marker))
+            HANDLES.append(Globals.rviz.draw_curve(
+                conversions.array_to_pose_array(
+                    alternate(warped_demo["l_gripper_xyzs1"],warped_demo["l_gripper_xyzs2"]), 
+                    "base_footprint"), 
+                width=.001, rgba = (1,0,1,.4),type=Marker.LINE_LIST))
         if right_used:
             r_arm_traj,feas_inds = trajectories.make_joint_traj(warped_demo["r_gripper_xyzs"], warped_demo["r_gripper_quats"], Globals.pr2.robot.GetManipulator("rightarm"),"base_footprint","r_gripper_tool_frame",1+16)            
             if len(feas_inds) == 0: return "failure"
             trajectory["r_arm"] = r_arm_traj
             rospy.loginfo("right arm: %i of %i points feasible", len(feas_inds), len(trajectory))            
             trajectory["r_gripper"] = fix_gripper(warped_demo["r_gripper_angles"])
-            for suffix in ["","1","2"]:
-                marker = Marker.ARROW if suffix=="" else Marker.LINE_STRIP
-                HANDLES.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(warped_demo["r_gripper_xyzs%s"%suffix], "base_footprint"), width=.001, rgba = (1,0,1,.4),type=marker))
+            HANDLES.append(Globals.rviz.draw_curve(
+                conversions.array_to_pose_array(
+                    alternate(warped_demo["l_gripper_xyzs1"],warped_demo["l_gripper_xyzs2"]), 
+                    "base_footprint"), 
+                width=.001, rgba = (1,0,1,.4),type=Marker.LINE_LIST))
         userdata.trajectory = trajectory
         #userdata.base_xya = (x,y,0)
         # todo: draw pr2        

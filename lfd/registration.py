@@ -1,10 +1,14 @@
+"""
+Register point clouds to each other
+"""
+
 from __future__ import division
-import lfd
-import os
 from utils import math_utils
 import numpy as np
 import scipy.spatial.distance as ssd
-
+from numpy import cos, sin, pi
+import scipy.optimize as opt
+from copy import deepcopy
 
 def tps_kernel(dist, dim):
     if dim == 1:
@@ -18,7 +22,16 @@ def tps_kernel(dist, dim):
     else:
         raise NotImplementedError
 
-class ThinPlateSpline(object):
+class Transformation(object):
+    n_params = 0
+    def fit(self, x_nd, y_nd):
+        raise NotImplementedError
+    def transform_points(self, x_nd):
+        raise NotImplementedError
+    def transform_frames(self, x_nd, rot_nkk, orthogonalize=True):
+        raise NotImplementedError
+
+class ThinPlateSpline(Transformation):
     
     @staticmethod
     def identity(d):
@@ -30,7 +43,14 @@ class ThinPlateSpline(object):
         tps.a_Dd = np.eye(d+1,d)
         return tps    
         
-    def fit(self, x_nd, y_nd, smoothing, angular_spring = 0, wt_n=None, verbose=True):
+    def fit(self, x_nd, y_nd, smoothing=.1, angular_spring = 0, wt_n=None, verbose=True):
+        """
+        x_nd: source cloud
+        y_nd: target cloud
+        smoothing: penalize non-affine part
+        angular_spring: penalize rotation
+        wt_n: weight the points        
+        """
         self.n, self.d = n,d = x_nd.shape
         
         dists_tri = ssd.pdist(x_nd)
@@ -95,33 +115,40 @@ class ThinPlateSpline(object):
         if orthogonalize: newrot_mdd =  orthogonalize3(newrot_mdd)
         return ypred_md, newrot_mdd
 
-def plot_warped_grid_2d(f, mins, maxes):
+def plot_warped_grid_2d(f, mins, maxes, grid_res=None, flipax = True):
     import matplotlib.pyplot as plt
     import matplotlib
     xmin, ymin = mins
     xmax, ymax = maxes
     ncoarse = 10
     nfine = 30
-    xcoarse = np.linspace(xmin, xmax, ncoarse)
-    ycoarse = np.linspace(ymin, ymax, ncoarse)
+    
+    if grid_res is None:
+        xcoarse = np.linspace(xmin, xmax, ncoarse)
+        ycoarse = np.linspace(ymin, ymax, ncoarse)
+    else:
+        xcoarse = np.arange(xmin, xmax, grid_res)
+        ycoarse = np.arange(ymin, ymax, grid_res)
     xfine = np.linspace(xmin, xmax, nfine)
     yfine = np.linspace(ymin, ymax, nfine)
     
     lines = []
     
+    sgn = -1 if flipax else 1
+    
     for x in xcoarse:
         xy = np.zeros((nfine, 2))
         xy[:,0] = x
         xy[:,1] = yfine
-        lines.append(f(xy))
+        lines.append(f(xy)[:,::sgn])
 
     for y in ycoarse:
         xy = np.zeros((nfine, 2))
         xy[:,0] = xfine
         xy[:,1] = y
-        lines.append(f(xy))        
+        lines.append(f(xy)[:,::sgn])        
     
-    lc = matplotlib.collections.LineCollection(lines)
+    lc = matplotlib.collections.LineCollection(lines,colors='gray',lw=2)
     ax = plt.gca()
     ax.add_collection(lc)
     plt.draw()
@@ -136,18 +163,47 @@ def plot_correspondence(x_nd, y_nd):
     plt.draw()
     
 def loglinspace(a,b,n):
+    "n numbers between a to b (inclusive) with constant ratio between consecutive numbers"
     return np.exp(np.linspace(np.log(a),np.log(b),n))    
 
-def tps_icp(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True):
+
+def tps_rpm_multi(source_clouds, targ_clouds, *args,**kw):
+    """
+    Given multiple source clouds and corresponding target clouds, solve for global transformation that matches them.
+    Right now, we just concatenate them all. Eventually, we'll do something more sophisticated, e.g. initially match each
+    source cloud to each target cloud, then use those correspondences to initialize tps-rpm on concatenated clouds.    
+    """
+    x_nd = np.concatenate([np.asarray(cloud).reshape(-1,3) for cloud in source_clouds], 0)
+    y_md = np.concatenate([np.asarray(cloud).reshape(-1,3) for cloud in targ_clouds], 0)
+    from image_proc.clouds import voxel_downsample
+    x_nd = voxel_downsample(x_nd,.02)
+    y_md = voxel_downsample(y_md,.02)
+    return tps_rpm(x_nd, y_md, *args,**kw)
+    
+    
+class Globals:
+    handles = []
+    rviz = None
+    @staticmethod
+    def setup():
+        if Globals.rviz is None:
+            from brett2.ros_utils import RvizWrapper
+            Globals.rviz = RvizWrapper.create()
+    
+def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None):
     n,d = x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
     f = ThinPlateSpline.identity(d)
     for i in xrange(n_iter):
-        if plotting and i%plotting==0: 
+        if f.d==2 and i%plotting==0: 
             import matplotlib.pyplot as plt            
             plt.clf()
-        xwarped_nd = f.transform_points(x_nd)
+        if i==0 and f_init is not None:
+            xwarped_nd = f_init(x_nd)
+            print xwarped_nd.max(axis=0)
+        else:
+            xwarped_nd = f.transform_points(x_nd)
         # targ_nd = find_targets(x_nd, y_md, corr_opts = dict(r = rads[i], p = .1))
         corr_nm = calc_correspondence_matrix(xwarped_nd, y_md, r=rads[i], p=.2)
         
@@ -157,32 +213,36 @@ def tps_icp(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
         # if plotting:
         #     plot_correspondence(x_nd, targ_nd)
         
-        f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, angular_spring = regs[i]*2, verbose=verbose)
+        f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, angular_spring = regs[i]*200, verbose=verbose)
 
         if plotting and i%plotting==0:
-            plt.plot(x_nd[:,0], x_nd[:,1],'r.')
-            plt.plot(y_md[:,0], y_md[:,1], 'b.')
+            if f.d==2:
+                plt.plot(x_nd[:,1], x_nd[:,0],'r.')
+                plt.plot(y_md[:,1], y_md[:,0], 'b.')
             pred = f.transform_points(x_nd)
-            plt.plot(pred[:,0], pred[:,1], 'g.')
+            if f.d==2:
+                plt.plot(pred[:,1], pred[:,0], 'g.')
             if f.d == 2:
                 plot_warped_grid_2d(f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0))
                 plt.ginput()
             elif f.d == 3:
                 from lfd import warping
-                from brett2.ros_utils import RvizWrapper,Marker
+                from brett2.ros_utils import Marker
                 from utils import conversions
-                rviz = RvizWrapper.create()
+                
+                Globals.setup()
+
                 mins = x_nd.min(axis=0)
                 maxes = x_nd.max(axis=0)
                 mins[2] -= .1
                 maxes[2] += .1
-                handles = warping.draw_grid(rviz, f.transform_points, mins, maxes, 'base_footprint')
+                Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=.1, yres=.1)
                 orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
                 target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
                 warped_pose_array = conversions.array_to_pose_array(f.transform_points(x_nd), 'base_footprint')
-                handles.append(rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
-                handles.append(rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
-                handles.append(rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
+                Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
+                Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
+                Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
 
         
     f.corr = corr_nm
@@ -191,22 +251,21 @@ def tps_icp(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
 # matcher = None            
         
 def find_targets(x_md, y_nd, corr_opts):
-    # global matcher
-    # if matcher is None:
-    #     from optimization import matching
-    #     M = matching.Matcher()
-        
+    """finds correspondence matrix, and then for each point in source cloud,
+    find the weighted average of its "partners" in the target cloud"""
+
     corr_mn = calc_correspondence_matrix(x_md, y_nd, **corr_opts)
     # corr_mn = M.match(x_md, y_nd)
     # corr_mn = corr_mn / corr_mn.sum(axis=1)[:,None]
     return np.dot(corr_mn, y_nd)        
     
 def calc_correspondence_matrix(x_nd, y_md, r, p, n_iter=20):
+    "sinkhorn procedure. see tps-rpm paper"
     n = x_nd.shape[0]
     m = y_md.shape[0]
     dist_nm = ssd.cdist(x_nd, y_md,'euclidean')
     prob_nm = np.exp(-dist_nm / r)
-    for i in xrange(n_iter):
+    for _ in xrange(n_iter):
         prob_nm /= (p*(n/m) + prob_nm.sum(axis=0))[None,:]  # cols sum to n/m
         prob_nm /= (p + prob_nm.sum(axis=1))[:,None] # rows sum to 1
         
@@ -220,9 +279,11 @@ def nan2zero(x):
     return x
 
 def orthogonalize3(mats_n33):
+    "turns each matrix into a rotation"
+
     x_n3 = mats_n33[:,:,0]
     y_n3 = mats_n33[:,:,1]
-    z_n3 = mats_n33[:,:,2]
+    # z_n3 = mats_n33[:,:,2]
     
     xnew_n3 = math_utils.normr(x_n3)
     znew_n3 = math_utils.normr(np.cross(xnew_n3, y_n3))
@@ -230,4 +291,111 @@ def orthogonalize3(mats_n33):
     
     return np.concatenate([xnew_n3[:,:,None], ynew_n3[:,:,None], znew_n3[:,:,None]],2)
     
+def fit_score(src, targ, dist_param):
+    "how good of a partial match is src to targ"
+    sqdists = ssd.cdist(src, targ,'sqeuclidean')
+    return -np.exp(-sqdists/dist_param**2).sum()
 
+
+class Rigid2d(Transformation):
+    n_params = 3
+    tx = 0
+    ty = 0
+    angle = 0
+
+    def set_params(self, params):
+        self.tx, self.ty, self.angle = params        
+    def get_params(self):
+        return np.r_[self.tx, self.ty, self.angle]
+
+    def fit(self, x_n3, y_n3):        
+
+        trans_init = (y_n3.mean(axis=0) - x_n3.mean(axis=0))[:2]
+        rot_inits = [0]
+
+        self_copy = deepcopy(self)
+        def f(params):
+            self_copy.set_params(params)
+            xmapped_n3 = self_copy.transform_points(x_n3)
+            return fit_score(xmapped_n3, y_n3,.5)
+
+
+        vals_params = []
+        for rot_init in rot_inits:
+            opt_params, opt_val, _, _, _ = opt.fmin_cg(f, np.r_[trans_init, rot_init],full_output=True)
+            vals_params.append((opt_val, opt_params))
+
+
+        best_val, best_params = min(vals_params, key = lambda x:x[0])
+        print "best_params:", best_params
+        self.set_params(best_params)
+        self.objective = best_val
+
+    def transform_points(self, x_n3):
+
+        a = self.angle
+        rot_mat = np.array([[cos(a), sin(a), 0],
+                            [-sin(a), cos(a), 0],
+                            [0,     0,      1]])
+
+        return np.dot(x_n3, rot_mat.T) + np.r_[self.tx, self.ty, 0][None,:]
+        
+        
+    def transform_frames(self, x_n3, rot_n33, orthogonalize=True):
+        newx_n3 = self.transform_points(x_n3)
+        
+        a = self.angle
+        j = np.array([[cos(a), sin(a), 0],
+                      [-sin(a), cos(a), 0],
+                      [0,     0,      1]])        
+        
+        newrot_n33 = np.array([np.dot(j, rot) for rot in rot_n33])
+        return newx_n3, newrot_n33
+
+
+class Translation2d(Transformation):
+    n_params = 2
+    tx = 0
+    ty = 0
+
+    def set_params(self, params):
+        self.tx, self.ty = params        
+    def get_params(self, params):
+        return np.r_[self.tx, self.ty]
+
+    def fit(self, x_n3, y_n3):        
+
+        trans_init = (y_n3.mean(axis=0) - x_n3.mean(axis=0))[:2]
+
+        self_copy = deepcopy(self)
+        def f(params):
+            self_copy.set_params(params)
+            xmapped_n3 = self_copy.transform_points(x_n3)
+            return fit_score(xmapped_n3, y_n3,.5)
+
+
+        # vals_params = []
+        # for rot_init in rot_inits:
+        #     opt_params, opt_val, _, _, _ = opt.fmin_cg(f, np.r_[trans_init],full_output=True)
+        #     vals_params.append((opt_val, opt_params))
+        # 
+        # 
+        # best_val, best_params = min(vals_params, key = lambda x:x[0])
+        
+        best_params, best_val, _,_,_ = opt.fmin_cg(f, np.r_[trans_init], full_output=True)
+        
+        print "best_params:", best_params
+        self.set_params(best_params)
+        self.objective = best_val
+
+    def transform_points(self, x_n3):
+
+        return x_n3 + np.r_[self.tx, self.ty, 0][None,:]
+
+
+    def transform_frames(self, x_n3, rot_n33, orthogonalize=True):
+        newx_n3 = self.transform_points(x_n3)
+
+        return newx_n3, rot_n33
+        
+        

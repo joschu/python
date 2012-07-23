@@ -1,7 +1,7 @@
 from os.path import join, basename, splitext
 from glob import glob
-from lfd.features import cloud_shape_context
-from rope_vision.clouds import voxel_downsample
+from point_clouds.features import cloud_shape_context
+from image_proc.clouds import voxel_downsample
 import numpy as np
 
 DATA_DIR = '/home/joschu/Data/rope'

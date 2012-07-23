@@ -37,7 +37,7 @@ class NonrigidRegistrationMatlab(object):
         %opts.plot_grid = 1;
         opts.corr_opts.bipartite_opts.deficient_col_penalty=1;
         opts.corr_opts.bipartite_opts.deficient_row_penalty=1;
-        params = tps_icp(points0, points1, opts);
+        params = tps_rpm(points0, points1, opts);
         save('/tmp/after_fitting.mat');
         """)
         

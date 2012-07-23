@@ -1,3 +1,10 @@
+#!/usr/bin/env python
+"""
+Best on yaml file, take extended trajectory (in an hdf5 file) and break it up into trajectory segments, 
+each with a corresponding point cloud
+"""
+
+
 import argparse
 from os.path import exists,join,dirname
 

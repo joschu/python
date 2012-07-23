@@ -1,5 +1,8 @@
-# convert a trajectory from a bag file to an hdf5 file
-
+#!/usr/bin/env python
+"""
+Take trajectory from bag file and put it in an hdf5 file
+Eventually I should put the meat of this script into a function, because otherwise I have to do hacky shit with subprocess
+"""
 import argparse
 from os.path import exists, join, dirname
 
@@ -7,9 +10,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("bag")
 parser.add_argument("h5file")
 parser.add_argument("h5path")
-parser.add_argument("arms_used",choices = ["r","l","b"])
+parser.add_argument("arms_used",choices = ["r","l","b"],default="b")
 args = parser.parse_args()
-assert exists(args.bag)
+if not exists(args.bag):
+    raise IOError("%s does not exist"%args.bag)
 
 R_TOOL_FRAME = "r_gripper_tool_frame"
 L_TOOL_FRAME = "l_gripper_tool_frame"
@@ -159,3 +163,6 @@ if args.arms_used == "l" or args.arms_used == "b":
     traj["l_gripper_xyzs2"] = l_gripper_xyzs2
     traj["l_gripper_quats"] = l_gripper_quats
     traj["l_gripper_angles"] = l_gripper_angles
+
+
+h5file.close()

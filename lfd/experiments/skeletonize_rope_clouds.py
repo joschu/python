@@ -1,6 +1,6 @@
 from os.path import join, basename, splitext
 from glob import glob
-from lfd.features import cloud_shape_context
+from point_clouds.features import cloud_shape_context
 from rope_vision.clouds import voxel_downsample
 import numpy as np
 from rope_vision.rope_initialization import find_path_through_point_cloud, get_skeleton_points

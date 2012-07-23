@@ -43,7 +43,7 @@ def test_multi_fitting():
         #f = registration.ThinPlateSpline()
         #f.fit(trajectory["rope"][0], 
               #drawn_points, 1e-2,1e-2)
-        f = registration.tps_icp(np.asarray(trajectory["rope"][0][::-1]), drawn_points, plotting = False)
+        f = registration.tps_rpm(np.asarray(trajectory["rope"][0][::-1]), drawn_points, plotting = False)
         print "seg_name: %s. cost: %s"%(seg_name, f.cost)
         if f.cost < best_cost:
             best_cost = f.cost
@@ -58,7 +58,7 @@ def test_icp():
     points0 = matobj["xy1"][:-1]
     points1 = matobj["xy2"][:-1]
     
-    tps = registration.tps_icp(points0, points1, plotting = True)
+    tps = registration.tps_rpm(points0, points1, plotting = True)
     
 def test_registration_rope_images():
     
@@ -91,8 +91,8 @@ def test_registration_rope_images():
     rope = np.dot(np.squeeze(np.loadtxt("/home/joschu/Data/rope/rope%i.txt"%i)),np.diag([1,-1,-1]))    
     rope = voxel_downsample(rope,.03)
     
-    #f = registration.tps_icp
-    tps = registration.tps_icp(rope[:,:2], sim_ropes[i][:,:2],plotting=10,reg_init=1,reg_final=.025,n_iter=200)
+    #f = registration.tps_rpm
+    tps = registration.tps_rpm(rope[:,:2], sim_ropes[i][:,:2],plotting=10,reg_init=1,reg_final=.025,n_iter=200)
     
 
 def test_registration_3d():
@@ -111,7 +111,7 @@ def test_registration_3d():
         print colorize("comparing %s to %s"%(files[i0], files[i1]),'red',bold=True)
         rope0 = np.loadtxt(osp.join(data_dir,files[i0]))
         rope1 = np.loadtxt(osp.join(data_dir,files[i1]))
-        f = registration.tps_icp(rope0, rope1, plotting=True,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
+        f = registration.tps_rpm(rope0, rope1, plotting=True,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
         distmat1[i0, i1] = f.cost
         distmat2[i0, i1] = f.corr_sum
 
@@ -144,6 +144,6 @@ if __name__ == "__main__":
     #mlab.points3d(*xyz1.T,color=(1,1,1),scale_factor=.01)
     xyz2, rgb2 = load_xyzrgb(osp.join(data_dir,"cups4.pcd"))
     xyz2 = preproc(xyz2)
-    f = registration.tps_icp(3*xyz1, 3*xyz2, plotting=4,reg_init=1,reg_final=.05,n_iter=200, verbose=False)
+    f = registration.tps_rpm(3*xyz1, 3*xyz2, plotting=4,reg_init=1,reg_final=.05,n_iter=200, verbose=False)
 
     

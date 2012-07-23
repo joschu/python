@@ -1,3 +1,8 @@
+"""
+compare point clouds
+"""
+
+
 from __future__ import division
 import numpy as np
 import networkx as nx
@@ -21,10 +26,11 @@ def calc_geodesic_distances_downsampled(xyz, xyz_ds, ds_inds):
     S = make_sampling_matrix(ds_inds, len(xyz))
     print S.shape
     return S.transpose().dot(S.transpose().dot(D).transpose()).T
+    
 def calc_geodesic_distances(xyz):
     """
     Calculates pairwise geodesic distances.
-    Note that we generate the graph by projecting to 2    
+    Note that we generate the graph by projecting to 2D
     """
     x,y = xyz[:,:2].T
     tri = Triangulation(x,y)
@@ -42,7 +48,7 @@ def calc_geodesic_distances(xyz):
 
 
 def calc_match_score(xyz0, xyz1, dists0 = None, dists1 = None):
-    f = registration.tps_icp(xyz0, xyz1, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
+    f = registration.tps_rpm(xyz0, xyz1, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
     corr = f.corr
     partners = corr.argmax(axis=1)
     

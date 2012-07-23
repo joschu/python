@@ -10,5 +10,4 @@ rospy.sleep(.5)
 ps = gm.PoseStamped()
 ps.header.frame_id = "base_link"
 ps.header.stamp = rospy.Time.now()
-handle = rviz.place_kin_tree_from_link(ps, "base_link")
-handle.disable_delete = True
+handles = rviz.place_kin_tree_from_link(ps, "base_link")

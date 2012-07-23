@@ -20,6 +20,8 @@ from utils.func_utils import once
 from utils import conversions, transformations
 import urdf
 import time
+import weakref
+from copy import deepcopy
 
 def pc2xyzrgb(pc):
     arr = np.fromstring(pc.data,dtype='float32').reshape(pc.height,pc.width,8)
@@ -30,13 +32,21 @@ def pc2xyzrgb(pc):
     
     return xyz,rgb
 
+def xyz2pc(xyz,frame_id):
+    bgr = np.zeros_like(xyz)
+    return xyzrgb2pc(xyz,bgr,frame_id)
+
 def xyzrgb2pc(xyz,bgr,frame_id):
     xyz = np.asarray(xyz)
     bgr = np.asarray(bgr)
+    
+    assert xyz.shape == bgr.shape
+    if xyz.ndim ==2:
+        xyz = xyz[None,:,:]
+        bgr = bgr[None,:,:]
+    
     height= xyz.shape[0]
     width = xyz.shape[1]
-    assert bgr.shape[0] == height
-    assert bgr.shape[1] == width
     
     arr = np.empty((height,width,8),dtype='float32')
     arr[:,:,0:3] = xyz
@@ -155,13 +165,32 @@ class MarkerHandle(object):
     disable_delete = False
     def __init__(self, marker, pub):
         self.pub = pub
-        self.marker = marker        
+        self.marker = marker     
+        HANDLES[np.random.randint(0,2147483647)] = self
     def __del__(self):
-        if not self.disable_delete:
-            self.marker.action = Marker.DELETE
-            self.pub.publish(self.marker)
-        
+        try:
+            if not self.disable_delete:
+                self.marker.action = 2#Marker.DELETE
+                self.pub.publish(self.marker)
+        except Exception:
+            pass
+
+
+
+HANDLES = weakref.WeakValueDictionary()    
+def delete_all_handles():
+    print "deleting handles"
+    for (_,val) in HANDLES.items():
+        val.__del__()
+    time.sleep(.1)
+
+@once
+def register_deletion():
+    rospy.on_shutdown(delete_all_handles)
+
 class RvizWrapper:
+
+
     
     @once
     def create():
@@ -172,6 +201,7 @@ class RvizWrapper:
         self.pub = rospy.Publisher('visualization_marker', Marker)
         self.array_pub = rospy.Publisher("visualization_marker_array", MarkerArray)        
         self.ids = set([])
+        register_deletion()
     def draw_curve(self, pose_array, id=None, rgba = (0,1,0,1), width = .01, ns = "default_ns", duration=0, type=Marker.LINE_STRIP):
         if id is None: id = self.get_unused_id()
         marker = Marker(type=type,action=Marker.ADD)
@@ -210,19 +240,48 @@ class RvizWrapper:
             id = np.random.randint(0,2147483647)
             if id not in self.ids: return id
        
-    def place_kin_tree_from_link(self, ps, linkname, ns = "default_ns"):
-        markers = make_kin_tree_from_link(ps, linkname)
+    def place_kin_tree_from_link(self, ps, linkname, valuedict=None, ns = "default_ns"):
+        markers = make_kin_tree_from_link(ps, linkname, valuedict=valuedict)
         marker_array = MarkerArray()
         marker_array.markers = markers
         handles = []
-        for marker in enumerate(markers):
+        for marker in markers:
             id = self.get_unused_id()
             self.ids.add(id)
             marker.id = id
+            marker.ns = ns
             handles.append(MarkerHandle(marker, self.pub))
-            self.pub.publish(marker)
-            self.ids.add(id)            
+            self.pub.publish(marker)      
         return handles
+                
+                
+    def draw_trajectory(self, pose_array, angles, ns="default_ns"):
+        decimation = max(len(pose_array.poses)//6, 1)
+        ps = gm.PoseStamped()
+        ps.header.frame_id = pose_array.header.frame_id        
+        ps.header.stamp = rospy.Time.now()
+        handles = []
+ 
+        multiplier = 5.79 
+        
+        for (pose,angle) in zip(pose_array.poses,angles)[::decimation]:
+
+            ps.pose = deepcopy(pose)
+            pointing_axis = transformations.quaternion_matrix([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])[:3,0]
+            ps.pose.position.x -= .18*pointing_axis[0]
+            ps.pose.position.y -= .18*pointing_axis[1]
+            ps.pose.position.z -= .18*pointing_axis[2]
+            
+            
+            root_link = "r_wrist_roll_link"
+            valuedict = {"r_gripper_l_finger_joint":angle*multiplier,
+                         "r_gripper_r_finger_joint":angle*multiplier,
+                         "r_gripper_l_finger_tip_joint":angle*multiplier,
+                         "r_gripper_r_finger_tip_joint":angle*multiplier,
+                         "r_gripper_joint":angle}
+            handles.extend(self.place_kin_tree_from_link(ps, root_link, valuedict, ns=ns))
+        return handles
+                
                 
     #def place_gripper(ps,open_frac=.5,ns='rviz_utils'):
         
@@ -304,7 +363,7 @@ def make_kin_tree_from_joint(ps,jointname, ns='default_ns',valuedict=None):
         if joint.joint_type == 'revolute' or joint.joint_type == 'continuous':
             childFromRotated = transformations.rotation_matrix(valuedict[jointname], joint.axis)
         elif joint.joint_type == 'prismatic':
-            childFromRotated = transformations.translation_matrix(joint.axis) * valuedict[jointname]
+            childFromRotated = transformations.translation_matrix(np.array(joint.axis)* valuedict[jointname]) 
             
     parentFromRotated = np.dot(parentFromChild, childFromRotated)            
     originFromParent = conversions.pose_to_hmat(ps.pose)

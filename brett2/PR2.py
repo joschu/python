@@ -78,9 +78,7 @@ class GripperTrajectoryThread(Thread):
             rospy.sleep(rospy.Duration(self.times[i]) - duration_elapsed)            
             #print self.angles[i],(rospy.Duration(self.times[i]) - duration_elapsed).to_sec()
             
-            
-        self.gripper.set_angle_target(self.angles[-1])        
-        
+                    
 class PR2(object):
 
     pending_threads = []
@@ -138,8 +136,8 @@ class PR2(object):
             thread.join()
         self.pending_threads = []
         
-VEL_RATIO = .1
-ACC_RATIO = .15
+VEL_RATIO = .15
+ACC_RATIO = .3
     
 class TrajectoryControllerWrapper(object):
 
@@ -354,7 +352,7 @@ class Torso(TrajectoryControllerWrapper):
         
         
 class Gripper(object):
-    default_max_effort = 20
+    default_max_effort = -1
     def __init__(self,pr2,lr):
         self.pr2 = pr2
         self.lr = lr
@@ -380,7 +378,9 @@ class Gripper(object):
     def set_angle_target(self, position, max_effort = default_max_effort):
         self.controller_pub.publish(pcm.Pr2GripperCommand(position=position,max_effort=max_effort))
     def follow_timed_trajectory(self, times, angs):
-        self.pr2.start_thread(GripperTrajectoryThread(self, times, angs))
+        times_up = np.arange(0,times[-1],.01)
+        angs_up = np.interp(times_up,times,angs)
+        self.pr2.start_thread(GripperTrajectoryThread(self, times_up, angs_up))
 
         
         

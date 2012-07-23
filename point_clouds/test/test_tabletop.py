@@ -16,9 +16,8 @@ if __name__ == "__main__":
     pr2 = PR2.create()
     rviz = ros_utils.RvizWrapper.create()
     rospy.sleep(1)
-    point_cloud = rospy.wait_for_message("/head_mount_kinect/depth_registered/points", sm.PointCloud2)     
+    point_cloud = rospy.wait_for_message("/drop/points", sm.PointCloud2)     
     xyz, bgr = ros_utils.pc2xyzrgb(point_cloud)    
-    xyz = xyz[200:, 200:500]
     xyz = ros_utils.transform_points(xyz, pr2.tf_listener, "base_footprint", point_cloud.header.frame_id)
     clusters = tabletop.segment_tabletop_scene(xyz,"base_footprint",plotting2d=True, plotting3d=True)
     

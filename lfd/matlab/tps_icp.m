@@ -1,4 +1,4 @@
-function params = tps_icp(x_nd, y_md, opts, xfeats_nk, yfeats_mk)    
+function params = tps_rpm(x_nd, y_md, opts, xfeats_nk, yfeats_mk)    
 
 if nargin <= 3
     xfeats_nk = [];

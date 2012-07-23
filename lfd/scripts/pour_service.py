@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+"""
+Deprecated
+"""
+
 from __future__ import division
 import argparse
 parser = argparse.ArgumentParser()

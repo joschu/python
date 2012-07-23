@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import image_proc.classifiers as C
 import cPickle, os
-import utils.dir_tools
+import utils.dir_tools as dir_tools
 
 class MultiLabelerWithClassifier(ann.MultiLabeler):
     def __init__(self, imageFiles, maskFile, labelFiles = None, downsample=1, min_pix = 50):

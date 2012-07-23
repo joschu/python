@@ -1,19 +1,42 @@
+"""
+Simple method for segmentation of organized point cloud
+"""
+
+
 from __future__ import division
 import numpy as np
 import rospy
 from brett2 import ros_utils
 from brett2.ros_utils import RvizWrapper,Marker
+from utils.math_utils import norms
 import cv2
 import geometry_msgs.msg as gm
 import sensor_msgs.msg as sm
 import scipy.ndimage as ndi
 import math
 
-HEIGHT_HIST_RES = .005
-ABOVE_TABLE_CUTOFF = .02
+HEIGHT_HIST_RES = .0005
+ABOVE_TABLE_CUTOFF = .01
 OBJECT_CLUSTER_TOL=.05
 MIN_CLUSTER_SIZE = 100
 
+def find_peak(x,y):
+    imax = y.argmax()
+    ilo = max(imax-5,0)
+    ihi = min(imax+6, len(x))
+    a,b,c = np.polyfit(x[ilo:ihi],y[ilo:ihi],2)
+    out =  - b/(2*a)
+    
+    if out < x[ilo] or out > x[ihi]:
+        out = x[imax]
+    
+    #import matplotlib.pyplot as plt
+    #plt.figure(123)
+    #plt.plot(x,y)
+    #plt.vlines([out],0, 1000,colors='r')
+    #plt.vlines([x[imax]],0,1000, colors='g')
+    #plt.show()
+    return out
 def get_table_height(xyz):
     z = xyz[:,:,2]
     zvals = z[np.isfinite(z)]
@@ -21,7 +44,7 @@ def get_table_height(xyz):
     zmax = zvals.max()
     bins = np.arange(zmin, zmax, HEIGHT_HIST_RES)
     counts,_ = np.histogram(zvals, bins=bins)
-    table_height = bins[counts.argmax()]
+    table_height = find_peak((bins[1:]+bins[:-1])/2, counts)
     return table_height
 
 def get_table_dimensions(xyz):
@@ -51,7 +74,13 @@ def get_cylinder(xyz):
 
 marker_handles = []
             
-def segment_tabletop_scene(xyz, frame_id='base_footprint', plotting2d = False, plotting3d = False):
+FIG_DEPTH = 9
+FIG_FP_LABELS = 10
+FIG_LABELS = 11
+FIG_ABOVE = 12
+FIG_BGR = 13
+            
+def segment_tabletop_scene(xyz, frame_id='base_footprint', plotting2d = False, plotting3d = False, plotting2d_all = False):
     """
     
     Initial segmentation:
@@ -93,14 +122,6 @@ def segment_tabletop_scene(xyz, frame_id='base_footprint', plotting2d = False, p
     
     both_mask = small_diff_mask & above_table_mask
 
-
-    if plotting2d:
-        import matplotlib.pyplot as plt
-        plt.figure(10)
-        plt.imshow(both_mask)
-        plt.title("above table & continuity")
-        
-    
     labels, max_label = ndi.label(both_mask)
     label_counts = np.bincount(labels.flatten())
         
@@ -109,11 +130,6 @@ def segment_tabletop_scene(xyz, frame_id='base_footprint', plotting2d = False, p
     old2new[label_counts < MIN_CLUSTER_SIZE] = 0
     old2new[1:][label_counts[1:] >= MIN_CLUSTER_SIZE] = np.arange(n_clu)+1
     labels = old2new[labels]
-    
-    if plotting2d:
-        plt.figure(11)
-        plt.imshow(labels)
-        plt.title("first-pass labels")        
     
     clusters = [xyz[labels == i] for i in xrange(1, n_clu+1)]
     merge_to = np.arange(n_clu)
@@ -126,25 +142,49 @@ def segment_tabletop_scene(xyz, frame_id='base_footprint', plotting2d = False, p
             dist = math.hypot(x1-x0, y1-y0)
             rad_sum = r0 + r1
             if dist < rad_sum:
-                print i,j,dist,rad_sum
+                # i,j,dist,rad_sum
                 merge_to[merge_to==merge_to[j]] = merge_to[i]
     
     final_clusters = [np.concatenate([clusters[i] for i in np.flatnonzero(merge_to==m)],0)
                       for m in np.flatnonzero(np.bincount(merge_to))]
     
     if plotting2d:
-        plt.figure(12)
+        import matplotlib.pyplot as plt
+        plt.close('all')
+        
+        plt.figure(FIG_LABELS)
         labels_merged = merge_to[labels-1]+1
         labels_merged[labels==0] = 0
         plt.imshow(labels_merged)
-        plt.title("after merging")
-        plt.figure(10)
-        plt.imshow(z)
+        plt.title("after merging")        
+        for (i,cluster) in enumerate(final_clusters):
+            row,col = np.unravel_index(norms(xyz - cluster.mean(axis=0)[None,None,:],2).argmin(),xyz.shape[0:2])
+            # print "center pixel:",i,row,col
+            plt.text(col,row,str(i))
+
+        
+    if plotting2d_all:
+
+        plt.figure(FIG_ABOVE)
+        plt.imshow(both_mask)
+        plt.title("above table & continuity")
+
+        plt.figure(FIG_FP_LABELS)
+        plt.imshow(labels)
+        plt.title("first-pass labels")        
+        
+        plt.figure(FIG_DEPTH)
+        plt.imshow(z)        
+
+    if plotting2d: 
+        plt.show()
+            
+
+
         
     if plotting3d:
         global marker_handles
         marker_handles = []
-        
         
         for clu in final_clusters:
             x,y,z,r,h = get_cylinder(clu)
@@ -153,10 +193,7 @@ def segment_tabletop_scene(xyz, frame_id='base_footprint', plotting2d = False, p
             ps.pose.position = gm.Point(x,y,z)
             ps.pose.orientation = gm.Quaternion(0,0,0,1)
             ps.header.frame_id = frame_id
-            marker_handles.append(rviz.draw_marker(ps, type=Marker.CYLINDER, scale=(2*r, 2*r, h), rgba=(1,1,0,.7)))
-
-    if plotting2d:
-        plt.show()
+            marker_handles.append(rviz.draw_marker(ps, type=Marker.CYLINDER, scale=(2*r, 2*r, h), rgba=(1,1,0,.2), ns = "segment_tabletop_scene"))
 
 
         
