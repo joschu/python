@@ -1,7 +1,6 @@
 <launch>
   <include file="$(find openni_launch)/launch/openni.launch">
     <arg name="depth_registration" value="true"/>
-    <arg name="rgb_frame_id" value="/openni_rgb_optical_frame"/>
   </include>
   <node name="drop1" pkg="topic_tools" type="drop" args="/camera/depth_registered/points 2 3 /drop/points"/>
 </launch>

@@ -80,7 +80,4 @@ done["cloud_bgr"] = cloud_xyzs[i_cloud]
     
 h5in.close()
 h5out.close() 
-    
-    
-    
 

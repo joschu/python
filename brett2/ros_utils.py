@@ -23,6 +23,14 @@ import time
 import weakref
 from copy import deepcopy
 
+@once
+def get_tf_listener():
+    import roslib
+    roslib.load_manifest('tf')
+    import tf
+    return tf.TransformListener()
+
+
 def pc2xyzrgb(pc):
     arr = np.fromstring(pc.data,dtype='float32').reshape(pc.height,pc.width,8)
     xyz = arr[:,:,0:3]
