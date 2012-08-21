@@ -20,12 +20,23 @@ def make_sampling_matrix(inds_list, n_orig):
         vals.extend([1/len(inds)]*len(inds))
     return sparse.csc_matrix((vals,np.array([row_inds, col_inds])), shape=(n_orig,len(inds_list)))
             
-def calc_geodesic_distances_downsampled(xyz, xyz_ds, ds_inds):
+def calc_geodesic_distances_downsampled_old(xyz, xyz_ds, ds_inds):
+    assert xyz.shape[1] == 3
+    assert xyz_ds.shape[1] == 3
     D = calc_geodesic_distances(xyz)
     
     S = make_sampling_matrix(ds_inds, len(xyz))
     print S.shape
     return S.transpose().dot(S.transpose().dot(D).transpose()).T
+
+
+def calc_geodesic_distances_downsampled(xyz, xyz_ds, ds_inds):
+    assert xyz.shape[1] == 3
+    assert xyz_ds.shape[1] == 3
+    D = calc_geodesic_distances(np.concatenate([xyz_ds,xyz],0))
+    
+    return D[:len(xyz_ds), :len(xyz_ds)]
+
     
 def calc_geodesic_distances(xyz):
     """

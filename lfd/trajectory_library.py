@@ -95,12 +95,12 @@ def get_change_inds(arr):
     "return set of i such that arr[i] != arr[i-1]"
     return np.flatnonzero(arr[1:] != arr[:-1])+1
 
-def interactive_select_demo(library):
+def interactive_select_demo(demos):
     # plot all of them in a matplotlib or opencv window
     # get kb input
     import matplotlib.pyplot as plt
     plt.ion()
-    segment_group = library.root
+    segment_group = demos
     
     n_segs = len(segment_group.keys())
     n_rows = int(round(np.sqrt(n_segs)))

@@ -1,0 +1,167 @@
+import numpy as np
+from kinematics import retiming, kinematics_utils
+import rospy
+from time import time
+from brett2 import PR2
+import utils.conversions as conv
+import utils.math_utils as mu
+
+ALWAYS_FAKE_SUCESS = False
+
+def merge_nearby_grabs(inds_sides):
+    if len(inds_sides) < 2: 
+        return inds_sides
+    elif len(inds_sides) == 2:
+        return [(inds_sides[1][0],'b')]
+    else:
+        raise NotImplementedError
+
+                
+    
+
+def follow_trajectory_with_grabs(pr2, bodypart2traj):
+    T = len(bodypart2traj.values()[0])
+    l_grab = bodypart2traj["l_grab"] if "l_grab" in bodypart2traj else np.zeros(T,bool)
+    r_grab = bodypart2traj["r_grab"] if "r_grab" in bodypart2traj else np.zeros(T,bool)
+    l_after_grab_inds = np.flatnonzero(l_grab[1:] > l_grab[:-1])+1
+    r_after_grab_inds = np.flatnonzero(r_grab[1:] > r_grab[:-1])+1
+    inds_sides = sorted([(i,'l') for i in l_after_grab_inds] + [(i,'r') for i in r_after_grab_inds])
+    inds_sides = merge_nearby_grabs(inds_sides)
+    
+    num_grabs = len(inds_sides)
+    print "breaking trajectory into %i segments"%(num_grabs+1)
+    go_to_start(pr2, bodypart2traj)
+    i_begin = 0
+    for (i_grab, side) in inds_sides:
+        t_start = rospy.Time.now().to_sec()
+        success = follow_trajectory(pr2, slice_traj(bodypart2traj, i_begin, i_grab))
+        rospy.loginfo("follow traj result: %s, duration: %.2f", success, rospy.Time.now().to_sec() - t_start)
+        if not success: return False
+        t_start = rospy.Time.now().to_sec()
+        success = close_gripper(pr2, side)
+        rospy.loginfo("close gripper result: %s, duration: %.2f", success, rospy.Time.now().to_sec() - t_start)        
+        if not success: return False        
+        i_begin = i_grab
+    t_start = rospy.Time.now().to_sec()
+    success = follow_trajectory(pr2, slice_traj(bodypart2traj, i_begin, -1))
+    rospy.loginfo("follow traj result: %s, duration: %.2f", success, rospy.Time.now().to_sec() - t_start)
+    if not success: return False
+    return True
+
+def slice_traj(bodypart2traj, start, stop):
+    out = {}
+    for (bodypart, traj) in bodypart2traj.items():
+        out[bodypart] = traj[start:stop]
+    return out
+
+def go_to_start(pr2, bodypart2traj):
+
+    name2part = {"l_gripper":pr2.lgrip, 
+                 "r_gripper":pr2.rgrip, 
+                 "l_arm":pr2.larm, 
+                 "r_arm":pr2.rarm}
+    for (name, part) in name2part.items():
+        if name in bodypart2traj:
+            if name == "l_gripper" or name == "r_gripper":
+                part.set_angle_target(bodypart2traj[name][0])
+            elif name == "l_arm" or name == "r_arm":
+                part.goto_joint_positions(bodypart2traj[name][0])
+
+    pr2.join_all()
+
+def follow_trajectory(pr2, bodypart2traj):    
+        
+    rospy.loginfo("following trajectory with bodyparts %s", " ".join(bodypart2traj.keys()))
+    trajectories = []
+    vel_limits = []
+    acc_limits = []
+    bodypart2inds = {}
+    
+    n_dof = 0
+    name2part = {"l_gripper":pr2.lgrip, 
+                 "r_gripper":pr2.rgrip, 
+                 "l_arm":pr2.larm, 
+                 "r_arm":pr2.rarm}
+    
+    for (name, part) in name2part.items():
+        if name in bodypart2traj:
+            traj = bodypart2traj[name]
+            if traj.ndim == 1: traj = traj.reshape(-1,1)
+            trajectories.append(traj)
+            vel_limits.extend(part.vel_limits)
+            acc_limits.extend(part.acc_limits)
+            bodypart2inds[name] = range(n_dof, n_dof+part.n_joints)
+            n_dof += part.n_joints
+                        
+    trajectories = np.concatenate(trajectories, 1)
+    
+    vel_limits = np.array(vel_limits)
+    acc_limits = np.array(acc_limits)
+    times = retiming.retime_with_vel_limits(trajectories, vel_limits)
+    
+    
+    from utils.math_utils import interp2d
+    times_up = np.arange(0,times[-1],.1)
+    traj_up = interp2d(times_up, times, trajectories)
+    
+    for (name, part) in name2part.items():
+        if name in bodypart2traj:
+            part_traj = traj_up[:,bodypart2inds[name]]
+            if name == "l_gripper" or name == "r_gripper":
+                part.follow_timed_trajectory(times_up, part_traj.flatten())
+            elif name == "l_arm" or name == "r_arm":
+                vels = kinematics_utils.get_velocities(part_traj, times_up, .001)
+                part.follow_timed_joint_trajectory(part_traj, vels, times_up)
+    pr2.join_all()    
+    return True
+    
+def close_gripper(pr2, side):
+    """
+    True if it's grabbing an object
+    False otherwise
+    """
+    
+    grippers = {'l':[pr2.lgrip], 'r':[pr2.rgrip], 'b':[pr2.lgrip, pr2.rgrip]}[side]
+    
+    success = True
+    for gripper in grippers:
+        gripper.close()
+    
+    pr2.join_all()
+    rospy.sleep(.15)
+    for gripper in grippers:
+        if gripper.is_closed():
+            rospy.logwarn("%s gripper grabbed air", side)
+            success = False
+    return success or ALWAYS_FAKE_SUCESS        
+def make_joint_traj(xyzs, quats, joint_seeds,manip, ref_frame, targ_frame,filter_options):
+    n = len(xyzs)
+    assert len(quats) == n
+    
+    robot = manip.GetRobot()
+    joint_inds = manip.GetArmJoints()
+    robot.SetActiveDOFs(joint_inds)
+    orig_joint = robot.GetActiveDOFValues()
+
+    joints = []
+    inds = []
+
+    for i in xrange(0,n):
+        mat4 = conv.trans_rot_to_hmat(xyzs[i], quats[i])
+        robot.SetActiveDOFValues(joint_seeds[i])
+        joint = PR2.cart_to_joint(manip, mat4, ref_frame, targ_frame, filter_options)
+        if joint is not None: 
+            joints.append(joint)
+            inds.append(i)
+            robot.SetActiveDOFValues(joint)
+
+
+    robot.SetActiveDOFValues(orig_joint)
+    
+    
+    rospy.loginfo("found ik soln for %i of %i points",len(inds), n)
+    if len(inds) > 2:
+        joints2 = mu.interp2d(np.arange(n), inds, joints)
+        return joints2, inds
+    else:
+        return np.zeros((n, len(joints))), []

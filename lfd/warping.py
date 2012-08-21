@@ -7,6 +7,7 @@ import numpy as np
 from utils import conversions
 from utils.conversions import quats2mats, mats2quats
 from utils.math_utils import normalize
+from copy import deepcopy
 
 def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):
     grid_handles = []
@@ -78,6 +79,7 @@ def group_to_dict(group):
     "deep copy hdf5 structure"
     out = {}
     for key in group.keys():
+        print key
         if hasattr(group[key],"shape"):
             out[key] = np.asarray(group[key])
         else:
@@ -139,65 +141,39 @@ def transform_demo(reg, demo, left=True, right=True, cloud_xyz=False, object_clo
 def sorted_values(d):
     return [d[key] for key in sorted(d.keys())]
 
-def transform_demo_with_fingertips(reg, demo, left=True, right=True, cloud_xyz=False):
+def transform_demo_with_fingertips(f, demo):
     """
-    reg: NonrigidRegistration object
-    demo: array with the following fields: r_gripper_xyzs, l_gripper_xyzs, r_gripper_quats, l_gripper_quats, cloud_xyz
+    demo: 
+    """    
     
-    (todo: replace 'cloud_xyz' with 'object_points')
-    """
+    warped_demo = {}
     
-    warped_demo = dict([(key,np.asarray(value)) for (key, value) in demo.items()])
+    for lr in "lr":
+        if "%s_gripper_tool_frame"%lr in demo:    
+            _, ori = f.transform_frames(demo["%s_gripper_tool_frame"%lr]["position"], quats2mats(demo["l_gripper_tool_frame"]["orientation"]))
+            xyz_fingertip0 = f.transform_points(demo["%s_gripper_l_finger_tip_link"%lr]["position"])
+            xyz_fingertip1 = f.transform_points(demo["%s_gripper_r_finger_tip_link"%lr]["position"])
+        
+            tool_xyzs = []
+            tool_quats = []
+            tool_angles = []
+        
+            for (pos0, pos1, ori) in zip(xyz_fingertip0, xyz_fingertip1, ori):
+                hmat, ang = calc_hand_pose(pos0, pos1, ori)
+                xyz, quat = conversions.hmat_to_trans_rot(hmat)
+                tool_xyzs.append(xyz)
+                tool_quats.append(quat)
+                tool_angles.append(ang)
+        
+            warped_demo["%s_gripper_tool_frame"%lr]={}        
+            warped_demo["%s_gripper_l_finger_tip_link"%lr]={}        
+            warped_demo["%s_gripper_l_finger_tip_link"%lr]["position"]=xyz_fingertip1
+            warped_demo["%s_gripper_r_finger_tip_link"%lr]={}
+            warped_demo["%s_gripper_r_finger_tip_link"%lr]["position"]=xyz_fingertip0
     
-    if left:
-        _, ori_warped = reg.transform_frames(demo["l_gripper_xyzs"], quats2mats(demo["l_gripper_quats"]))
-        l_xyzs1 = reg.transform_points(demo["l_gripper_xyzs1"])
-        l_xyzs2 = reg.transform_points(demo["l_gripper_xyzs2"])
-        
-        tool_xyzs = []
-        tool_quats = []
-        tool_angles = []
-        
-        for (pos1, pos2, ori) in zip(l_xyzs1, l_xyzs2, ori_warped):
-            hmat, ang = calc_hand_pose(pos1, pos2, ori)
-            xyz, quat = conversions.hmat_to_trans_rot(hmat)
-            tool_xyzs.append(xyz)
-            tool_quats.append(quat)
-            tool_angles.append(ang)
-        
-        warped_demo["l_gripper_xyzs"] = tool_xyzs
-        warped_demo["l_gripper_xyzs1"] = l_xyzs1
-        warped_demo["l_gripper_xyzs2"] = l_xyzs2
-        warped_demo["l_gripper_quats"] = tool_quats
-        warped_demo["l_gripper_angles"] = tool_angles
-
-    if right:
-        _, ori_warped = reg.transform_frames(demo["r_gripper_xyzs"], quats2mats(demo["r_gripper_quats"]))
-        r_xyzs1 = reg.transform_points(demo["r_gripper_xyzs1"])
-        r_xyzs2 = reg.transform_points(demo["r_gripper_xyzs2"])
-        
-        tool_xyzs = []
-        tool_quats = []
-        tool_angles = []
-        
-        for (pos1, pos2, ori) in zip(r_xyzs1, r_xyzs2, ori_warped):
-            hmat, ang = calc_hand_pose(pos1, pos2, ori)
-            xyz, quat = conversions.hmat_to_trans_rot(hmat)
-            tool_xyzs.append(xyz)
-            tool_quats.append(quat)
-            tool_angles.append(ang)
-        
-        warped_demo["r_gripper_xyzs"] = tool_xyzs
-        warped_demo["r_gripper_xyzs1"] = r_xyzs1
-        warped_demo["r_gripper_xyzs2"] = r_xyzs2        
-        warped_demo["r_gripper_quats"] = tool_quats
-        warped_demo["r_gripper_angles"] = tool_angles
-        
-    if cloud_xyz:
-        old_cloud_xyz_pts = demo["cloud_xyz"].reshape(-1,3)
-        new_cloud_xyz_pts = reg.transform_points(old_cloud_xyz_pts)
-        warped_demo["cloud_xyz"] = new_cloud_xyz_pts.reshape(demo["cloud_xyz"].shape)
-        
+            warped_demo["%s_gripper_tool_frame"%lr]["position"] = np.array(tool_xyzs)
+            warped_demo["%s_gripper_tool_frame"%lr]["orientation"] = np.array(tool_quats)
+            warped_demo["%s_gripper_joint"%lr] = np.array(tool_angles)
         
         
     return warped_demo

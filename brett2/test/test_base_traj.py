@@ -3,7 +3,6 @@ import utils.conversions as conv
 import numpy as np
 import geometry_msgs.msg as gm
 import trajectory_msgs.msg as tm
-import traj_utils as tu
 import scipy.interpolate as si
 import rospy
 from time import time,sleep
@@ -18,7 +17,7 @@ ts = np.linspace(0,10,10)
 
 pub = rospy.Publisher("base_traj_controller/command", tm.JointTrajectory)
 brett = PR2()
-xyacur = np.array(brett.base.get_pose())
+xyacur = np.array(brett.base.get_pose("odom_combined"))
 
 jt = tm.JointTrajectory()
 for i in xrange(10):

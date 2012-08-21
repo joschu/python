@@ -68,7 +68,7 @@ def flatten_compound_dtype(compound_array):
     return np.concatenate(arrays, axis=1)
 
 def follow_body_traj(pr2, traj, times=None, r_arm = False, l_arm = False, r_gripper = False, l_gripper = False, head = False, base = False):
-    isinstance(pr2, PR2.PR2)
+    assert isinstance(pr2, PR2.PR2)
     pr2.update_rave()
     if r_arm:
         pr2.rarm.goto_joint_positions(traj["r_arm"][0])

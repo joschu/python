@@ -41,6 +41,15 @@ def retime2(positions, vel_limits_j):
     times = np.cumsum(np.r_[0,dur_n])
     return times, good_inds    
 
+def retime_with_vel_limits(positions, vel_limits_j):
+    
+    move_nj = positions[1:] - positions[:-1]
+    dur_n = (np.abs(move_nj) / vel_limits_j[None,:]).max(axis=1) # time according to velocity limit
+    times = np.cumsum(np.r_[0,dur_n])
+
+    return times
+    
+
 def retime(positions, vel_limits_j, acc_limits_j):
     positions, vel_limits_j, acc_limits_j = np.asarray(positions), np.asarray(vel_limits_j), np.asarray(acc_limits_j)
     

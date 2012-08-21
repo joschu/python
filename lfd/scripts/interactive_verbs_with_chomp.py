@@ -28,6 +28,7 @@ import scipy.spatial.distance as ssd
 from utils.math_utils import norms
 roslib.load_manifest("snazzy_msgs")
 from snazzy_msgs.srv import *
+import lfd.lfd_traj as lt
 import yaml
 
 def select_from_list(list):
@@ -47,15 +48,15 @@ if rospy.get_name() == "/unnamed":
 pr2 = PR2.PR2.create()
 
 make_svc = rospy.ServiceProxy("make_verb_traj",MakeTrajectory)
-exec_svc = rospy.ServiceProxy("exec_verb_traj",ExecTrajectory)
 seg_svc = rospy.ServiceProxy("interactive_segmentation",ProcessCloud)
+chomp_svc = rospy.ServiceProxy("elaborate_trajectory", TrajectoryObjects)
+
 
 F=h5py.File("/home/joschu/python/lfd/data/verbs.h5","r")
 with open("/home/joschu/python/lfd/data/tool_info.yaml","r") as fh:
     tool_info = yaml.load(fh)
 with open("/home/joschu/python/lfd/data/verb_info.yaml","r") as fh:
     verb_info = yaml.load(fh)
-
 
 def make_and_execute_verb_traj(verb, arg_clouds):
     
@@ -77,15 +78,29 @@ def make_and_execute_verb_traj(verb, arg_clouds):
         make_req.verb = verb
         make_resp = make_svc.call(make_req)
 
-        approved = yes_or_no("execute trajectory?")
+        made_traj = make_resp.traj
+        lr = made_traj.arms_used
+        chomp_req = TrajectoryObjectsRequest()
+        chomp_req.trajectory = made_traj.gripper0_poses
+        chomp_req.weights = [.5 for _ in made_traj.gripper0_poses.poses]
+        chomp_req.whicharm = {"l":"left_arm","r":"right_arm"}[lr]
+        chomp_req.duration = 10
+        chomp_req.object_clouds = make_req.object_clouds
+
+
+        approved = yes_or_no("execute trajectory?")        
         if approved:
-            exec_req = ExecTrajectoryRequest(make_resp.traj)
-            exec_resp = exec_svc.call(exec_req)
-            if exec_resp.success == False:
-                rospy.logerr("%s failed :(", verb)
-                return False
-            else:
-                rospy.loginfo("%s succeeded!", verb)
+            while yes_or_no("try again?"):
+                try:
+                    chomp_resp = chomp_svc.call(chomp_req)
+                    break
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+            joints = np.array([jtp.position for jtp in chomp_resp.joint_trajectory.points])
+            lt.go_to_start(pr2, {"%s_arm"%lr:joints, "%s_gripper"%lr:made_traj.gripper0_angles})            
+            lt.follow_trajectory(pr2, {"%s_arm"%lr:joints, "%s_gripper"%lr:made_traj.gripper0_angles})
+
     
 verb_list = [verb for verb in verb_info if "hidden" not in verb_info[verb]]
 while True:

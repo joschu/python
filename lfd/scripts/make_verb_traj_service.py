@@ -7,7 +7,7 @@ Given a verb and a bunch of point clouds, spits out a trajectory
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("--test", action="store_true")
+parser.add_argument("--test", type=str)
 args = parser.parse_args()
 
 
@@ -166,13 +166,12 @@ class Globals:
 
 
 if __name__ == "__main__":
-    if args.test:        
+    if args.test is not None:        
         if rospy.get_name() == "/unnamed": 
             rospy.init_node("test_get_verb_traj_service",disable_signals=True)
         Globals.setup()            
         req = MakeTrajectoryRequest()
-        req.verb = "push"
-        #import h5py
+        req.verb = args.test
         F=h5py.File("/home/joschu/python/lfd/data/verbs.h5","r")
         object_clouds = [asarray(cloud) for cloud in sorted_values(F["cut"]["demos"]["0"]["object_clouds"])]
         for i in xrange(len(object_clouds)):

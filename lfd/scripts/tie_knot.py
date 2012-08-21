@@ -77,14 +77,6 @@ def fix_gripper(g):
     #g[g >= .04] = .08
     return g
 
-def fit_tps(pts0, pts1):
-    pts0 = np.r_[pts0, np.zeros((1,3))]
-    pts1 = np.r_[pts1, np.zeros((1,3))]    
-    if np.sign(pts0[-1,1] - pts0[0,1]) != np.sign(pts1[-1,1] - pts1[0,1]):
-        pts1 = pts1[::-1]    
-    f = tps.TPS33(pts0[:,0], pts0[:,1], pts0[:,2], pts1[:,0], pts1[:,1], pts1[:,2])
-    return f
-
 class Globals:
     pr2 = None
     rviz = None
@@ -173,10 +165,6 @@ class SelectTrajectory(smach.State):
         - if it's a terminal state, we're done
         - warp it based on the current rope
         returns: done, not_done, failure
-        
-        visualization: 
-        - show all library states
-        - warping visualization from matlab
         """
         xyz_new = np.squeeze(np.asarray(userdata.points))
         if args.obj == "cloth": xyz_new = voxel_downsample(xyz_new, .025)
@@ -228,7 +216,6 @@ class SelectTrajectory(smach.State):
         maxes[2] += .1
         grid_handle = warping.draw_grid(Globals.rviz, self.f.transform_points, mins, maxes, 'base_footprint')
         HANDLES.append(grid_handle)
-        #self.f = fit_tps(demo["rope"][0], userdata.points)
         
         userdata.left_used = left_used = best_demo["arms_used"].value in "lb"
         userdata.right_used = right_used = best_demo["arms_used"].value in "rb"

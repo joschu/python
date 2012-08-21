@@ -48,7 +48,7 @@ def handle_initialization_request(req):
         
         rope.header = req.cloud.header
         rope.nodes = [gm.Point(x,y,z) for (x,y,z) in total_path_3d]    
-        rope.radius = .005
+        rope.radius = .008
         rospy.logwarn("TODO: actually figure out rope radius from data. setting to .5cm")
         
         pose_array = gm.PoseArray()

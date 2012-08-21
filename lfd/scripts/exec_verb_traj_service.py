@@ -29,6 +29,7 @@ from kinematics import kinbodies
 from point_clouds import tabletop
 from utils.func_utils import once
 import sensor_msgs.msg as sm
+from lfd import lfd_traj as lt
 
 class Globals:
     pr2 = None
@@ -80,19 +81,18 @@ def callback(req):
         rospy.logwarn("warning! gripper angle hack")
         gripper_angles[gripper_angles < .04] = gripper_angles[gripper_angles < .04] - .02
     
-        body_traj = np.zeros(len(best_joint_positions),dtype=trajectories.BodyState)
+        body_traj = {}
         body_traj["%s_arm"%best_lr] = best_joint_positions
         body_traj["%s_gripper"%best_lr] = gripper_angles
         pose_array = gm.PoseArray()
         pose_array.header.frame_id = "base_footprint"
         pose_array.poses = traj.gripper0_poses.poses
         Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1)))
-        trajectories.follow_body_traj(Globals.pr2, body_traj, times=None, 
-            r_arm = (best_lr=='r'), r_gripper = (best_lr=='r'), l_arm = (best_lr=='l'), l_gripper= (best_lr=='l'))
+        lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
         
     
     elif traj.arms_used in 'b':
-        body_traj = np.zeros(len(traj.gripper0_poses.poses),dtype=trajectories.BodyState)
+        body_traj = {}
         for (lr,gripper_poses, gripper_angles) in zip("lr",[traj.gripper0_poses.poses,traj.gripper1_poses.poses], [traj.gripper0_angles,traj.gripper1_angles]):
             gripper_angles = np.array(gripper_angles)
             rospy.logwarn("warning! gripper angle hack")
@@ -121,9 +121,8 @@ def callback(req):
         pose_array.poses = traj.gripper0_poses.poses
         Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1)))
 
-        
-        trajectories.follow_body_traj(Globals.pr2, body_traj, times=None, 
-            r_arm = True, r_gripper = True, l_arm = True, l_gripper= True)
+        lt.follow_trajectory_with_grabs(pr2, dict(l_gripper = body_traj))
+        lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
 
     else: raise NotImplementedError
     
@@ -142,12 +141,12 @@ if __name__ == "__main__":
         Globals.setup()            
         import h5py
         F=h5py.File("/home/joschu/python/lfd/data/verbs.h5","r")
-        demo = F["push"]["demos"]["0"]
+        demo = F["grab-cup"]["demos"]["0"]
         req = ExecTrajectoryRequest()
         traj = req.traj
         traj.gripper0_poses.poses = [conversions.trans_rot_to_pose(trans,rot) for (trans,rot) in zip(demo["l_gripper_xyzs"], demo["l_gripper_quats"])]
         traj.gripper0_angles = demo["l_gripper_angles"]
-        traj.narms = 1
+        traj.arms_used = demo["arms_used"].value
         callback(req)    
     else:
         rospy.init_node("exec_verb_traj_service",disable_signals=True)

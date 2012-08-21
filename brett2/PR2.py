@@ -10,24 +10,19 @@ from kinematics.retiming import  make_traj_with_limits
 import kinematics.kinematics_utils as ku
 from brett2 import ros_utils
 from threading import Thread
+import brett2
+import os.path as osp
 
-#roslib.load_manifest("std_msgs")
-roslib.load_manifest("trajectory_msgs"); 
 import trajectory_msgs.msg as tm
-roslib.load_manifest("sensor_msgs"); 
 import sensor_msgs.msg as sm
-roslib.load_manifest("pr2_controllers_msgs"); 
 import pr2_controllers_msgs.msg as pcm
-roslib.load_manifest("actionlib"); 
 import actionlib
-roslib.load_manifest("rospy"); 
 import rospy
-roslib.load_manifest("geometry_msgs"); 
 import geometry_msgs.msg as gm           
-roslib.load_manifest("move_base_msgs"); 
 import move_base_msgs.msg as mbm           
-roslib.load_manifest("tf"); 
-import tf
+
+VEL_RATIO = .2
+ACC_RATIO = .3
   
 class IKFail(Exception):
     pass
@@ -57,7 +52,7 @@ class JustWaitThread(Thread):
         t_done = rospy.Time.now() + rospy.Duration(self.duration)        
         while not self.wants_exit and rospy.Time.now() < t_done and not rospy.is_shutdown():
             rospy.sleep(.01)
-            
+
             
 class GripperTrajectoryThread(Thread):
     
@@ -76,7 +71,8 @@ class GripperTrajectoryThread(Thread):
             duration_elapsed = rospy.Time.now() - t_start
             self.gripper.set_angle_target(self.angles[i])
             rospy.sleep(rospy.Duration(self.times[i]) - duration_elapsed)            
-            #print self.angles[i],(rospy.Duration(self.times[i]) - duration_elapsed).to_sec()
+            #duration_elapsed = rospy.Time.now() - t_start
+            #print "%s %.4e, %.4e, %.4e"%(self.gripper.controller_name, self.angles[i], self.angles[i] - self.gripper.get_angle(),(rospy.Duration(self.times[i]) - duration_elapsed).to_sec())
             
                     
 class PR2(object):
@@ -96,7 +92,7 @@ class PR2(object):
         self.robot = self.env.GetRobots()[0]  
 
         self.joint_listener = TopicListener("/joint_states", sm.JointState)
-        self.tf_listener = tf.TransformListener()
+        self.tf_listener = ros_utils.get_tf_listener()
         
                
         # rave to ros conversions
@@ -114,6 +110,8 @@ class PR2(object):
         self.head = Head(self)
         self.torso = Torso(self)
         self.base = Base(self)
+        
+        rospy.on_shutdown(self.stop_all)
 
     def start_thread(self, thread):
         self.pending_threads.append(thread)
@@ -136,13 +134,20 @@ class PR2(object):
             thread.join()
         self.pending_threads = []
         
-VEL_RATIO = .15
-ACC_RATIO = .3
+    def stop_all(self):
+        self.larm.stop()
+        self.rarm.stop()
+        self.head.stop()
+        self.torso.stop()
+        for thread in self.pending_threads:
+            thread.wants_exit = True
+
     
 class TrajectoryControllerWrapper(object):
 
     def __init__(self, pr2, controller_name):
         self.pr2 = pr2
+        self.controller_name = controller_name
         
         self.joint_names = rospy.get_param("/%s/joints"%controller_name)
 
@@ -183,7 +188,7 @@ class TrajectoryControllerWrapper(object):
         jt.points = [jtp]
         self.controller_pub.publish(jt)
 
-        rospy.loginfo("sleeping %.2f sec"%duration)
+        rospy.loginfo("%s: starting %.2f sec traj", self.controller_name, duration)
         self.pr2.start_thread(JustWaitThread(duration))
             
     def follow_joint_trajectory(self, positions):
@@ -194,6 +199,7 @@ class TrajectoryControllerWrapper(object):
         self.follow_timed_joint_trajectory(positions, velocities, times)
         
     def follow_timed_joint_trajectory(self, positions, velocities, times):
+
         jt = tm.JointTrajectory()
         jt.joint_names = self.joint_names
         jt.header.stamp = rospy.Time.now()
@@ -206,8 +212,15 @@ class TrajectoryControllerWrapper(object):
             jt.points.append(jtp)
             
         self.controller_pub.publish(jt)
+        rospy.loginfo("%s: starting %.2f sec traj", self.controller_name, times[-1])
         self.pr2.start_thread(JustWaitThread(times[-1]))
-            
+
+    def stop(self):
+        jt = tm.JointTrajectory()
+        jt.joint_names = self.joint_names
+        jt.header.stamp = rospy.Time.now()
+        self.controller_pub.publish(jt)
+                    
 
 def mirror_arm_joints(x):
     "mirror image of joints (r->l or l->r)"
@@ -346,7 +359,7 @@ class Torso(TrajectoryControllerWrapper):
     # def goto_joint_positions(self, positions_goal):
     #     self.set_height(positions_goal[0])
     def go_up(self):
-        self.set_height(.195)
+        self.set_height(.3)
     def go_down(self):
         self.set_height(.02)        
         
@@ -354,6 +367,7 @@ class Torso(TrajectoryControllerWrapper):
 class Gripper(object):
     default_max_effort = -1
     def __init__(self,pr2,lr):
+        assert isinstance(pr2, PR2)
         self.pr2 = pr2
         self.lr = lr
         self.controller_name = "%s_gripper_controller"%self.lr
@@ -368,20 +382,53 @@ class Gripper(object):
                 
         self.grip_client = actionlib.SimpleActionClient('%s_gripper_controller/gripper_action'%lr, pcm.Pr2GripperCommandAction)
         self.grip_client.wait_for_server()
+        self.vel_limits = [.033]
+        self.acc_limits = [inf]
+        
+        
+        self.diag_pub = rospy.Publisher("/%s_gripper_traj_diagnostic"%lr, tm.JointTrajectory)
+        
+        try:
+            with open(osp.join(osp.dirname(brett2.__file__),"data/%s_closed_val"%lr),"r") as fh:
+                self.closed_angle = float(fh.read())
+        except IOError:
+            rospy.logwarn("couldn't get closed val. setting to 0")
+            self.closed_angle = 0
+        
     def set_angle(self, a, max_effort = default_max_effort):
         self.grip_client.send_goal(pcm.Pr2GripperCommandGoal(pcm.Pr2GripperCommand(position=a,max_effort=max_effort)))
-        if self.pr2.wait: self.grip_client.wait_for_result()            
+        self.pr2.start_thread(Thread(target=self.grip_client.wait_for_result))
     def open(self, max_effort=default_max_effort):
         self.set_angle(.08, max_effort = max_effort)
     def close(self,max_effort=default_max_effort):
-        self.set_angle(0, max_effort = max_effort)        
+        self.set_angle(-.01, max_effort = max_effort)        
+    def is_closed(self): # (and empty)
+        return self.get_angle() <= self.closed_angle + .0025
     def set_angle_target(self, position, max_effort = default_max_effort):
         self.controller_pub.publish(pcm.Pr2GripperCommand(position=position,max_effort=max_effort))
     def follow_timed_trajectory(self, times, angs):
-        times_up = np.arange(0,times[-1],.01)
+        times_up = np.arange(0,times[-1],.1)
         angs_up = np.interp(times_up,times,angs)
+        
+        
+        jt = tm.JointTrajectory()
+        jt.header.stamp = rospy.Time.now()
+        jt.joint_names = ["%s_gripper_joint"%self.lr]
+        for (t,a) in zip(times, angs):
+            jtp = tm.JointTrajectoryPoint()
+            jtp.time_from_start = rospy.Duration(t)
+            jtp.positions = [a]
+            jt.points.append(jtp)
+        self.diag_pub.publish(jt)
+        
         self.pr2.start_thread(GripperTrajectoryThread(self, times_up, angs_up))
-
+        #self.pr2.start_thread(GripperTrajectoryThread(self, times, angs))
+    def get_angle(self):
+        return self.pr2.joint_listener.last_msg.position[self.ros_joint_inds[0]]
+    def get_velocity(self):
+        return self.pr2.joint_listener.last_msg.position[self.ros_joint_inds[0]]
+    def get_effort(self):
+        return self.pr2.joint_listener.last_msg.position[self.ros_joint_inds[0]]
         
         
 class Base(object):
@@ -407,8 +454,8 @@ class Base(object):
         rospy.loginfo('Move base action returned %d.' % finished)
         return finished 
     
-    def get_pose(self):
-        trans, rot =  self.pr2.tf_listener.lookupTransform("/map","/base_footprint",rospy.Time(0))
+    def get_pose(self, ref_frame):
+        trans, rot =  self.pr2.tf_listener.lookupTransform(ref_frame,"/base_footprint",rospy.Time(0))
         return (trans[0], trans[1], conv.quat_to_yaw(rot))
     
     def set_twist(self,xya):
@@ -428,4 +475,4 @@ class Base(object):
             jtp.time_from_start = rospy.Duration(times[i])
             jtp.positions = xyas[i]
             jt.points.append(jtp)            
-        self.traj_pub.publish(jt)
+        self.traj_pub.publish(jt)    

@@ -66,7 +66,7 @@ class BaseTrajectoryController(TrajectoryController):
             t_elapsed = time() - t_start
             if t_elapsed > duration+1: return
             
-            pos_cur = self.brett.base.get_pose()
+            pos_cur = self.brett.base.get_pose("odom_combined")
             
             if t_elapsed > duration: pos_targ = joints[-1]
             else: pos_targ = F(t_elapsed, nu = 0)
