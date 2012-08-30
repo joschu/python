@@ -16,8 +16,8 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 from StringIO import StringIO
 import traceback
-from utils.func_utils import once
-from utils import conversions, transformations
+from jds_utils.func_utils import once
+from jds_utils import conversions, transformations
 import urdf
 import time
 import weakref

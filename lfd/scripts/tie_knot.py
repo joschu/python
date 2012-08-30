@@ -26,19 +26,19 @@ import smach
 from lfd import registration, trajectory_library, warping, recognition
 import lfd
 from kinematics import reachability
-from utils.yes_or_no import yes_or_no
+from jds_utils.yes_or_no import yes_or_no
 import sensor_msgs.msg
 import geometry_msgs.msg as gm
 import rospy
 import os
-from image_proc import curves, interactive_roi as roi
+from jds_image_proc import curves, interactive_roi as roi
 from brett2 import ros_utils, PR2, trajectories as trajectories
 from brett2.ros_utils import Marker
 import numpy as np
-from utils import conversions
+from jds_utils import conversions
 from knot_tying import tps
-from image_proc.clouds import voxel_downsample
-from image_proc.alpha_shapes import get_concave_hull
+from jds_image_proc.clouds import voxel_downsample
+from jds_image_proc.alpha_shapes import get_concave_hull
 
 RVIZ_LPOS = 0
 RVIZ_RPOS = 1

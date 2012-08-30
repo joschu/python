@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from time import sleep, time
 from . import comm
 import subprocess, signal
-from utils.colorize import colorize
+from jds_utils.colorize import colorize
 import traceback, os, logging, json
 
 class Pipeline(object):

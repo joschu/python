@@ -1,7 +1,7 @@
 import networkx as nx, numpy as np, scipy.spatial.distance as ssd, scipy.interpolate as si
 from collections import deque
 import itertools
-from utils import math_utils
+from jds_utils import math_utils
 from numpy.random import rand
 
 

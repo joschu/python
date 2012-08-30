@@ -6,7 +6,7 @@ import rospy
 import scipy.interpolate as si
 from Queue import Queue, Empty
 from threading import Thread
-import utils.conversions as conv
+import jds_utils.conversions as conv
 import kinematics.kinematics_utils as ku
 from time import time, sleep
 

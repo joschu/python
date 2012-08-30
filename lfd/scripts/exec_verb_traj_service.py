@@ -23,11 +23,11 @@ from verb_msgs.srv import ExecTrajectoryRequest, ExecTrajectoryResponse, ExecTra
 from brett2.ros_utils import RvizWrapper, Marker
 from brett2 import PR2
 from brett2 import trajectories, ros_utils
-from utils import conversions
+from jds_utils import conversions
 import geometry_msgs.msg as gm
 from kinematics import kinbodies
 from point_clouds import tabletop
-from utils.func_utils import once
+from jds_utils.func_utils import once
 import sensor_msgs.msg as sm
 from lfd import lfd_traj as lt
 
@@ -88,6 +88,7 @@ def callback(req):
         pose_array.header.frame_id = "base_footprint"
         pose_array.poses = traj.gripper0_poses.poses
         Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1)))
+        lt.go_to_start(Globals.pr2, body_traj)
         lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
         
     
@@ -121,12 +122,14 @@ def callback(req):
         pose_array.poses = traj.gripper0_poses.poses
         Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1)))
 
-        lt.follow_trajectory_with_grabs(pr2, dict(l_gripper = body_traj))
+        lt.go_to_start(Globals.pr2, body_traj)
         lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
 
     else: raise NotImplementedError
     
+    rospy.loginfo("waiting until traj complete")
     Globals.pr2.join_all()
+    rospy.loginfo("ok traj complete")
     
     return ExecTrajectoryResponse(success=True)
 

@@ -4,8 +4,8 @@ Fuck tf
 
 import rospy
 import networkx as nx
-from utils import conversions
-from utils.func_utils import memoized
+from jds_utils import conversions
+from jds_utils.func_utils import memoized
 import numpy as np
 from numpy.linalg import inv
 import roslib;

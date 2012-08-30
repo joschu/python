@@ -3,8 +3,8 @@
 import rospy
 import numpy as np
 from brett2 import PR2
-import utils.conversions as conv
-import utils.math_utils as mu
+import jds_utils.conversions as conv
+import jds_utils.math_utils as mu
 import kinematics.kinematics_utils as ku
 from kinematics import retiming
 

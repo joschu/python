@@ -1,5 +1,5 @@
-from utils.conversions import trans_rot_to_hmat,hmat_to_trans_rot
-from utils.transformations import euler_from_quaternion
+from jds_utils.conversions import trans_rot_to_hmat,hmat_to_trans_rot
+from jds_utils.transformations import euler_from_quaternion
 import rospy
 import roslib
 roslib.load_manifest("tf")

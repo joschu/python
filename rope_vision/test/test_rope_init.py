@@ -1,4 +1,4 @@
-from image_proc.pcd_io import load_xyzrgb
+from jds_image_proc.pcd_io import load_xyzrgb
 import rope_vision.rope_initialization as ri
 import numpy as np
 import sys

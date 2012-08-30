@@ -4,9 +4,9 @@ Some functions for warping trajectories
 
 
 import numpy as np
-from utils import conversions
-from utils.conversions import quats2mats, mats2quats
-from utils.math_utils import normalize
+from jds_utils import conversions
+from jds_utils.conversions import quats2mats, mats2quats
+from jds_utils.math_utils import normalize
 from copy import deepcopy
 
 def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):

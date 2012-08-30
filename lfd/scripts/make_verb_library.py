@@ -11,7 +11,7 @@ import os
 import h5py
 import yaml
 import subprocess
-from utils.colorize import colorize
+from jds_utils.colorize import colorize
 import numpy as np
 
 data_dir = osp.join(osp.dirname(lfd.__file__), "data")

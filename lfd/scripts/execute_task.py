@@ -21,7 +21,7 @@ import smach
 import lfd
 from lfd import registration, trajectory_library, warping, recognition, lfd_traj
 from kinematics import kinbodies
-from utils.yes_or_no import yes_or_no
+from jds_utils.yes_or_no import yes_or_no
 import sensor_msgs.msg
 import geometry_msgs.msg as gm
 import rospy
@@ -30,9 +30,9 @@ import os.path as osp
 from brett2 import ros_utils, PR2
 from brett2.ros_utils import Marker
 import numpy as np
-from utils import conversions
-from image_proc.clouds import voxel_downsample
-from image_proc.alpha_shapes import get_concave_hull
+from jds_utils import conversions
+from jds_image_proc.clouds import voxel_downsample
+from jds_image_proc.alpha_shapes import get_concave_hull
 import h5py
 from collections import defaultdict
 import yaml

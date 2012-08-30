@@ -1,9 +1,9 @@
 import openravepy
-from utils.func_utils import once
-from utils.math_utils import normalize
+from jds_utils.func_utils import once
+from jds_utils.math_utils import normalize
 import openravepy
 import numpy as np
-import utils.conversions as conv
+import jds_utils.conversions as conv
 from brett2.PR2 import PR2
 import rospy
 from lfd.warping import calc_hand_pose

@@ -5,7 +5,7 @@ import numpy as np
 
 rospy.init_node("test_draw_gripper")
 
-from utils.conversions import array_to_pose_array
+from jds_utils.conversions import array_to_pose_array
 from brett2.ros_utils import RvizWrapper
 
 rviz = RvizWrapper.create()

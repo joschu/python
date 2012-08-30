@@ -7,10 +7,10 @@ import os.path as osp
 import scipy.io as sio
 
 import matplotlib.pyplot as plt
-from image_proc import interactive_roi as roi
-from image_proc import curves
+from jds_image_proc import interactive_roi as roi
+from jds_image_proc import curves
 import cv2
-from image_proc.clouds import voxel_downsample
+from jds_image_proc.clouds import voxel_downsample
 
 def test_mlab_3d():
     data = np.arange(24)

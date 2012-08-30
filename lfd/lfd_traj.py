@@ -3,10 +3,12 @@ from kinematics import retiming, kinematics_utils
 import rospy
 from time import time
 from brett2 import PR2
-import utils.conversions as conv
-import utils.math_utils as mu
+import jds_utils.conversions as conv
+import jds_utils.math_utils as mu
+from jds_utils.math_utils import interp2d
 
 ALWAYS_FAKE_SUCESS = False
+USE_PLANNING = True
 
 def merge_nearby_grabs(inds_sides):
     if len(inds_sides) < 2: 
@@ -54,6 +56,7 @@ def slice_traj(bodypart2traj, start, stop):
         out[bodypart] = traj[start:stop]
     return out
 
+
 def go_to_start(pr2, bodypart2traj):
 
     name2part = {"l_gripper":pr2.lgrip, 
@@ -65,10 +68,14 @@ def go_to_start(pr2, bodypart2traj):
             if name == "l_gripper" or name == "r_gripper":
                 part.set_angle_target(bodypart2traj[name][0])
             elif name == "l_arm" or name == "r_arm":
-                part.goto_joint_positions(bodypart2traj[name][0])
+                if USE_PLANNING:
+                    part.goto_joint_positions_planned(bodypart2traj[name][0])
+                else:
+                    part.goto_joint_positions(bodypart2traj[name][0])
 
     pr2.join_all()
-
+    
+    
 def follow_trajectory(pr2, bodypart2traj):    
         
     rospy.loginfo("following trajectory with bodyparts %s", " ".join(bodypart2traj.keys()))
@@ -97,10 +104,8 @@ def follow_trajectory(pr2, bodypart2traj):
     
     vel_limits = np.array(vel_limits)
     acc_limits = np.array(acc_limits)
+
     times = retiming.retime_with_vel_limits(trajectories, vel_limits)
-    
-    
-    from utils.math_utils import interp2d
     times_up = np.arange(0,times[-1],.1)
     traj_up = interp2d(times_up, times, trajectories)
     

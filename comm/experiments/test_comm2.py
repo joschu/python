@@ -1,9 +1,9 @@
 from comm import *
 import comm
-import utils.dir_tools
+import jds_utils.dir_tools
 import shutil,os
 from os.path import join,basename
-from utils.testing import testme, test_all
+from jds_utils.testing import testme, test_all
 import threading
 
 setDataRoot("/home/joschu/Data/test_comm")

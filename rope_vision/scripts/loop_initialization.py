@@ -4,7 +4,7 @@ import sensor_msgs.msg as sm
 import bulletsim_msgs.msg as bm
 import bulletsim_msgs.srv as bs
 from brett2 import ros_utils
-from utils import conversions
+from jds_utils import conversions
 import roslib; roslib.load_manifest('tf'); import tf
 import numpy as np
 

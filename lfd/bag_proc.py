@@ -1,10 +1,10 @@
 from brett2 import mytf
 import numpy as np
 import openravepy
-from utils.func_utils import once
+from jds_utils.func_utils import once
 from brett2 import ros_utils
-from utils import conversions
-from utils.math_utils import norms
+from jds_utils import conversions
+from jds_utils.math_utils import norms
 import sensor_msgs.msg as sm
 
 MIN_TIME = .025

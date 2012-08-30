@@ -1,7 +1,7 @@
 from __future__ import division
 from pylab import *
 import scipy.spatial.distance as ssd
-from utils.conversions import rod2mat
+from jds_utils.conversions import rod2mat
 from lfd.registration import plot_warped_grid_2d, tps_rpm
 clf()
 ion()

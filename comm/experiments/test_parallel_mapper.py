@@ -1,6 +1,6 @@
 from comm import comm, mapper
 import subprocess, os, shutil
-import utils.dir_tools
+import jds_utils.dir_tools
 
 comm.setDataRoot("/home/joschu/Data/test_comm")
 dir_tools.ensure_exists(comm.getDataRoot())

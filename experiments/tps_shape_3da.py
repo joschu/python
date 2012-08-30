@@ -1,10 +1,10 @@
 from __future__ import division
 from pylab import *
 import scipy.spatial.distance as ssd
-from image_proc.clouds import voxel_downsample
+from jds_image_proc.clouds import voxel_downsample
 from mayavi import mlab
-from image_proc.pcd_io import load_xyzrgb
-from image_proc.pcl_utils import xyz2uv, uv2xyz
+from jds_image_proc.pcd_io import load_xyzrgb
+from jds_image_proc.pcl_utils import xyz2uv, uv2xyz
 import scipy.ndimage as ndi
 xyz_orig, _ = load_xyzrgb("/home/joschu/Proj/shape_comp/cup.pcd")
 

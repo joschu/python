@@ -13,7 +13,7 @@ from brett2.ros_utils import RvizWrapper,Marker
 from numpy import asarray
 import numpy as np
 import geometry_msgs.msg as gm
-from utils import conversions
+from jds_utils import conversions
 
 if rospy.get_name()=="/unnamed":
     rospy.init_node("playback_demo")

@@ -2,11 +2,11 @@ from __future__ import division
 import kinematics
 import kinematics.region_algebra as ra
 from kinematics import sphere_sampling
-from utils import conversions
+from jds_utils import conversions
 import h5py, os
 import scipy.ndimage as ndi
 import numpy as np
-from utils.yes_or_no import yes_or_no
+from jds_utils.yes_or_no import yes_or_no
 from time import time
     
 IKFAIL_COST = 1e3

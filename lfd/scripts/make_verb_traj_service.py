@@ -22,9 +22,9 @@ from verb_msgs.srv import MakeTrajectoryRequest, MakeTrajectoryResponse, MakeTra
 import geometry_msgs.msg as gm
 from numpy import asarray
 import numpy as np
-from utils import conversions
+from jds_utils import conversions
 import yaml
-from image_proc.clouds import voxel_downsample
+from jds_image_proc.clouds import voxel_downsample
 
 
 h5file = h5py.File(osp.join(osp.dirname(lfd.__file__),"data","verbs.h5"),"r")

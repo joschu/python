@@ -6,7 +6,7 @@ import scipy.ndimage as ndi
 import numpy as np
 import scipy.spatial.distance as ssd
 import rospy
-from utils.func_utils import once
+from jds_utils.func_utils import once
 
 
 if rospy.get_name() == "/unnamed": 

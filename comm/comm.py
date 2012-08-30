@@ -1,14 +1,14 @@
 import os,json,logging,sys
 from os.path import join, exists
 import numpy as np
-from utils import dir_tools
+from jds_utils import dir_tools
 from glob import glob
 from time import time, sleep
 try:
     import cv2
 except Exception:
     print "didn't import cv2"
-from image_proc import pcd_io
+from jds_image_proc import pcd_io
 
 DATA_ROOT = "/dont/forget/to/set/data/root"
 DATA_FMT_STR = "data%.12i.%s"

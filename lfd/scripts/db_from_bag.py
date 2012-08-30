@@ -28,8 +28,8 @@ MIN_JOINT_CHANGE = .0025
 
 import h5py
 import numpy as np
-from utils.yes_or_no import yes_or_no
-from utils import conversions
+from jds_utils.yes_or_no import yes_or_no
+from jds_utils import conversions
 import sys
 import openravepy
 import rosbag

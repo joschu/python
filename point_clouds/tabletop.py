@@ -8,7 +8,7 @@ import numpy as np
 import rospy
 from brett2 import ros_utils
 from brett2.ros_utils import RvizWrapper,Marker
-from utils.math_utils import norms
+from jds_utils.math_utils import norms
 import cv2
 import geometry_msgs.msg as gm
 import sensor_msgs.msg as sm

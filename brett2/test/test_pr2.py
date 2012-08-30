@@ -2,7 +2,7 @@ from brett2.PR2 import PR2
 import numpy as np
 import roslib; 
 roslib.load_manifest('rospy'); import rospy
-from utils.testing import testme, test_all
+from jds_utils.testing import testme, test_all
 np.set_printoptions(precision=2)
 @testme
 def test_trajectory():

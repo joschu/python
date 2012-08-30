@@ -1,16 +1,16 @@
 from numpy import *
-import utils.transformations as trans
+import jds_utils.transformations as trans
 from traitsui.key_bindings import KeyBinding,KeyBindings
 from traitsui.api import *
 from traits.api import *
 import numpy as np
-from utils.math_utils import *
+from jds_utils.math_utils import *
 import roslib
 roslib.load_manifest("sensor_msgs")
 roslib.load_manifest("rospy")
 import sensor_msgs.msg as sm
 import geometry_msgs.msg as gm
-from utils.conversions import hmat_to_pose
+from jds_utils.conversions import hmat_to_pose
 
 def qm(a,b): return normalize(quaternion_multiply(a,b))
 

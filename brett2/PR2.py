@@ -4,14 +4,15 @@ import openravepy as rave
 from numpy import inf, zeros, dot, r_
 from numpy.linalg import norm, inv
 import roslib
-import utils.conversions as conv
-from utils.func_utils import once
-from kinematics.retiming import  make_traj_with_limits
+import jds_utils.conversions as conv
+from jds_utils.func_utils import once
+from kinematics import retiming
 import kinematics.kinematics_utils as ku
 from brett2 import ros_utils
 from threading import Thread
 import brett2
 import os.path as osp
+import jds_utils.math_utils as mu
 
 import trajectory_msgs.msg as tm
 import sensor_msgs.msg as sm
@@ -19,7 +20,13 @@ import pr2_controllers_msgs.msg as pcm
 import actionlib
 import rospy
 import geometry_msgs.msg as gm           
-import move_base_msgs.msg as mbm           
+import move_base_msgs.msg as mbm      
+
+try:
+    from bulletsim_msgs.srv import PlanTraj, PlanTrajRequest, PlanTrajResponse
+except ImportError:
+    print "could not import bulletsim_msgs needed for planning"
+
 
 VEL_RATIO = .2
 ACC_RATIO = .3
@@ -94,6 +101,7 @@ class PR2(object):
         self.joint_listener = TopicListener("/joint_states", sm.JointState)
         self.tf_listener = ros_utils.get_tf_listener()
         
+        self.planner = rospy.ServiceProxy("/plan_traj", PlanTraj)     
                
         # rave to ros conversions
         joint_msg = self.get_last_joint_message()        
@@ -191,13 +199,33 @@ class TrajectoryControllerWrapper(object):
         rospy.loginfo("%s: starting %.2f sec traj", self.controller_name, duration)
         self.pr2.start_thread(JustWaitThread(duration))
             
-    def follow_joint_trajectory(self, positions):
-        positions = np.r_[np.atleast_2d(self.get_joint_positions()), positions]
-        positions[:,4] = np.unwrap(positions[:,4])
-        positions[:,6] = np.unwrap(positions[:,6])
-        positions, velocities, times = make_traj_with_limits(positions, self.vel_limits, self.acc_limits,smooth=True)                    
-        self.follow_timed_joint_trajectory(positions, velocities, times)
+    def goto_joint_positions_planned(self, jpos):
+
+    
+        req = PlanTrajRequest()
+        req.start_joints = self.get_joint_positions()
+        req.end_joints = jpos
+        req.side = self.lr
         
+        rospy.loginfo("planning...")
+        resp = self.pr2.planner.call(req)
+        rospy.loginfo("done planning!")
+        assert isinstance(resp, PlanTrajResponse)
+        traj = np.asarray(resp.trajectory).reshape(-1,7)
+        self.follow_joint_trajectory(traj)            
+            
+    def follow_joint_trajectory(self, traj):
+        traj = np.r_[np.atleast_2d(self.get_joint_positions()), traj]
+        traj[:,4] = np.unwrap(traj[:,4])
+        traj[:,6] = np.unwrap(traj[:,6])
+
+        times = retiming.retime_with_vel_limits(traj, self.vel_limits)
+        times_up = np.arange(0,times[-1],.1)
+        traj_up = mu.interp2d(times_up, times, traj)
+        vels = ku.get_velocities(traj_up, times_up, .001)
+        self.follow_timed_joint_trajectory(traj_up, vels, times_up)
+        
+     
     def follow_timed_joint_trajectory(self, positions, velocities, times):
 
         jt = tm.JointTrajectory()

@@ -3,7 +3,7 @@ import sys
 from os.path import exists
 from time import sleep
 import subprocess
-from utils.colorize import colorize
+from jds_utils.colorize import colorize
 
 command = sys.argv[1]
 dependencies = sys.argv[2:]

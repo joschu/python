@@ -11,9 +11,9 @@ from lfd import registration, recognition
 import h5py
 import numpy as np
 import os.path as osp
-from image_proc.clouds import voxel_downsample, pixel_downsample
+from jds_image_proc.clouds import voxel_downsample, pixel_downsample
 import rospy, itertools, glob
-from utils.colorize import colorize
+from jds_utils.colorize import colorize
 import h5py
 import matplotlib.pyplot as plt
 

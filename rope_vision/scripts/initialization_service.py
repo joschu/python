@@ -18,7 +18,7 @@ def handle_initialization_request(req):
     
     xyz, _ = pc2xyzrgb(req.cloud)
     xyz = np.squeeze(xyz)
-    obj_type = determine_object_type(xyz)
+    obj_type = determine_object_type(xyz, plotting=False)
     print "object type:", obj_type
     
     
@@ -48,8 +48,8 @@ def handle_initialization_request(req):
         
         rope.header = req.cloud.header
         rope.nodes = [gm.Point(x,y,z) for (x,y,z) in total_path_3d]    
-        rope.radius = .008
-        rospy.logwarn("TODO: actually figure out rope radius from data. setting to .5cm")
+        rope.radius = .006
+        rospy.logwarn("TODO: actually figure out rope radius from data. setting to .4cm")
         
         pose_array = gm.PoseArray()
         pose_array.header = req.cloud.header

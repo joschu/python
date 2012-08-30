@@ -1,7 +1,7 @@
 from __future__ import division
 import numpy as np
 from numpy import r_
-from utils import math_utils
+from jds_utils import math_utils
 import itertools
 import scipy.spatial.distance as ssd
 

@@ -7,7 +7,7 @@ import os.path as osp
 import scipy.io as sio
 
 import matplotlib.pyplot as plt
-from image_proc.clouds import voxel_downsample
+from jds_image_proc.clouds import voxel_downsample
 
 def test_degenerate_fitting():
     points0 = np.array([[0,0]])
@@ -98,7 +98,7 @@ def test_registration_rope_images():
 def test_registration_3d():
 #if __name__ == "__main__":
     import rospy, itertools, glob
-    from utils.colorize import colorize
+    from jds_utils.colorize import colorize
     if rospy.get_name() == "/unnamed": rospy.init_node('test_registration_3d',disable_signals=True)
     data_dir = "/home/joschu/Data/rope1"
     
@@ -126,8 +126,8 @@ def test_registration_3d():
 
 if __name__ == "__main__":
     import rospy, itertools, glob
-    from utils.colorize import colorize
-    from image_proc.pcd_io import load_xyzrgb
+    from jds_utils.colorize import colorize
+    from jds_image_proc.pcd_io import load_xyzrgb
     if rospy.get_name() == "/unnamed": rospy.init_node('test_registration_3d',disable_signals=True)
     data_dir = "/home/joschu/Data/cups"
     xyz1, rgb1 = load_xyzrgb(osp.join(data_dir,"cups1.pcd"))

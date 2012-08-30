@@ -16,7 +16,7 @@ from comm.vision_pipeline import make_towel_pipeline, make_robot_rope_pipeline2,
 from comm import pipeline
 from comm import comm
 import os, subprocess
-from utils.yes_or_no import yes_or_no
+from jds_utils.yes_or_no import yes_or_no
 
 comm.initComm()
 os.chdir(comm.DATA_ROOT)
@@ -34,7 +34,7 @@ if args.pipeline == "robot_rope":
     elif args.reset == "no":
         pass
     PIPELINE = make_robot_rope_pipeline2(
-        classifier="/home/joschu/python/image_proc/pixel_classifiers/rope_sdh_light_afternoon/classifier.pkl", 
+        classifier="/home/joschu/python/jds_image_proc/pixel_classifiers/rope_sdh_light_afternoon/classifier.pkl", 
         downsample=5)
     
 

@@ -3,7 +3,7 @@ Register point clouds to each other
 """
 
 from __future__ import division
-from utils import math_utils
+from jds_utils import math_utils
 import numpy as np
 import scipy.spatial.distance as ssd
 from numpy import cos, sin, pi
@@ -175,7 +175,7 @@ def tps_rpm_multi(source_clouds, targ_clouds, *args,**kw):
     """
     x_nd = np.concatenate([np.asarray(cloud).reshape(-1,3) for cloud in source_clouds], 0)
     y_md = np.concatenate([np.asarray(cloud).reshape(-1,3) for cloud in targ_clouds], 0)
-    from image_proc.clouds import voxel_downsample
+    from jds_image_proc.clouds import voxel_downsample
     x_nd = voxel_downsample(x_nd,.02)
     y_md = voxel_downsample(y_md,.02)
     return tps_rpm(x_nd, y_md, *args,**kw)
@@ -228,7 +228,7 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
             elif f.d == 3:
                 from lfd import warping
                 from brett2.ros_utils import Marker
-                from utils import conversions
+                from jds_utils import conversions
                 
                 Globals.setup()
 

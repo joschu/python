@@ -25,9 +25,9 @@ import h5py
 import sensor_msgs.msg as sm
 from brett2 import ros_utils, PR2
 from point_clouds import tabletop
-from utils.yes_or_no import yes_or_no
+from jds_utils.yes_or_no import yes_or_no
 import scipy.spatial.distance as ssd
-from utils.math_utils import norms
+from jds_utils.math_utils import norms
 roslib.load_manifest("snazzy_msgs")
 from snazzy_msgs.srv import *
 import yaml

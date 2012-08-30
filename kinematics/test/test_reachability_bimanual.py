@@ -1,6 +1,6 @@
 import kinematics.reachability as kr
 import openravepy
-from utils import conversions
+from jds_utils import conversions
 import numpy as np
 
 lposes = []

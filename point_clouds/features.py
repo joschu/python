@@ -4,7 +4,7 @@ Point cloud features
 
 
 from __future__ import division
-from utils import math_utils
+from jds_utils import math_utils
 import numpy as np
 
 def cloud_shape_context(cloud, hist_dim):
