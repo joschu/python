@@ -2,10 +2,11 @@
 from __future__ import division
 import argparse
 parser = argparse.ArgumentParser()
+parser.add_argument("--grabcut", type=int, default=True)
 parser.add_argument("--test",action="store_true")
 parser.add_argument("--init",choices=["height","middle"],default="height")
-args = parser.parse_args()
-
+(args,extra) = parser.parse_known_args()
+if extra: print "warning: unrecognized arguments: %s"%",".join(extra)
 
 from point_clouds.tabletop import get_table_height
 import sensor_msgs.msg as sm
@@ -92,24 +93,33 @@ def callback(req):
 
 
     #table_height = get_table_height(xyz)
-    xl, yl = xy_tl
-    w, h = xy_br - xy_tl
-    mask = np.zeros((h,w),dtype='uint8')    
-    mask.fill(cv2.GC_PR_BGD)
-    if args.init == "height":
-        initial_height_thresh = stats.scoreatpercentile(xyz[yl:yl+h, xl:xl+w,2].flatten(), 50)
-        mask[xyz[yl:yl+h, xl:xl+w,2] > initial_height_thresh] = cv2.GC_PR_FGD
-    elif args.init == "middle":
-        print int(yl+h/4),int(yl+3*h/4),int(xl+w/4),int(xl+3*w/4)
-        mask[h//4:3*h//4, w//4:3*w//4] = cv2.GC_PR_FGD
-        print mask.mean()
-
-    tmp1 = np.zeros((1, 13 * 5))
-    tmp2 = np.zeros((1, 13 * 5))    
-    cv2.grabCut(rgb[yl:yl+h, xl:xl+w, :],mask,(0,0,0,0),tmp1, tmp2,10,mode=cv2.GC_INIT_WITH_MASK)
+    
+    if args.grabcut:
+        rospy.loginfo("using grabcut")
+        xl, yl = xy_tl
+        w, h = xy_br - xy_tl
+        mask = np.zeros((h,w),dtype='uint8')    
+        mask.fill(cv2.GC_PR_BGD)
+        if args.init == "height":
+            initial_height_thresh = stats.scoreatpercentile(xyz[yl:yl+h, xl:xl+w,2].flatten(), 50)
+            mask[xyz[yl:yl+h, xl:xl+w,2] > initial_height_thresh] = cv2.GC_PR_FGD
+        elif args.init == "middle":
+            mask[h//4:3*h//4, w//4:3*w//4] = cv2.GC_PR_FGD
+    
+        tmp1 = np.zeros((1, 13 * 5))
+        tmp2 = np.zeros((1, 13 * 5))    
+        cv2.grabCut(rgb[yl:yl+h, xl:xl+w, :],mask,(0,0,0,0),tmp1, tmp2,10,mode=cv2.GC_INIT_WITH_MASK)
+    else:
+        rospy.loginfo("using table height")        
+        table_height = rospy.get_param("table_height")
+        xl, yl = xy_tl
+        w, h = xy_br - xy_tl
+        mask = np.zeros((h,w),dtype='uint8')
+        mask[np.isfinite(xyz[yl:yl+h, xl:xl+w,2]) & 
+             (xyz[yl:yl+h, xl:xl+w,2] > table_height+.02)] = 1
             
     contours = cv2.findContours(mask.astype('uint8')%2,cv2.RETR_LIST,cv2.CHAIN_APPROX_NONE)[0]
-    cv2.drawContours(rgb[yl:yl+h, xl:xl+w, :],contours,-1,(0,255,0))
+    cv2.drawContours(rgb[yl:yl+h, xl:xl+w, :],contours,-1,(0,255,0),thickness=2)
     
     cv2.imshow('rgb', rgb)
     cv2.waitKey(10)
@@ -143,4 +153,6 @@ if __name__ == "__main__":
         rospy.init_node("test_interactive_segmentation_service",disable_signals=True)
         Globals.setup()
         service = rospy.Service("interactive_segmentation", ProcessCloud, callback)
-        rospy.spin()
+        while True:
+            cv2.waitKey(10)            
+            rospy.sleep(.1)

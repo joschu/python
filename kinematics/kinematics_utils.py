@@ -35,6 +35,9 @@ def get_velocities(positions, times, tol):
     good_positions = positions[good_inds]
     good_times = times[good_inds]
     
+    if len(good_inds) == 1:
+        return np.zeros(positions[0:1].shape)
+    
     (tck, _) = si.splprep(good_positions.T,s = tol**2*(n+1), u=good_times, k=deg)
     #smooth_positions = np.r_[si.splev(times,tck,der=0)].T
     velocities = np.r_[si.splev(times,tck,der=1)].T    

@@ -1,7 +1,0 @@
-local: get_point_cloud.py push0.npz
-local: segment_point_cloud.py push0.npz push0_seg.npz
-robot: rosbag record /joint_states /tf
-local: scp xxx.bag .
-
-modify verb_demos.yaml
-python make_verb_library.py

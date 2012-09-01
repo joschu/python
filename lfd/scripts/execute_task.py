@@ -7,7 +7,7 @@ Currently works for tying an overhand knot or folding up a laid-out towel
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("--task", choices=["overhand_knot","figure8_knot"],default="overhand_knot")
+parser.add_argument("--task", choices=["overhand_knot","figure8_knot","fold_towel"],default="overhand_knot")
 parser.add_argument("--human_select_demo", action="store_true")
 parser.add_argument("--prompt_before_motion", action="store_true")
 parser.add_argument("--count_steps",action="store_true")
@@ -43,6 +43,11 @@ with open(osp.join(data_dir, "knot_demos.yaml"),"r") as fh:
     
 DS_LENGTH = .025
 DS_METHOD = "voxel"
+if args.task == "fold_towel":
+    DS_METHOD="hull"
+#else:
+    #DS_METHOD = "voxel"
+    
 H5FILE = osp.join(data_dir, task_info[args.task]["db_file"])
 demos_file = h5py.File(H5FILE,"r")
 rospy.loginfo("loading demos into memory")

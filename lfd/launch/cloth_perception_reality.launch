@@ -1,9 +1,12 @@
 <launch>
   <include file="$(find openni_launch)/launch/openni.launch">
     <arg name="depth_registration" value="true"/>
-    <arg name="rgb_frame_id" value="/openni_rgb_optical_frame"/>
   </include>
-  <node name="drop1" pkg="topic_tools" type="drop" args="/camera/depth_registered/points 2 3 /drop/points"/>
-  <!--<node name="drop2" pkg="topic_tools" type="drop" args="/camera/depth_registered/image_rect 0 5 /drop/depth"/>-->
-  <node name="preprocessor" pkg="binary_symlinks" type="preprocessor_node"  args="--inputTopic=/drop/points --downsample=.02 --removeOutliers=0 --zClipLow=-.01 --clusterTolerance=.025 --clusterMinSize=20"/>
+  <node name="drop1" pkg="topic_tools" type="drop" 
+    args="/camera/depth_registered/points 4 5 /drop/points"/>
+  <node name="preprocessor" pkg="binary_symlinks" type="robot_preprocessor_node"  
+    respawn="true" 
+    args="--inputTopic=/drop/points --downsample=.03 --removeOutliers=0 
+    --zClipLow=-.05 --clusterTolerance=.04 --clusterMinSize=0"/>
 </launch>
+

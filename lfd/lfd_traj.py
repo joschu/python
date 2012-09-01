@@ -8,7 +8,7 @@ import jds_utils.math_utils as mu
 from jds_utils.math_utils import interp2d
 
 ALWAYS_FAKE_SUCESS = False
-USE_PLANNING = True
+USE_PLANNING = False
 
 def merge_nearby_grabs(inds_sides):
     if len(inds_sides) < 2: 

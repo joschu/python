@@ -257,6 +257,36 @@ def create_segments(bag, link_names):
         
     return seg_infos
         
+
+def create_segment_without_look(bag, link_names):    
+    
+    button_presses = get_button_presses(bag)
+    
+    start_times, stop_times, look_times, l_close_times, l_open_times, r_close_times, r_open_times, done_times = [],[],[],[],[],[],[],[]
+    for (time, button) in button_presses:
+        if button == 0: start_times.append(time)
+        elif button == 3: stop_times.append(time)
+        
+    kinematics_info = extract_kinematics_from_bag(bag, link_names)
+    
+    assert len(start_times)==len(stop_times)
+                    
+        
+    N = len(kinematics_info["time"])
+    times = kinematics_info["time"]
+    start_inds = np.searchsorted(times, start_times)
+    stop_inds = np.searchsorted(times, stop_times)
+
+    
+    seg_infos = []
+        
+    for (start_ind, stop_ind) in zip(start_inds, stop_inds):
+        seg_info = extract_segment(kinematics_info, start_ind, stop_ind)
+        seg_infos.append(seg_info)
+        
+        
+    return seg_infos                
+        
         
 def path_length(x):
     if x.ndim == 1: x = x.reshape(-1,1)

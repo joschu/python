@@ -47,6 +47,8 @@ def calc_geodesic_distances(xyz):
     tri = Triangulation(x,y)
     G = nx.Graph()
     #G.add_nodes_from(xrange(len(xyz)))
+    for i0 in xrange(len(xyz)):
+        G.add_node(i0)
     for (i0, i1) in tri.edge_db:
         dist = np.linalg.norm(xyz[i1] - xyz[i0])
         if dist < .03:

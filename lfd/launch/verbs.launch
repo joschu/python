@@ -1,9 +1,4 @@
 <launch>
-  <include file="$(find openni_launch)/launch/openni.launch">
-    <arg name="depth_registration" value="true"/>
-  </include>
-  <node name="dropper_node" pkg="topic_tools" type="drop" args="/camera/depth_registered/points 4 5 /drop/points"/>
-
   <node pkg="robot_self_filter" type="self_filter" respawn="true" name="laser_self_filter" output="screen">
      <remap from="cloud_in" to="/drop/points" />
      <remap from="cloud_out" to="/drop/points_self_filtered" />
@@ -12,8 +7,10 @@
      <rosparam command="load" file="$(find pr2_arm_navigation_perception)/config/self_filter_right_left.yaml" />
   </node>
   
-  <node pkg="lfd" type="exec_verb_traj_service.py"/>
-  <node pkg="lfd" type="make_verb_traj_service.py"/>
-  <node pkg="image_proc" type="interactive_segmentation_service.py"/>
+  <node pkg="lfd" type="exec_verb_traj_service.py" name="exec_verb_traj"/>
+  <node pkg="lfd" type="make_verb_traj_service.py" name="make_verb_traj"/>
+  <node pkg="jds_image_proc" name="interactive_segmentation" type="interactive_segmentation_service.py"
+    args="--grabcut 0"
+    output="screen"/>
 
 </launch>

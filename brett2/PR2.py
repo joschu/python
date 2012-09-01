@@ -206,6 +206,7 @@ class TrajectoryControllerWrapper(object):
         req.start_joints = self.get_joint_positions()
         req.end_joints = jpos
         req.side = self.lr
+        req.joint_states = self.pr2.joint_listener.last_msg
         
         rospy.loginfo("planning...")
         resp = self.pr2.planner.call(req)

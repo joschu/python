@@ -8,6 +8,7 @@ from jds_utils import conversions
 from jds_utils.conversions import quats2mats, mats2quats
 from jds_utils.math_utils import normalize
 from copy import deepcopy
+from utils_lfd import group_to_dict
 
 def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):
     grid_handles = []
@@ -75,17 +76,6 @@ def calc_hand_pose(lpos, rpos, ori):
     return new_pose, new_open
 
 
-def group_to_dict(group):
-    "deep copy hdf5 structure"
-    out = {}
-    for key in group.keys():
-        print key
-        if hasattr(group[key],"shape"):
-            out[key] = np.asarray(group[key])
-        else:
-            out[key] = group_to_dict(group[key])
-    return out
-
 
 def transform_demo(reg, demo, left=True, right=True, cloud_xyz=False, object_clouds=False, l_offset = None, r_offset = None):
     """
@@ -98,32 +88,32 @@ def transform_demo(reg, demo, left=True, right=True, cloud_xyz=False, object_clo
         
     if left:
         if l_offset is None:
-            l_tool_xyzs = demo["l_gripper_xyzs"]
+            l_tool_xyzs = demo["l_gripper_tool_frame"]["position"]
         else:
-            l_tool_xyzs = np.array([xyz + np.dot(rot[:3,:3], l_offset) for (xyz, rot) in zip(demo["l_gripper_xyzs"], quats2mats(demo["l_gripper_quats"]))])
-        l_tool_xyzs_warped, rot_l_warped = reg.transform_frames(l_tool_xyzs, quats2mats(demo["l_gripper_quats"]))
+            l_tool_xyzs = np.array([xyz + np.dot(rot[:3,:3], l_offset) for (xyz, rot) in zip(demo["l_gripper_tool_frame"]["position"], quats2mats(demo["l_gripper_tool_frame"]["orientation"]))])
+        l_tool_xyzs_warped, rot_l_warped = reg.transform_frames(l_tool_xyzs, quats2mats(demo["l_gripper_tool_frame"]["orientation"]))
         l_gripper_quats_warped = mats2quats(rot_l_warped)
         if l_offset is None:
             l_gripper_xyzs_warped = l_tool_xyzs_warped
         else:
             l_gripper_xyzs_warped = np.array([xyz - np.dot(rot[:3,:3], l_offset) for (xyz, rot) in zip(l_tool_xyzs_warped, rot_l_warped)])
         
-        warped_demo["l_gripper_xyzs"] = l_gripper_xyzs_warped
-        warped_demo["l_gripper_quats"] = l_gripper_quats_warped
+        warped_demo["l_gripper_tool_frame"]["position"] = l_gripper_xyzs_warped
+        warped_demo["l_gripper_tool_frame"]["orientation"] = l_gripper_quats_warped
 
     if right:
         if r_offset is None:
-            r_tool_xyzs = demo["r_gripper_xyzs"]
+            r_tool_xyzs = demo["r_gripper_tool_frame"]["position"]
         else:
-            r_tool_xyzs = np.array([xyz + np.dot(rot[:3,:3], r_offset) for (xyz, rot) in zip(demo["r_gripper_xyzs"], quats2mats(demo["r_gripper_quats"]))])
-        r_tool_xyzs_warped, rot_r_warped = reg.transform_frames(r_tool_xyzs, quats2mats(demo["r_gripper_quats"]))
+            r_tool_xyzs = np.array([xyz + np.dot(rot[:3,:3], r_offset) for (xyz, rot) in zip(demo["r_gripper_tool_frame"]["position"], quats2mats(demo["r_gripper_tool_frame"]["orientation"]))])
+        r_tool_xyzs_warped, rot_r_warped = reg.transform_frames(r_tool_xyzs, quats2mats(demo["r_gripper_tool_frame"]["orientation"]))
         r_gripper_quats_warped = mats2quats(rot_r_warped)
         if r_offset is None:
             r_gripper_xyzs_warped = r_tool_xyzs_warped
         else:
             r_gripper_xyzs_warped = np.array([xyz - np.dot(rot[:3,:3], r_offset) for (xyz, rot) in zip(r_tool_xyzs_warped, rot_r_warped)])
-        warped_demo["r_gripper_xyzs"] = r_gripper_xyzs_warped
-        warped_demo["r_gripper_quats"] = r_gripper_quats_warped
+        warped_demo["r_gripper_tool_frame"]["position"] = r_gripper_xyzs_warped
+        warped_demo["r_gripper_tool_frame"]["orientation"] = r_gripper_quats_warped
         
     if cloud_xyz:
         old_cloud_xyz_pts = np.asarray(demo["cloud_xyz"]).reshape(-1,3)
@@ -132,9 +122,9 @@ def transform_demo(reg, demo, left=True, right=True, cloud_xyz=False, object_clo
         
     if object_clouds:
         for key in sorted(demo["object_clouds"].keys()):            
-            old_cloud_xyz_pts = np.asarray(demo["object_clouds"][key]).reshape(-1,3)
+            old_cloud_xyz_pts = np.asarray(demo["object_clouds"][key]["xyz"]).reshape(-1,3)
             new_cloud_xyz_pts = reg.transform_points(old_cloud_xyz_pts)
-            warped_demo["object_clouds"][key] = new_cloud_xyz_pts
+            warped_demo["object_clouds"][key]["xyz"] = new_cloud_xyz_pts
         
     return warped_demo
 
@@ -178,3 +168,48 @@ def transform_demo_with_fingertips(f, demo):
         
     return warped_demo
     
+    
+def transform_verb_demo(warp, demo,l_offset = None, r_offset = None):
+    """
+    demo: array with the following fields: r_gripper_xyzs, l_gripper_xyzs, r_gripper_quats, l_gripper_quats, cloud_xyz
+    
+    (todo: replace 'cloud_xyz' with 'object_points')
+    """
+    warped_demo = group_to_dict(demo) # deep copy it
+        
+    if demo["arms_used"] in "lb":
+        if l_offset is None:
+            l_tool_xyzs = demo["l_gripper_tool_frame"]["position"]
+        else:
+            l_tool_xyzs = np.array([xyz + np.dot(rot[:3,:3], l_offset) for (xyz, rot) in zip(demo["l_gripper_tool_frame"]["position"], quats2mats(demo["l_gripper_tool_frame"]["orientation"]))])
+        l_tool_xyzs_warped, rot_l_warped = warp.transform_frames(l_tool_xyzs, quats2mats(demo["l_gripper_tool_frame"]["orientation"]))
+        l_gripper_quats_warped = mats2quats(rot_l_warped)
+        if l_offset is None:
+            l_gripper_xyzs_warped = l_tool_xyzs_warped
+        else:
+            l_gripper_xyzs_warped = np.array([xyz - np.dot(rot[:3,:3], l_offset) for (xyz, rot) in zip(l_tool_xyzs_warped, rot_l_warped)])
+        
+        warped_demo["l_gripper_tool_frame"]["position"] = l_gripper_xyzs_warped
+        warped_demo["l_gripper_tool_frame"]["orientation"] = l_gripper_quats_warped
+
+    if demo["arms_used"] in "rb":
+        if r_offset is None:
+            r_tool_xyzs = demo["r_gripper_tool_frame"]["position"]
+        else:
+            r_tool_xyzs = np.array([xyz + np.dot(rot[:3,:3], r_offset) for (xyz, rot) in zip(demo["r_gripper_tool_frame"]["position"], quats2mats(demo["r_gripper_tool_frame"]["orientation"]))])
+        r_tool_xyzs_warped, rot_r_warped = warp.transform_frames(r_tool_xyzs, quats2mats(demo["r_gripper_tool_frame"]["orientation"]))
+        r_gripper_quats_warped = mats2quats(rot_r_warped)
+        if r_offset is None:
+            r_gripper_xyzs_warped = r_tool_xyzs_warped
+        else:
+            r_gripper_xyzs_warped = np.array([xyz - np.dot(rot[:3,:3], r_offset) for (xyz, rot) in zip(r_tool_xyzs_warped, rot_r_warped)])
+        warped_demo["r_gripper_tool_frame"]["position"] = r_gripper_xyzs_warped
+        warped_demo["r_gripper_tool_frame"]["orientation"] = r_gripper_quats_warped
+        
+    if "object_clouds" in demo:
+        for key in sorted(demo["object_clouds"].keys()):            
+            old_cloud_xyz_pts = np.asarray(demo["object_clouds"][key]["xyz"]).reshape(-1,3)
+            new_cloud_xyz_pts = warp.transform_points(old_cloud_xyz_pts)
+            warped_demo["object_clouds"][key]["xyz"] = new_cloud_xyz_pts
+        
+    return warped_demo

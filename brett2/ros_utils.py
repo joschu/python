@@ -17,7 +17,8 @@ from visualization_msgs.msg import Marker, MarkerArray
 from StringIO import StringIO
 import traceback
 from jds_utils.func_utils import once
-from jds_utils import conversions, transformations
+from jds_utils import conversions, transformations, colorize
+
 import urdf
 import time
 import weakref
@@ -93,7 +94,7 @@ def transform_points(xyz, listener, to_frame, from_frame,n_tries=10):
             break
         except Exception:
             print "tf exception:"
-            traceback.print_exc()
+            print colorize.colorize(traceback.format_exc(),"yellow")
             rospy.sleep(.1)
             time.sleep(.05)
     if i == n_tries-1: raise Exception("fuck tf")
