@@ -61,7 +61,7 @@ def calc_geodesic_distances(xyz):
 
 
 def calc_match_score(xyz0, xyz1, dists0 = None, dists1 = None):
-    f = registration.tps_rpm(xyz0, xyz1, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
+    f = registration.tps_rpm(xyz0, xyz1, plotting=1,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
     corr = f.corr
     partners = corr.argmax(axis=1)
     
@@ -71,5 +71,5 @@ def calc_match_score(xyz0, xyz1, dists0 = None, dists1 = None):
     starts, ends = np.meshgrid(partners, partners)
 
     dists_targ = dists1[starts, ends]
-    
-    return np.abs(dists0 - dists_targ).sum()/dists0.size
+
+    return np.abs(dists0/(1e-9+dists0.max(axis=1)[:,None]) - dists_targ/(1e-9 + dists_targ.max(axis=1)[:,None])).sum()/dists0.size

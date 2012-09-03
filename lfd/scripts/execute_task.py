@@ -32,7 +32,7 @@ from brett2.ros_utils import Marker
 import numpy as np
 from jds_utils import conversions
 from jds_image_proc.clouds import voxel_downsample
-from jds_image_proc.alpha_shapes import get_concave_hull
+#from jds_image_proc.alpha_shapes import get_concave_hull
 import h5py
 from collections import defaultdict
 import yaml
@@ -82,7 +82,7 @@ class Globals:
     @staticmethod
     def setup():
         if Globals.pr2 is None: 
-            Globals.pr2 = PR2.PR2.create()
+            Globals.pr2 = PR2.PR2.create(rave_only=args.test)
             if not args.test: load_table()
         if Globals.rviz is None: Globals.rviz = ros_utils.RvizWrapper.create()
         Globals.table_height = rospy.get_param("table_height")
@@ -158,7 +158,8 @@ def calc_seg_cost(seg_name, xyz_new_ds, dists_new):
     candidate_demo = demos[seg_name]
     xyz_demo_ds = np.squeeze(candidate_demo["cloud_xyz_ds"])
     dists_demo = candidate_demo["geodesic_dists"]
-    cost = recognition.calc_match_score(xyz_new_ds, xyz_demo_ds, dists0 = dists_new, dists1 = dists_demo)
+  #  cost = recognition.calc_match_score(xyz_new_ds, xyz_demo_ds, dists0 = dists_new, dists1 = dists_demo)
+    cost = recognition.calc_match_score(xyz_demo_ds, xyz_new_ds, dists0 = dists_demo, dists1 = dists_new)
     print "seg_name: %s. cost: %s"%(seg_name, cost)
     return cost, seg_name
 

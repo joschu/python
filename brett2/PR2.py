@@ -88,38 +88,39 @@ class PR2(object):
     wait = True # deprecated way of blocking / not blocking
 
     @once
-    def create():
-        return PR2()
+    def create(rave_only=False):
+        return PR2(rave_only)
 
-    def __init__(self):
+    def __init__(self, rave_only=False):
 
         # set up openrave
         self.env = rave.Environment()
         self.env.Load("robots/pr2-beta-static.zae") # todo: use up-to-date urdf
         self.robot = self.env.GetRobots()[0]  
 
-        self.joint_listener = TopicListener("/joint_states", sm.JointState)
-        self.tf_listener = ros_utils.get_tf_listener()
-        
-        self.planner = rospy.ServiceProxy("/plan_traj", PlanTraj)     
-               
-        # rave to ros conversions
-        joint_msg = self.get_last_joint_message()        
-        ros_names = joint_msg.name                
-        inds_ros2rave = np.array([self.robot.GetJointIndex(name) for name in ros_names])
-        self.good_ros_inds = np.flatnonzero(inds_ros2rave != -1) # ros joints inds with matching rave joint
-        self.rave_inds = inds_ros2rave[self.good_ros_inds] # openrave indices corresponding to those joints
-        self.update_rave()
+        if not rave_only:
+          self.joint_listener = TopicListener("/joint_states", sm.JointState)
+          self.tf_listener = ros_utils.get_tf_listener()
+          
+          self.planner = rospy.ServiceProxy("/plan_traj", PlanTraj)     
+                 
+          # rave to ros conversions
+          joint_msg = self.get_last_joint_message()        
+          ros_names = joint_msg.name                
+          inds_ros2rave = np.array([self.robot.GetJointIndex(name) for name in ros_names])
+          self.good_ros_inds = np.flatnonzero(inds_ros2rave != -1) # ros joints inds with matching rave joint
+          self.rave_inds = inds_ros2rave[self.good_ros_inds] # openrave indices corresponding to those joints
+          self.update_rave()
 
-        self.larm = Arm(self, "l")
-        self.rarm = Arm(self, "r")
-        self.lgrip = Gripper(self, "l")
-        self.rgrip = Gripper(self, "r")
-        self.head = Head(self)
-        self.torso = Torso(self)
-        self.base = Base(self)
-        
-        rospy.on_shutdown(self.stop_all)
+          self.larm = Arm(self, "l")
+          self.rarm = Arm(self, "r")
+          self.lgrip = Gripper(self, "l")
+          self.rgrip = Gripper(self, "r")
+          self.head = Head(self)
+          self.torso = Torso(self)
+          self.base = Base(self)
+          
+          rospy.on_shutdown(self.stop_all)
 
     def start_thread(self, thread):
         self.pending_threads.append(thread)
@@ -136,7 +137,10 @@ class PR2(object):
         if use_map:
             (trans,rot) = self.tf_listener.lookupTransform('/map', '/base_link', rospy.Time(0))            
             self.robot.SetTransform(conv.trans_rot_to_hmat(trans, rot))            
-        
+
+    def update_rave_without_ros(self, joint_vals):
+        self.robot.SetJointValues(joint_vals)
+
     def join_all(self):
         for thread in self.pending_threads:
             thread.join()

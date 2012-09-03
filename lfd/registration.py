@@ -70,7 +70,6 @@ class ThinPlateSpline(Transformation):
         A[-1,-1] = 0
         b = np.r_[y_nd, reg_ratio * np.eye(d+1,d)]
 
-            
         coeffs = np.linalg.lstsq(A, b)[0]
         
         self.x_nd = x_nd
@@ -208,8 +207,9 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
         corr_nm = calc_correspondence_matrix(xwarped_nd, y_md, r=rads[i], p=.2)
         
         wt_n = corr_nm.sum(axis=1)
-        targ_nd = np.dot(corr_nm/wt_n[:,None], y_md)
-        
+        # TODO(john): fix weight zero problem
+        targ_nd = np.dot(corr_nm/(wt_n[:,None]+1e-9), y_md)
+
         # if plotting:
         #     plot_correspondence(x_nd, targ_nd)
         
@@ -236,7 +236,7 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
                 maxes = x_nd.max(axis=0)
                 mins[2] -= .1
                 maxes[2] += .1
-                Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=.1, yres=.1)
+                Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=.5, yres=.5)
                 orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
                 target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
                 warped_pose_array = conversions.array_to_pose_array(f.transform_points(x_nd), 'base_footprint')
