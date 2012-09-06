@@ -139,6 +139,7 @@ def close_gripper(pr2, side):
             rospy.logwarn("%s gripper grabbed air", side)
             success = False
     return success or ALWAYS_FAKE_SUCESS        
+
 def make_joint_traj(xyzs, quats, joint_seeds,manip, ref_frame, targ_frame,filter_options):
     n = len(xyzs)
     assert len(quats) == n

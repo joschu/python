@@ -111,7 +111,6 @@ def calc_seg_cost(seg_name, xyz_new_ds, dists_new):
   cost = recognition.calc_match_score(xyz_demo_ds, xyz_new_ds, dists0 = dists_demo, dists1 = dists_new)
   #cost = recognition.calc_match_score(xyz_new_ds, xyz_demo_ds, dists0 = dists_new, dists1 = dists_demo)
   print "seg_name: %s. cost: %s"%(seg_name, cost)
-  raw_input('press enter')
   return cost, seg_name
 
 def clipinplace(x,lo,hi):
@@ -121,6 +120,10 @@ def clipinplace(x,lo,hi):
 #  xyz = xyz_in.reshape(-1,3)
 #  xyz = ros_utils.transform_points(xyz, Globals.pr2.tf_listener, "base_footprint", msg.header.frame_id)
 #  return ('success', xyz)
+
+def rviz_draw_points(pts, **kwargs):
+  pose_array = conversions.array_to_pose_array(np.squeeze(pts), "base_footprint")
+  Globals.handles.append(Globals.rviz.draw_curve(pose_array, **kwargs))
 
 def select_trajectory(points, curr_robot_joint_vals, curr_step):
   """
@@ -146,8 +149,8 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
     candidate_demo_names = filtered_demo_names
 
   from joblib import parallel
-  #costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
-  costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
+  costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
+  #costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
   _, best_name = min(costs_names)
   rospy.loginfo('costs_names %s', costs_names)
 
@@ -158,9 +161,24 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
   rospy.loginfo("best segment name: %s", best_name)
   xyz_demo_ds = best_demo["cloud_xyz_ds"]
 
-  n_iter = 101
-  warping_map = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False, plotting=20)
+  print 'arms used', best_demo['arms_used']
+  overlap_ctl_pts = []
+  grabbing_pts = []
+  for lr in 'lr':
+    # look at points around gripper when grabbing
+    grabbing = map(bool, list(best_demo["%s_gripper_joint"%lr] < .07))
+    grabbing_pts.extend([p for i, p in enumerate(best_demo["%s_gripper_l_finger_tip_link"%lr]["position"]) if grabbing[i] and (i == 0 or not grabbing[i-1])])
+    grabbing_pts.extend([p for i, p in enumerate(best_demo["%s_gripper_r_finger_tip_link"%lr]["position"]) if grabbing[i] and (i == 0 or not grabbing[i-1])])
+#  overlap_ctl_pts = [p for p in xyz_demo_ds if any(np.linalg.norm(p - g) < 0.1 for g in grabbing_pts)]
+  overlap_ctl_pts = xyz_demo_ds
 
+  print overlap_ctl_pts, len(overlap_ctl_pts)
+  rviz_draw_points(overlap_ctl_pts,rgba=(1,1,1,1),type=Marker.CUBE_LIST)
+#  rviz_draw_points(grabbing_pts,rgba=(.5,.5,.5,1),type=Marker.CUBE_LIST)
+  n_iter = 101
+  warping_map = registration.tps_rpm_with_overlap_control(xyz_demo_ds, xyz_new_ds, overlap_ctl_pts, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False, plotting=20)
+  #warping_map = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False, plotting=20)
+  raw_input('Press enter to continue:')
   #################### Generate new trajectory ##################
 
   #### Plot original and warped point clouds #######
@@ -197,7 +215,11 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
       trajectory["%s_grab"%lr] = map(bool, list(best_demo["%s_gripper_joint"%lr] < .07))
       trajectory["%s_gripper"%lr] = warped_demo["%s_gripper_joint"%lr]
       trajectory["%s_gripper"%lr][trajectory["%s_grab"%lr]] = 0
-      #Globals.handles.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(alternate(warped_demo["%s_gripper_l_finger_tip_link"%lr]["position"],warped_demo["%s_gripper_r_finger_tip_link"%lr]["position"]), "base_footprint"), width=.001, rgba = (1,0,1,.4),type=Marker.LINE_LIST))
+      # plot warped trajectory
+      Globals.handles.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(alternate(warped_demo["%s_gripper_l_finger_tip_link"%lr]["position"],warped_demo["%s_gripper_r_finger_tip_link"%lr]["position"]), "base_footprint"), width=.001, rgba = (1,0,1,.4),type=Marker.LINE_LIST))
+      # plot original trajectory
+      Globals.handles.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(alternate(best_demo["%s_gripper_l_finger_tip_link"%lr]["position"],best_demo["%s_gripper_r_finger_tip_link"%lr]["position"]), "base_footprint"), width=.001, rgba = (0,1,1,.4),type=Marker.LINE_LIST))
+  raw_input('Press enter to continue:')
 
   return {'status': 'not_done', 'trajectory': trajectory}
 

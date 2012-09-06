@@ -31,6 +31,22 @@ class Transformation(object):
     def transform_frames(self, x_nd, rot_nkk, orthogonalize=True):
         raise NotImplementedError
 
+    def jacobian(self, x_d, epsilon=0.0001):
+        x0 = np.asfarray(x_d)
+        f0 = self.transform_points(x0)
+        jac = np.zeros(len(x0), len(f0))
+        dx = np.zeros(len(x0))
+        for i in range(len(x0)):
+            dx[i] = epsilon
+            jac[i] = (self.transform_points(x0+dx) - f0) / epsilon
+            dx[i] = 0.
+        return jac.transpose()
+
+    def approx_deriv(self, x_d, dx_d, dist=None):
+        x_1d, dx_1d = np.asarray([x_d]), np.asarray([dx_d])
+        if dist is None: dist = np.linalg.norm(dx_d)
+        return (self.transform_points(x_1d)[0] - self.transform_points(x_1d + dx_1d)[0])/float(dist)
+
 class ThinPlateSpline(Transformation):
     
     @staticmethod
@@ -41,7 +57,20 @@ class ThinPlateSpline(Transformation):
         tps.x_nd = np.zeros((0,d))
         tps.w_nd = np.zeros((0,d))
         tps.a_Dd = np.eye(d+1,d)
+        tps.id_interp = None
+        tps.subtract_id = False
         return tps    
+
+    def copy(self):
+        tps = ThinPlateSpline()
+        tps.n = self.n
+        tps.d = self.d
+        tps.x_nd = self.x_nd.copy()
+        tps.w_nd = self.w_nd.copy()
+        tps.a_Dd = self.a_Dd.copy()
+        tps.id_interp = self.id_interp
+        tps.subtract_id = self.subtract_id
+        return tps
         
     def fit(self, x_nd, y_nd, smoothing=.1, angular_spring = 0, wt_n=None, verbose=True):
         """
@@ -92,6 +121,10 @@ class ThinPlateSpline(Transformation):
         K_mn = tps_kernel(dist_mn,d)
         xhom_mD = np.c_[x_md, np.ones((m,1))]
         ypred_md = np.dot(K_mn, self.w_nd) + np.dot(xhom_mD, self.a_Dd)
+        if self.id_interp is not None:
+            ypred_md = (1.-self.id_interp)*x_md + self.id_interp*ypred_md
+        if self.subtract_id:
+            ypred_md -= x_md
         return ypred_md
     
     def transform_frames(self, x_md, rot_mdd, orthogonalize=True):
@@ -112,7 +145,44 @@ class ThinPlateSpline(Transformation):
         K_mn = tps_kernel(dist_mn, self.d)
         ypred_md = np.dot(K_mn, self.w_nd) + np.dot(xhom_mD, self.a_Dd)
         if orthogonalize: newrot_mdd =  orthogonalize3(newrot_mdd)
+        if self.id_interp is not None:
+            ypred_md = (1.-self.id_interp)*x_md + self.id_interp*ypred_md
+        if self.subtract_id:
+            ypred_md -= x_md
         return ypred_md, newrot_mdd
+
+    def interp_with_identity(self, a):
+        tps = self.copy()
+        tps.id_interp = a
+        return tps
+
+    def subtract_identity(self):
+        tps = self.copy()
+        tps.subtract_id = True
+        return tps
+
+class CompositeTransformation(Transformation):
+    def __init__(self, init_fn):
+      self.fns = [init_fn]
+
+    def compose_with(self, f):
+      self.fns.append(f)
+
+    def get_last_fn(self):
+      return self.fns[-1]
+
+    def fit(self, x_nd, y_nd):
+      assert False
+
+    def transform_points(self, x_md):
+      for f in self.fns:
+        x_md = f.transform_points(x_md)
+      return x_md
+
+    def transform_frames(self, x_md, rot_mdd, orthogonalize=True):
+      for f in self.fns:
+        x_md, rot_mdd = f.transform_frames(x_md, rot_mdd, orthogonalize)
+      return x_md, rot_mdd
 
 def plot_warped_grid_2d(f, mins, maxes, grid_res=None, flipax = True):
     import matplotlib.pyplot as plt
@@ -178,8 +248,8 @@ def tps_rpm_multi(source_clouds, targ_clouds, *args,**kw):
     x_nd = voxel_downsample(x_nd,.02)
     y_md = voxel_downsample(y_md,.02)
     return tps_rpm(x_nd, y_md, *args,**kw)
-    
-    
+
+
 class Globals:
     handles = []
     rviz = None
@@ -188,15 +258,76 @@ class Globals:
         if Globals.rviz is None:
             from brett2.ros_utils import RvizWrapper
             Globals.rviz = RvizWrapper.create()
-    
+
+def tps_rpm_with_overlap_control(x_nd, y_md, ctl_pts, jmin=0.3, **kwargs):
+  def calculate_overlap(f, jmin, ctl_pts):
+    def solve_interp_factor(T, pt, jmin, jac_eps=0.0001):
+        # returns a s.t. det(jacobian((1-a)*I + a*T)) = jmin
+        # from __future__ import division VERY IMPORTANT
+        # f_x is df/dx, f_y is df/dy, etc., where f, g, and h are the components of T.
+        f_x, g_x, h_x = T.approx_deriv(pt, [jac_eps, 0, 0], jac_eps)
+        f_y, g_y, h_y = T.approx_deriv(pt, [0, jac_eps, 0], jac_eps)
+        f_z, g_z, h_z = T.approx_deriv(pt, [0, 0, jac_eps], jac_eps)
+        print 'jacobian: '
+        print f_x, g_x, h_x
+        print f_y, g_y, h_y
+        print f_z, g_z, h_z
+        # I did this by hand
+        r0 = ((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))/((-1/2 - 3**(1/2)*1j/2)*((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3)) - (-1/2 - 3**(1/2)*1j/2)*((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x))
+        r1 = ((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))/((-1/2 + 3**(1/2)*1j/2)*((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3)) - (-1/2 + 3**(1/2)*1j/2)*((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x))
+        r2 = ((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))/((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3) - ((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x))
+        print 'roots', (r0, r1, r2)
+        return [r.real for r in (r0, r1, r2) if r.imag == 0 and r.real > 0 and r.real <= 1] # only look at real solutions in (0, 1]
+
+    # choose a so that |jac((1-a)*I + a*f)| > jmin on ctl_pts
+    a = 1
+    for pt in ctl_pts:
+      rs = solve_interp_factor(f, pt, jmin)
+      chosen_r = 1 if len(rs) == 0 else min(rs)
+      a = min(a, chosen_r)
+    return a
+
+  orig_x_nd = x_nd.copy()
+  t = CompositeTransformation(ThinPlateSpline.identity(x_nd.shape[1]))
+  n_iter = 10
+  tps_rpm_kwargs = kwargs.copy(); tps_rpm_kwargs['plotting'] = False
+  for i in range(n_iter):
+    f = tps_rpm(x_nd, y_md, **tps_rpm_kwargs)
+    if i == n_iter - 1:
+      t.compose_with(f) # on the last iteration, force convergence
+    else:
+      a = calculate_overlap(f, jmin, t.transform_points(np.asarray(ctl_pts)))
+      print 'Smoothing out overlap: a:', a, 'iter:', i
+      t.compose_with(f.interp_with_identity(a))
+      if a == 1: break # converged
+    x_nd = t.get_last_fn().transform_points(x_nd)
+
+    if 'plotting' in kwargs and kwargs['plotting']:
+      from lfd import warping
+      from brett2.ros_utils import Marker
+      from jds_utils import conversions
+      Globals.setup()
+      mins = orig_x_nd.min(axis=0)
+      maxes = orig_x_nd.max(axis=0)
+      mins -= .1; maxes += .1
+      Globals.handles = warping.draw_grid(Globals.rviz, t.transform_points, mins, maxes, 'base_footprint', xres=.01, yres=.01, zres=-1)
+      orig_pose_array = conversions.array_to_pose_array(orig_x_nd, "base_footprint")
+      target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
+      warped_pose_array = conversions.array_to_pose_array(t.transform_points(orig_x_nd), 'base_footprint')
+      Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
+      Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
+      Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
+
+  return t
+
 def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None):
     n,d = x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
     f = ThinPlateSpline.identity(d)
     for i in xrange(n_iter):
-        if f.d==2 and i%plotting==0: 
-            import matplotlib.pyplot as plt            
+        if f.d==2 and i%plotting==0:
+            import matplotlib.pyplot as plt
             plt.clf()
         if i==0 and f_init is not None:
             xwarped_nd = f_init(x_nd)
@@ -205,14 +336,14 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
             xwarped_nd = f.transform_points(x_nd)
         # targ_nd = find_targets(x_nd, y_md, corr_opts = dict(r = rads[i], p = .1))
         corr_nm = calc_correspondence_matrix(xwarped_nd, y_md, r=rads[i], p=.2)
-        
+
         wt_n = corr_nm.sum(axis=1)
         # TODO(john): fix weight zero problem
         targ_nd = np.dot(corr_nm/(wt_n[:,None]+1e-9), y_md)
 
         # if plotting:
         #     plot_correspondence(x_nd, targ_nd)
-        
+
         f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, angular_spring = regs[i]*200, verbose=verbose)
 
         if plotting and i%plotting==0:
@@ -229,14 +360,15 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
                 from lfd import warping
                 from brett2.ros_utils import Marker
                 from jds_utils import conversions
-                
+
                 Globals.setup()
 
                 mins = x_nd.min(axis=0)
                 maxes = x_nd.max(axis=0)
-                mins[2] -= .1
-                maxes[2] += .1
-                Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=.5, yres=.5)
+#                mins[2] -= .1
+#                maxes[2] += .1
+                mins -= .1; maxes += .1
+                Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=.01, yres=.01, zres=-1)
                 orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
                 target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
                 warped_pose_array = conversions.array_to_pose_array(f.transform_points(x_nd), 'base_footprint')
@@ -244,7 +376,6 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
                 Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
                 Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
 
-        
     f.corr = corr_nm
     return f
 
