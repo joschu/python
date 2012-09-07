@@ -1,0 +1,5 @@
+sensor_msgs/PointCloud2 cloud_in
+std_msgs/String str_args
+std_msgs/Float32 float_args
+---
+sensor_msgs/PointCloud2 cloud_out
