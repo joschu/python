@@ -3,6 +3,6 @@
     <arg name="depth_registration" value="true"/>
   </include>
   <node name="drop1" pkg="topic_tools" type="drop" args="/camera/depth_registered/points 4 5 /drop/points"/>
-  <node name="preprocessor" pkg="binary_symlinks" type="robot_preprocessor_node"  respawn="true" args="--inputTopic=/drop/points --downsample=.015 --removeOutliers=0 --zClipLow=0 --clusterTolerance=.025 --clusterMinSize=20"/>
+  <node name="preprocessor" pkg="binary_symlinks" type="robot_preprocessor_node"  respawn="true" args="--inputTopic=/drop/points --downsample=.015 --removeOutliers=0 --zClipLow=-.01 --clusterTolerance=.025 --clusterMinSize=20"/>
 </launch>
 

@@ -16,6 +16,7 @@ from point_clouds import tabletop
 from jds_utils.func_utils import once
 import sensor_msgs.msg as sm
 from lfd import lfd_traj as lt
+from jds_utils.yes_or_no import yes_or_no
 
 class Globals:
     handles = []
@@ -87,6 +88,8 @@ def exec_traj(req):
         pose_array.poses = traj.l_gripper_poses.poses
         Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1)))
 
+
+    yn = yes_or_no("continue?")
     lt.go_to_start(Globals.pr2, body_traj)
     lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
 

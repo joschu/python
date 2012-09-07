@@ -5,6 +5,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--grabcut", type=int, default=True)
 parser.add_argument("--test",action="store_true")
 parser.add_argument("--init",choices=["height","middle"],default="height")
+parser.add_argument("--erode", type=int, default=0)
+parser.add_argument("--plotting", action="store_true")
 (args,extra) = parser.parse_known_args()
 if extra: print "warning: unrecognized arguments: %s"%",".join(extra)
 
@@ -21,6 +23,9 @@ roslib.load_manifest('tf')
 import tf
 from jds_utils import conversions
 from scipy import stats
+import time
+from jds_image_proc import utils_images
+import scipy.ndimage as ndi
 
 class Globals:
     handles = []
@@ -117,8 +122,11 @@ def callback(req):
         mask = np.zeros((h,w),dtype='uint8')
         mask[np.isfinite(xyz[yl:yl+h, xl:xl+w,2]) & 
              (xyz[yl:yl+h, xl:xl+w,2] > table_height+.02)] = 1
-            
-    contours = cv2.findContours(mask.astype('uint8')%2,cv2.RETR_LIST,cv2.CHAIN_APPROX_NONE)[0]
+
+    mask = mask % 2
+    if (args.erode > 0):
+        mask = ndi.binary_erosion(mask, utils_images.disk(args.erode)).astype('uint8')
+    contours = cv2.findContours(mask,cv2.RETR_LIST,cv2.CHAIN_APPROX_NONE)[0]
     cv2.drawContours(rgb[yl:yl+h, xl:xl+w, :],contours,-1,(0,255,0),thickness=2)
     
     cv2.imshow('rgb', rgb)
@@ -126,11 +134,17 @@ def callback(req):
 
     zsel = xyz[yl:yl+h, xl:xl+w, 2]
     mask = (mask%2==1) & np.isfinite(zsel)# & (zsel - table_height > -1)
+
     
     resp = ProcessCloudResponse()
     xyz_sel = xyz[yl:yl+h, xl:xl+w,:][mask.astype('bool')]
     rgb_sel = rgb[yl:yl+h, xl:xl+w,:][mask.astype('bool')]
     resp.cloud_out = xyzrgb2pc(xyz_sel, rgb_sel, req.cloud_in.header.frame_id)
+    
+    if (args.plotting):
+        pose_array = conversions.array_to_pose_array(xyz_sel, req.cloud_in.header.frame_id)
+        Globals.handles = [Globals.rviz.draw_curve(pose_array, rgba = (1,1,0,1), type=Marker.CUBE_LIST, width=.001, ns="segmentation")]
+    
     return resp
     
 
@@ -153,6 +167,4 @@ if __name__ == "__main__":
         rospy.init_node("test_interactive_segmentation_service",disable_signals=True)
         Globals.setup()
         service = rospy.Service("interactive_segmentation", ProcessCloud, callback)
-        while True:
-            cv2.waitKey(10)            
-            rospy.sleep(.1)
+        time.sleep(1000000)

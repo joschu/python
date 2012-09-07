@@ -32,7 +32,10 @@ from brett2.ros_utils import Marker
 import numpy as np
 from jds_utils import conversions
 from jds_image_proc.clouds import voxel_downsample
-from jds_image_proc.alpha_shapes import get_concave_hull
+try:
+    from jds_image_proc.alpha_shapes import get_concave_hull
+except Exception:
+    pass
 import h5py
 from collections import defaultdict
 import yaml
@@ -214,7 +217,8 @@ class SelectTrajectory(smach.State):
             
             from joblib import parallel
             
-            costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
+            #costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
+            costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
             #costs_names = [calc_seg_cost(seg_name) for seg_name in candidate_demo_names]
             _, best_name = min(costs_names)
 

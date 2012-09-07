@@ -1,0 +1,13 @@
+VERBS
+teleop
+set_table_params
+roslaunch openni.launch
+
+KNOTS
+========
+
+set_table_params
+roslaunch knot_tying_perception_reality.launch
+robot flush against table
+set head tilt to 1.1
+execute_task.py --task=overhand_knot

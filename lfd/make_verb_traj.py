@@ -54,7 +54,7 @@ def make_traj(req):
     y_md = voxel_downsample(new_object_clouds[0],.02)
     
     if transform_type == "tps":
-        warp = registration.tps_rpm(x_nd, y_md, plotting = 4, reg_init = 2, reg_final = .1, n_iter = 39)
+        warp = registration.tps_rpm_zrot(x_nd, y_md, plotting=2,reg_init=2,reg_final=.25, n_iter=10, verbose=False)
     elif transform_type == "translation2d":
         warp = registration.Translation2d()
         warp.fit(x_nd, y_md)
@@ -83,7 +83,7 @@ def make_traj(req):
         traj.l_gripper_angles = warped_demo_data["l_gripper_joint"]
         traj.l_gripper_poses.header.frame_id = req.object_clouds[0].header.frame_id
         if "l_tool" in best_demo_info: traj.l_gripper_angles *= 0
-    elif arms_used in "rb":
+    if arms_used in "rb":
         traj.r_gripper_poses.poses = xyzs_quats_to_poses(warped_demo_data["r_gripper_tool_frame"]["position"], warped_demo_data["r_gripper_tool_frame"]["orientation"])
         traj.r_gripper_angles = warped_demo_data["r_gripper_joint"]
         traj.r_gripper_poses.header.frame_id = req.object_clouds[0].header.frame_id
