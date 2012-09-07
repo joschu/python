@@ -247,6 +247,8 @@ class Globals:
         if Globals.rviz is None:
             from brett2.ros_utils import RvizWrapper
             Globals.rviz = RvizWrapper.create()
+            import time
+            time.sleep(.2)
     
 def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None):
     n,d = x_nd.shape
@@ -274,31 +276,7 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
         f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, angular_spring = regs[i]*200	, verbose=verbose)
 
         if plotting and i%plotting==0:
-            if f.d==2:
-                plt.plot(x_nd[:,1], x_nd[:,0],'r.')
-                plt.plot(y_md[:,1], y_md[:,0], 'b.')
-            pred = f.transform_points(x_nd)
-            if f.d==2:
-                plt.plot(pred[:,1], pred[:,0], 'g.')
-            if f.d == 2:
-                plot_warped_grid_2d(f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0))
-                plt.ginput()
-            elif f.d == 3:
-
-                
-                Globals.setup()
-
-                mins = x_nd.min(axis=0)
-                maxes = x_nd.max(axis=0)
-                mins[2] -= .1
-                maxes[2] += .1
-                Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=.1, yres=.1)
-                orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
-                target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
-                warped_pose_array = conversions.array_to_pose_array(f.transform_points(x_nd), 'base_footprint')
-                Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
-                Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
-                Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
+            plot_orig_and_warped_clouds(f, x_nd, y_md)                
 
         
     f.corr = corr_nm
@@ -373,7 +351,7 @@ class FuncPlotter(object):
         plt.plot(self.xs, self.ys,'x')
         plt.draw()
  
-def plot_orig_and_warped_clouds(f, x_nd, y_md): 
+def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1): 
     if f.d==2:
         import matplotlib.pyplot as plt
         plt.plot(x_nd[:,1], x_nd[:,0],'r.')
@@ -390,9 +368,9 @@ def plot_orig_and_warped_clouds(f, x_nd, y_md):
 
         mins = x_nd.min(axis=0)
         maxes = x_nd.max(axis=0)
-        mins[2] -= .1
-        maxes[2] += .1
-        Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=.1, yres=.1)
+        mins -= .1
+        maxes += .1
+        Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=res, yres=res)
         orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
         target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
         warped_pose_array = conversions.array_to_pose_array(f.transform_points(x_nd), 'base_footprint')
