@@ -302,6 +302,22 @@ def tps_rpm_with_overlap_control(x_nd, y_md, ctl_pts, jmin=0.3, **kwargs):
       if a == 1: break # converged
     x_nd = t.get_last_fn().transform_points(x_nd)
 
+# orig_x_nd = x_nd.copy()
+# t = CompositeTransformation(ThinPlateSpline.identity(x_nd.shape[1]))
+# n_iter = 100
+# tps_rpm_kwargs = kwargs.copy(); tps_rpm_kwargs['plotting'] = False
+# for i in range(n_iter):
+#   f = tps_rpm(x_nd, y_md, **tps_rpm_kwargs)
+#   if i == n_iter - 1:
+#     t.compose_with(f) # on the last iteration, force convergence
+#   else:
+#     #a = calculate_overlap(f, jmin, t.transform_points(np.asarray(ctl_pts)))
+#     a = 0.02
+#     print 'Smoothing out overlap: a:', a, 'iter:', i
+#     t.compose_with(f.interp_with_identity(a))
+#     if a == 1: break # converged
+#   x_nd = t.get_last_fn().transform_points(x_nd)
+
     if 'plotting' in kwargs and kwargs['plotting']:
       from lfd import warping
       from brett2.ros_utils import Marker
