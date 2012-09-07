@@ -1,0 +1,17 @@
+<package>
+  <description brief="snazzy_msgs">
+
+     snazzy_msgs
+
+  </description>
+  <author>John Schulman</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/snazzy_msgs</url>
+  <depend package="geometry_msgs"/>
+  <depend package="std_msgs"/>
+  <depend package="sensor_msgs"/>
+
+</package>
+
+

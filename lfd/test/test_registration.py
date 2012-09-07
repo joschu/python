@@ -124,7 +124,8 @@ def test_registration_3d():
     plt.title("corr_sums")
     np.savez("cross_registration_results", distmat = distmat1, names = files)
 
-if __name__ == "__main__":
+#if __name__ == "__main__":?
+def test_cups():
     import rospy, itertools, glob
     from jds_utils.colorize import colorize
     from jds_image_proc.pcd_io import load_xyzrgb
@@ -146,4 +147,18 @@ if __name__ == "__main__":
     xyz2 = preproc(xyz2)
     f = registration.tps_rpm(3*xyz1, 3*xyz2, plotting=4,reg_init=1,reg_final=.05,n_iter=200, verbose=False)
 
+
+if __name__ == "__main__":
+    import rospy, itertools, glob
+    from jds_utils.colorize import colorize
+    from jds_image_proc.pcd_io import load_xyzrgb
+    import h5py
+    if rospy.get_name() == "/unnamed": rospy.init_node('test_registration_3d',disable_signals=True)
+    data_dir = "/home/joschu/python/lfd/data"
+    f = h5py.File(osp.join(data_dir, "images/pickup-plate0.seg.h5"),"r")
+    xyz1, rgb1 = np.asarray(f["plate"]["xyz"]), np.asarray(f["plate"]["rgb"])
+    xyz1 = voxel_downsample(xyz1, .02)
+    from numpy import sin, cos, pi
+    xyz_target = xyz1.mean(axis=0)[None,:] + 1.5*np.dot(xyz1 - xyz1.mean(axis=0)[None,:], np.array([[cos(pi/3), sin(pi/3), 0], [-sin(pi/3), cos(pi/3), 0], [0, 0, 1]]))
     
+    f = registration.tps_rpm_zrot(xyz1, xyz_target, plotting=200,reg_init=2,reg_final=.5,n_iter=8, verbose=False)

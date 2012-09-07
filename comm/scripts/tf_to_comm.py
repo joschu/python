@@ -28,7 +28,8 @@ while True:
         msg = comm.ArrayMessage(data = np.r_[rot, trans])
         pub.send(msg)
     except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-        print "tf error"
-        traceback.print_exc()
+        #print "tf error"
+        #traceback.print_exc()
+        pass
 
     sleep(1./args.hz)

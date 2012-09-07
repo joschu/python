@@ -10,6 +10,7 @@ import h5py
 from copy import copy
 from lfd import verbs
 from lfd.utils_lfd import group_to_dict
+from jds_utils.colorize import colorize
 
 link_names = ["r_gripper_tool_frame", "l_gripper_tool_frame"]
 
@@ -19,6 +20,7 @@ if os.path.exists(h5path): os.remove(h5path)
 verb_lib = h5py.File(h5path,"w")
 
 for (verb_name, verb_info) in verbs.get_all_demo_info().items():
+    print colorize("processing demo: %s"%verb_name, "red")
     bag = rosbag.Bag(osp.join(data_dir, verb_info["bag_file"]))
     
     segs = bag_proc.create_segment_without_look(bag, link_names)    
@@ -30,5 +32,5 @@ for (verb_name, verb_info) in verbs.get_all_demo_info().items():
     
     bag_proc.dict_to_hdf(verb_lib, verb_data, verb_name)
     seg_file.copy("/", verb_lib[verb_name],"object_clouds")
-    verb_lib[verb_name]["arms_used"] = verb_info["arms_used"]    
+    verb_lib[verb_name]["arms_used"] = verb_info["arms_used"]
     

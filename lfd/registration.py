@@ -9,6 +9,11 @@ import scipy.spatial.distance as ssd
 from numpy import cos, sin, pi
 import scipy.optimize as opt
 from copy import deepcopy
+from lfd import warping
+from brett2.ros_utils import Marker
+from jds_utils import conversions
+import matplotlib.pyplot as plt
+
 
 def tps_kernel(dist, dim):
     if dim == 1:
@@ -91,7 +96,7 @@ class ThinPlateSpline(Transformation):
         if wt_n is None:
             wt_n = np.ones(n)
 
-        reg_nn = smoothing * np.diag(1/(wt_n+.01))
+        reg_nn = smoothing * np.diag(1/(wt_n+1e-6))
         reg_ratio = angular_spring/smoothing
         A = np.r_[
             np.c_[K_nn + reg_nn, P],
@@ -100,14 +105,14 @@ class ThinPlateSpline(Transformation):
         b = np.r_[y_nd, reg_ratio * np.eye(d+1,d)]
 
         coeffs = np.linalg.lstsq(A, b)[0]
-        
-        self.x_nd = x_nd
         self.w_nd = coeffs[:n,:]
         self.a_Dd = coeffs[n:,:]
+        rotation_cost = angular_spring * ((np.eye(d) - self.a_Dd[:-1,:])**2).sum()
+        
+        self.x_nd = x_nd
 
         residual_cost = (wt_n[:,None] * ((y_nd - self.transform_points(x_nd))**2).sum(axis=1)).sum()
         curvature_cost = smoothing * np.trace(np.dot(self.w_nd.T, np.dot(K_nn, self.w_nd)))
-        rotation_cost = angular_spring * ((np.eye(d) - self.a_Dd[:-1,:])**2).sum()
         self.cost = residual_cost + curvature_cost + rotation_cost
         if verbose:
             print "cost = residual + curvature + rotation"
@@ -183,6 +188,58 @@ class CompositeTransformation(Transformation):
       for f in self.fns:
         x_md, rot_mdd = f.transform_frames(x_md, rot_mdd, orthogonalize)
       return x_md, rot_mdd
+
+class ThinPlateSplineFixedRot(ThinPlateSpline):
+    
+    def __init__(self, rot):
+        ThinPlateSpline.__init__(self)
+        assert rot.ndim == 2 and rot.shape[0] == rot.shape[1]
+        self.n = 0
+        self.d = rot.shape[0]
+        self.x_nd = np.zeros((0,self.d))
+        self.w_nd = np.zeros((0,self.d))
+        self.a_Dd = np.eye(self.d+1,self.d)
+        self.a_Dd[:self.d, :] = rot
+    
+    def fit(self, x_nd, y_nd, smoothing=.1, wt_n=None, verbose=True):
+        """
+        x_nd: source cloud
+        y_nd: target cloud
+        smoothing: penalize non-affine part
+        angular_spring: penalize rotation
+        wt_n: weight the points        
+        """
+        self.n, self.d = n,d = x_nd.shape
+        
+        dists_tri = ssd.pdist(x_nd)
+        K_nn = ssd.squareform(tps_kernel(dists_tri, d))
+        
+        
+        
+        if wt_n is None:
+            wt_n = np.ones(n)
+
+        reg_nn = smoothing * np.diag(1/(wt_n+1e-6))
+        A = np.r_[
+            np.c_[K_nn + reg_nn,       np.ones((n,1))],
+            np.c_[np.ones((1,n)),      0]]
+        b = np.r_[y_nd - np.dot(x_nd, self.a_Dd[:d,:]), np.zeros((1,d))]
+
+        
+        coeffs = np.linalg.lstsq(A, b)[0]
+        self.w_nd = coeffs[:n,:]
+        self.a_Dd[-1] = coeffs[n,:]
+        rotation_cost = 0
+        
+        self.x_nd = x_nd
+
+        residual_cost = (wt_n[:,None] * ((y_nd - self.transform_points(x_nd))**2).sum(axis=1)).sum()
+        curvature_cost = smoothing * np.trace(np.dot(self.w_nd.T, np.dot(K_nn, self.w_nd)))
+        self.cost = residual_cost + curvature_cost + rotation_cost
+        if verbose:
+            print "cost = residual + curvature + rotation"
+            print " %.3g = %.3g + %.3g + %.3g"%(self.cost, residual_cost, curvature_cost, rotation_cost)
+            print "affine transform:\n", self.a_Dd    
 
 def plot_warped_grid_2d(f, mins, maxes, grid_res=None, flipax = True):
     import matplotlib.pyplot as plt
@@ -359,8 +416,8 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
 
         # if plotting:
         #     plot_correspondence(x_nd, targ_nd)
-
-        f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, angular_spring = regs[i]*200, verbose=verbose)
+        #print "warning: changed angular spring!"        
+        f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, angular_spring = regs[i]*200	, verbose=verbose)
 
         if plotting and i%plotting==0:
             if f.d==2:
@@ -373,10 +430,6 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
                 plot_warped_grid_2d(f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0))
                 plt.ginput()
             elif f.d == 3:
-                from lfd import warping
-                from brett2.ros_utils import Marker
-                from jds_utils import conversions
-
                 Globals.setup()
 
                 mins = x_nd.min(axis=0)
@@ -395,7 +448,102 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
     f.corr = corr_nm
     return f
 
-# matcher = None            
+def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True):
+    n,d = x_nd.shape
+    regs = loglinspace(reg_init, reg_final, n_iter)
+    rads = loglinspace(rad_init, rad_final, n_iter)
+    zrots = np.linspace(-np.pi/3, pi/3, 7)
+
+    displacement = np.median(y_md,axis=0) - np.median(x_nd, axis=0) 
+    
+    costs = []
+    
+    if plotting:
+        plotter = FuncPlotter()
+        
+    zrot2func = {}
+    def fit0(zrot):
+        f = ThinPlateSplineFixedRot(np.array([[cos(zrot), sin(zrot), 0], [-sin(zrot), cos(zrot), 0], [0, 0, 1]]))        
+        f.a_Dd[3, :3] = displacement
+        
+        for i in xrange(n_iter):
+    
+            if f.d==2 and i%plotting==0: 
+                import matplotlib.pyplot as plt            
+                plt.clf()
+    
+            xwarped_nd = f.transform_points(x_nd)
+            corr_nm = calc_correspondence_matrix(xwarped_nd, y_md, r=rads[i], p=.2)
+            
+            wt_n = corr_nm.sum(axis=1)
+            targ_nd = np.dot(corr_nm/wt_n[:,None], y_md)
+            f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, verbose=verbose)
+    
+            if plotting and i%plotting==0:
+                plot_orig_and_warped_clouds(f, x_nd, y_md)
+
+        print "zrot: %.3e, cost: %.3e,  meancorr: %.3e"%(zrot, f.cost, corr_nm.mean())
+        cost = abs(zrot)/6 + f.cost
+        if plotting: plotter.addpt(zrot, cost)
+        zrot2func[zrot] = f
+        return cost
+    
+    
+    costs = [fit0(zrot) for zrot in zrots]
+    i_best = np.argmin(costs)
+
+    import scipy.optimize as so
+    zspacing = zrots[1] - zrots[0]  
+    print (zrots[i_best] - zspacing, zrots[i_best], zrots[i_best] + zspacing)
+    zrot_best = so.golden(fit0, brack = (zrots[i_best] - zspacing, zrots[i_best], zrots[i_best] + zspacing), tol = .15)
+    f_best = zrot2func[zrot_best]
+    return f_best
+    
+ 
+class FuncPlotter(object):
+    def __init__(self, fignum = 1):
+        self.fignum = fignum
+        plt.figure(fignum)
+        plt.clf()
+        self.xs = []
+        self.ys = []
+    def addpt(self, x, y):
+        self.xs.append(x)
+        self.ys.append(y)
+        self.plotme()
+    def plotme(self):
+        plt.figure(self.fignum)
+        plt.clf()
+        plt.plot(self.xs, self.ys,'x')
+        plt.draw()
+ 
+def plot_orig_and_warped_clouds(f, x_nd, y_md): 
+    if f.d==2:
+        import matplotlib.pyplot as plt
+        plt.plot(x_nd[:,1], x_nd[:,0],'r.')
+        plt.plot(y_md[:,1], y_md[:,0], 'b.')
+    pred = f.transform_points(x_nd)
+    if f.d==2:
+        plt.plot(pred[:,1], pred[:,0], 'g.')
+    if f.d == 2:
+        plot_warped_grid_2d(f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0))
+        plt.ginput()
+    elif f.d == 3:
+        
+        Globals.setup()
+
+        mins = x_nd.min(axis=0)
+        maxes = x_nd.max(axis=0)
+        mins[2] -= .1
+        maxes[2] += .1
+        Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=.1, yres=.1)
+        orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
+        target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
+        warped_pose_array = conversions.array_to_pose_array(f.transform_points(x_nd), 'base_footprint')
+        Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
+        Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
+        Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
+
         
 def find_targets(x_md, y_nd, corr_opts):
     """finds correspondence matrix, and then for each point in source cloud,
