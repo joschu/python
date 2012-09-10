@@ -161,24 +161,22 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
   rospy.loginfo("best segment name: %s", best_name)
   xyz_demo_ds = best_demo["cloud_xyz_ds"]
 
-  print 'arms used', best_demo['arms_used']
-  overlap_ctl_pts = []
-  grabbing_pts = []
-  for lr in 'lr':
-    # look at points around gripper when grabbing
-    grabbing = map(bool, list(best_demo["%s_gripper_joint"%lr] < .07))
-    grabbing_pts.extend([p for i, p in enumerate(best_demo["%s_gripper_l_finger_tip_link"%lr]["position"]) if grabbing[i] and (i == 0 or not grabbing[i-1])])
-    grabbing_pts.extend([p for i, p in enumerate(best_demo["%s_gripper_r_finger_tip_link"%lr]["position"]) if grabbing[i] and (i == 0 or not grabbing[i-1])])
+#  print 'arms used', best_demo['arms_used']
+#  overlap_ctl_pts = []
+#  grabbing_pts = []
+#  for lr in 'lr':
+#    # look at points around gripper when grabbing
+#    grabbing = map(bool, list(best_demo["%s_gripper_joint"%lr] < .07))
+#    grabbing_pts.extend([p for i, p in enumerate(best_demo["%s_gripper_l_finger_tip_link"%lr]["position"]) if grabbing[i] and (i == 0 or not grabbing[i-1])])
+#    grabbing_pts.extend([p for i, p in enumerate(best_demo["%s_gripper_r_finger_tip_link"%lr]["position"]) if grabbing[i] and (i == 0 or not grabbing[i-1])])
 #  overlap_ctl_pts = [p for p in xyz_demo_ds if any(np.linalg.norm(p - g) < 0.1 for g in grabbing_pts)]
-  overlap_ctl_pts = xyz_demo_ds
-
-  print overlap_ctl_pts, len(overlap_ctl_pts)
-  rviz_draw_points(overlap_ctl_pts,rgba=(1,1,1,1),type=Marker.CUBE_LIST)
+#  overlap_ctl_pts = xyz_demo_ds
+  #rviz_draw_points(overlap_ctl_pts,rgba=(1,1,1,1),type=Marker.CUBE_LIST)
 #  rviz_draw_points(grabbing_pts,rgba=(.5,.5,.5,1),type=Marker.CUBE_LIST)
   n_iter = 101
-  warping_map = registration.tps_rpm_with_overlap_control(xyz_demo_ds, xyz_new_ds, overlap_ctl_pts, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False, plotting=20)
-  #warping_map = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False, plotting=20)
-  raw_input('Press enter to continue:')
+  #warping_map = registration.tps_rpm_with_overlap_control(xyz_demo_ds, xyz_new_ds, overlap_ctl_pts, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False, plotting=20)
+  warping_map = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False, plotting=20)
+  #raw_input('Press enter to continue:')
   #################### Generate new trajectory ##################
 
   #### Plot original and warped point clouds #######
@@ -212,14 +210,14 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
       trajectory["%s_arm"%lr] = arm_traj
       trajectory['steps'] = len(arm_traj)
       rospy.loginfo("left arm: %i of %i points feasible", len(feas_inds), len(arm_traj))
-      trajectory["%s_grab"%lr] = map(bool, list(best_demo["%s_gripper_joint"%lr] < .07))
+      trajectory["%s_grab"%lr] = map(bool, list(best_demo["%s_gripper_joint"%lr] < .02))
       trajectory["%s_gripper"%lr] = warped_demo["%s_gripper_joint"%lr]
       trajectory["%s_gripper"%lr][trajectory["%s_grab"%lr]] = 0
       # plot warped trajectory
       Globals.handles.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(alternate(warped_demo["%s_gripper_l_finger_tip_link"%lr]["position"],warped_demo["%s_gripper_r_finger_tip_link"%lr]["position"]), "base_footprint"), width=.001, rgba = (1,0,1,.4),type=Marker.LINE_LIST))
       # plot original trajectory
       Globals.handles.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(alternate(best_demo["%s_gripper_l_finger_tip_link"%lr]["position"],best_demo["%s_gripper_r_finger_tip_link"%lr]["position"]), "base_footprint"), width=.001, rgba = (0,1,1,.4),type=Marker.LINE_LIST))
-  raw_input('Press enter to continue:')
+  #raw_input('Press enter to continue:')
 
   return {'status': 'not_done', 'trajectory': trajectory}
 
@@ -227,25 +225,3 @@ def init(task, table_bounds):
   Globals.setup(task, table_bounds)
   if rospy.get_name() == '/unnamed':
     rospy.init_node("tie_knot",disable_signals=True)
-
-def destroy():
-  del Globals
-
-#def main():
-#  def make_tie_knot_sm():
-#    sm = smach.StateMachine(outcomes = ["success", "failure"])
-#    with sm:
-#      smach.StateMachine.add("look_at_object", LookAtObject(), transitions = {"success":"select_traj", "failure":"failure"})
-#      smach.StateMachine.add("select_traj", SelectTrajectory(), transitions = {"done":"success","not_done":"execute_traj", "failure":"failure"})
-#      smach.StateMachine.add("execute_traj", ExecuteTrajectory(), transitions = {"success":"look_at_object","failure":"look_at_object"})
-#    return sm
-#
-#  Globals.handles = []
-#  if rospy.get_name() == '/unnamed':
-#      rospy.init_node("tie_knot",disable_signals=True)
-#  Globals.setup()
-#  #Globals.pr2.torso.go_up()
-#  #Globals.pr2.head.set_pan_tilt(0, HEAD_TILT)
-#  Globals.pr2.join_all()
-#  tie_knot_sm = make_tie_knot_sm()
-#  tie_knot_sm.execute()

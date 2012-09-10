@@ -58,7 +58,7 @@ def _resample_spline(spline, tolerance=0.0001):
       newu.append(u[0])
       continue
     # adjust u[i] until udist(u[i-1], u[i]) == target_ulen
-    ulo, uhi = newu[i-1]-0.5, newu[i-1]+0.5
+    ulo, uhi = newu[i-1], newu[i-1]+1
     for _ in range(100):
       umid = (uhi+ulo)/2.
       ulen = udist(spline, newu[i-1], umid)
@@ -67,7 +67,7 @@ def _resample_spline(spline, tolerance=0.0001):
       else: break
     newu.append(umid)
   assert len(u) == len(newu)
-  return ([spline[0][0], spline[0][1], spline[0][2]], newu)
+  return (spline[0], newu)
 
 def perturb_curve(curve, s=0.01):
   new_spline = _resample_spline(_perturb_spline(_to_spline(curve), s))
@@ -79,31 +79,16 @@ if __name__ == '__main__':
   parser.add_argument('--s', action='store', type=float, default=0.01, help='variance of randomness to introduce to the b-spline control points')
   parser.add_argument('--n', action='store', type=int, default=1, help='num samples to draw')
   parser.add_argument('input')
-  parser.add_argument('output')
   args = parser.parse_args()
 
   import os
   assert os.path.exists(args.input)
-  assert os.path.exists(os.path.dirname(args.output))
 
   import matplotlib.pyplot as plt
   curve = np.loadtxt(args.input)
-  in_plot = plt.plot(curve[:,0], curve[:,1], 'b.-')
-
-  spline = _to_spline(curve)
-
-  #curve2 = _eval_spline(spline)
-  #out_plot = plt.plot(curve2[:,0], curve2[:,1], 'r.-')
-
-  #ctl_pts = _get_spline_control_pts(spline)
-  #plt.plot(ctl_pts[:,0], ctl_pts[:,1], 'yo')
-
+  plt.plot(curve[:,0], curve[:,1], 'b.-')
   for _ in range(args.n):
     new_curve = perturb_curve(curve, args.s)
     plt.plot(new_curve[:,0], new_curve[:,1], 'm.-')
-
-  #new_ctl_pts = _get_spline_control_pts(new_spline)
-  #plt.plot(new_ctl_pts[:,0], new_ctl_pts[:,1], 'go')
-
   plt.axis('equal')
   plt.show()

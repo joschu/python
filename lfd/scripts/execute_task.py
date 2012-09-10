@@ -7,7 +7,7 @@ Currently works for tying an overhand knot or folding up a laid-out towel
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("--task", choices=["overhand_knot","figure8_knot","fold_towel"],default="overhand_knot")
+parser.add_argument("--task", action='store',default="overhand_knot")
 parser.add_argument("--human_select_demo", action="store_true")
 parser.add_argument("--prompt_before_motion", action="store_true")
 parser.add_argument("--count_steps",action="store_true")
@@ -218,8 +218,8 @@ class SelectTrajectory(smach.State):
             
             from joblib import parallel
             
-            #costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
-            costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
+            costs_names = parallel.Parallel(n_jobs = 8)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
+            #costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
             #costs_names = [calc_seg_cost(seg_name) for seg_name in candidate_demo_names]
             _, best_name = min(costs_names)
 
