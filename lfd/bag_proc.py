@@ -1,3 +1,9 @@
+"""
+Functions that enable you to extract kinematics info from a bag file
+and put it in an array with a bunch of time serieses
+"""
+
+from __future__ import division
 from brett2 import mytf
 import numpy as np
 import openravepy
@@ -12,6 +18,8 @@ MIN_JOINT_CHANGE = .001
     
     
 class RosToRave(object):
+    
+    "take in ROS joint_states messages and use it to update an openrave robot"
     
     @once
     def create():
@@ -47,7 +55,13 @@ class RosToRave(object):
 def extract_kinematics_from_bag(bag, link_names):    
     """
     Input bagfile has the following topics: /tf, /joint_states, /joy, /xxx/points
-    Output array has the following fields: /joints, [frames_list]
+    Output dictionary has a bunch of arrays with kinematics info, e.g. 
+    /r_gripper_tool_frame/position
+                          orientation
+                          hmat
+    /joint_states/position
+                  orientation
+    etc.
     """    
     
     rr = RosToRave.create()
@@ -123,6 +137,7 @@ def convert_lists_to_arrays(D):
 
 
 def map_dict(fn, D):
+    "apply fn to every 'leaf' element of dictionary"
     out = {}
     for (path, val) in dfs_dict(D):
         d = out
@@ -136,6 +151,7 @@ def map_dict(fn, D):
     
 
 def dfs_dict(D):
+    "iterator returning leaves of dictionary, resulting from depth-first search"
     for (key, val) in D.items():
         if isinstance(val, dict):
             yield (key,), val
@@ -145,6 +161,7 @@ def dfs_dict(D):
             yield (key,), val
 
 def get_button_presses(bag):    
+    "extract button presses from bag file"
     last_msg = None    
     presses = []
     
@@ -160,7 +177,7 @@ def get_button_presses(bag):
 
 def get_transformed_clouds(bag,times):
     """
-    get transformed point clouds preceeding times    
+    get transformed point clouds at times    
     """
     listener = mytf.TransformListener()
 
@@ -194,7 +211,8 @@ def get_transformed_clouds(bag,times):
     
     
 def create_segments(bag, link_names):    
-    
+    """extract a bunch of dictionaries from bag file, each one corresponding to one segment of trajectory. 
+    each segment corresponds to 'look', 'start', and 'stop' button presses"""
     button_presses = get_button_presses(bag)
     
     start_times, stop_times, look_times, l_close_times, l_open_times, r_close_times, r_open_times, done_times = [],[],[],[],[],[],[],[]
@@ -259,7 +277,9 @@ def create_segments(bag, link_names):
         
 
 def create_segment_without_look(bag, link_names):    
-    
+    """
+    basically same as 'create_segments' above except no look times
+    """
     button_presses = get_button_presses(bag)
     
     start_times, stop_times, look_times, l_close_times, l_open_times, r_close_times, r_open_times, done_times = [],[],[],[],[],[],[],[]
@@ -289,6 +309,9 @@ def create_segment_without_look(bag, link_names):
         
         
 def path_length(x):
+    """
+    sum of absolute values of all differences between time steps
+    """
     if x.ndim == 1: x = x.reshape(-1,1)
     return norms(x[1:] - x[:-1],1).sum()        
         
@@ -308,6 +331,11 @@ def determine_arms_used(segment):
         raise Exception("I can't figure out which arm was used")
 
 def extract_segment(kin_info, start, stop):
+    """
+    extract portion between two indices
+    kind of bad because some arrays in kin_info are not time serieses
+    and it's not clear if this function will always do the right thing with them.
+    """
     # XXX: might do the wrong thin on non-timeseries members
     def fn(x):
         if x.dtype.type == np.string_:
@@ -317,6 +345,9 @@ def extract_segment(kin_info, start, stop):
     return map_dict(fn, kin_info)
 
 def dict_to_hdf(group, data, name):
+    """
+    will create a child of 'group' called 'name' with all of the fields in 'data' dict
+    """
     if isinstance(data, dict):
         group.create_group(name)
         for (key, val) in data.items():

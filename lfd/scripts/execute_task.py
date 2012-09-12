@@ -13,6 +13,7 @@ parser.add_argument("--prompt_before_motion", action="store_true")
 parser.add_argument("--count_steps",action="store_true")
 parser.add_argument("--hard_table",action="store_true")
 parser.add_argument("--test",action="store_true")
+parser.add_argument("--use_tracking", action="store_true")
 args = parser.parse_args()
 
 
@@ -34,6 +35,10 @@ from jds_utils import conversions
 from jds_image_proc.clouds import voxel_downsample
 try:
     from jds_image_proc.alpha_shapes import get_concave_hull
+except Exception:
+    pass
+try:
+    from bulletsim_msgs.msg import TrackedObject
 except Exception:
     pass
 import h5py
@@ -70,6 +75,13 @@ def draw_table():
 def load_table():
     table_bounds = map(float, rospy.get_param("table_bounds").split())
     kinbodies.create_box_from_bounds(Globals.pr2.env,table_bounds, name="table")
+    
+def increment_pose(arm, translation):
+    cur_pose = arm.get_pose_matrix("base_footprint", "r_gripper_tool_frame")
+    new_pose = cur_pose.copy()
+    new_pose[:3,3] += translation
+    arm.goto_pose_matrix(new_pose, "base_footprint", "r_gripper_tool_frame")
+        
     
 
 class Globals:
@@ -119,8 +131,14 @@ class LookAtObject(smach.State):
         """
         Globals.handles = []
         
-        Globals.pr2.larm.goto_posture('side')
-        Globals.pr2.rarm.goto_posture('side')
+        if not args.use_tracking:
+            Globals.pr2.larm.goto_posture('side')
+            Globals.pr2.rarm.goto_posture('side')
+        else:
+            try: increment_pose(Globals.pr2.rarm, [0,0,.02])
+            except PR2.IKFail: print "couldn't raise right arm"
+            try: increment_pose(Globals.pr2.larm, [0,0,.02])
+            except PR2.IKFail: print "couldn't raise left arm"
         Globals.pr2.rgrip.set_angle(.08)
         Globals.pr2.lgrip.set_angle(.08)
         Globals.pr2.join_all()
@@ -128,6 +146,9 @@ class LookAtObject(smach.State):
 
         if args.test:
             xyz = np.squeeze(np.asarray(demos[select_from_list(demos.keys())]["cloud_xyz"]))
+        elif args.use_tracking:
+            msg = rospy.wait_for_message("/tracker/object", TrackedObject)
+            xyz = [(pt.x, pt.y, pt.z) for pt in msg.rope.nodes]
         else:
             msg = rospy.wait_for_message("/preprocessor/points", sensor_msgs.msg.PointCloud2)
             xyz, rgb = ros_utils.pc2xyzrgb(msg)
@@ -326,6 +347,9 @@ if __name__ == "__main__":
     Globals.setup()
     #Globals.pr2.torso.go_up()
     #Globals.pr2.head.set_pan_tilt(0, HEAD_TILT)
+    if args.use_tracking:
+        Globals.pr2.larm.goto_posture('side')
+        Globals.pr2.rarm.goto_posture('side')        
     Globals.pr2.join_all()
     tie_knot_sm = make_tie_knot_sm()
     tie_knot_sm.execute()

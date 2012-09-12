@@ -2,7 +2,7 @@ import numpy as np
 import h5py
 
 def group_to_dict(group):
-    "deep copy hdf5 structure"
+    "deep copy hdf5 structure to dictionary"
     out = {}
     for key in group.keys():
         print key
