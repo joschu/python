@@ -13,6 +13,12 @@ from scipy import sparse
 
 
 def make_sampling_matrix(inds_list, n_orig):
+    """
+    inds_list tells you which input inds correspond to each output ind
+    "sampling matrix" is n_input_inds x n_output_inds such that
+    out_{ij} = Indicator(input i -> output j)  * 1/n_input_inds
+    i.e. it tells you how output is weighted avg of input
+    """
     row_inds = []
     col_inds = []
     vals = []
@@ -23,6 +29,9 @@ def make_sampling_matrix(inds_list, n_orig):
     return sparse.csc_matrix((vals,np.array([row_inds, col_inds])), shape=(n_orig,len(inds_list)))
             
 def calc_geodesic_distances_downsampled_old(xyz, xyz_ds, ds_inds):
+    """
+    calculate geodesic distances between point xyz_ds using xyz to make graph
+    """
     assert xyz.shape[1] == 3
     assert xyz_ds.shape[1] == 3
     D = calc_geodesic_distances(xyz)
@@ -33,6 +42,9 @@ def calc_geodesic_distances_downsampled_old(xyz, xyz_ds, ds_inds):
 
 
 def calc_geodesic_distances_downsampled(xyz, xyz_ds, ds_inds):
+    """
+    calculate geodesic distances between point xyz_ds using xyz to make graph
+    """
     assert xyz.shape[1] == 3
     assert xyz_ds.shape[1] == 3
     D = calc_geodesic_distances(np.concatenate([xyz_ds,xyz],0))
@@ -63,6 +75,10 @@ def calc_geodesic_distances(xyz):
 
 
 def calc_match_score(xyz0, xyz1, dists0 = None, dists1 = None):
+    """
+    calculate similarity between xyz0 and xyz1 using geodesic distances
+    """
+    
     f = registration.tps_rpm(xyz0, xyz1, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
     corr = f.corr
     partners = corr.argmax(axis=1)

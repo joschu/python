@@ -62,6 +62,12 @@ def interp_between(xnew, x0, x1, y0, y1):
     return ((x1 - xnew) * y0 + (xnew - x0) * y1) / (x1 - x0)
 
 def calc_hand_pose(lpos, rpos, ori):
+    """
+    Do IK on gripper using fingertips
+    lpos: left fingertip position
+    rpos: right fingertip position
+    ori: desired orientation. note that open/close direction is determined by lpos and rpos argument
+    """
     ynew0 = normalize(lpos - rpos)
     xnew0 = normalize(ori[:,0] - np.dot(ynew0, ori[:,0]) * ynew0)
     znew0 = np.cross(xnew0, ynew0)
@@ -134,7 +140,8 @@ def sorted_values(d):
 
 def transform_demo_with_fingertips(f, demo):
     """
-    demo: 
+    demo has a bunch of fields with arrays
+    this function uses the Transformation f to transform some of the fields of it using f
     """    
     
     warped_demo = {}
@@ -172,9 +179,11 @@ def transform_demo_with_fingertips(f, demo):
     
 def transform_verb_demo(warp, demo,l_offset = None, r_offset = None):
     """
-    demo: array with the following fields: r_gripper_xyzs, l_gripper_xyzs, r_gripper_quats, l_gripper_quats, cloud_xyz
+    demo: array with the following fields: r_gripper_xyzs, l_gripper_xyzs, r_gripper_quats, l_gripper_quats, cloud_xyz, possible object_clouds
+    transform each field using warp
+    l_offset and r_offset tell you where the tools are, so you can do tool stuff
+    (note: this doesn't currently work when important point is moved relative to demo)
     
-    (todo: replace 'cloud_xyz' with 'object_points')
     """
     warped_demo = group_to_dict(demo) # deep copy it
         

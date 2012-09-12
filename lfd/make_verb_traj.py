@@ -35,6 +35,11 @@ def xyzs_quats_to_poses(xyzs, quats):
     return poses
 
 def make_traj(req):
+    """
+    Generate a trajectory using warping
+    See MakeTrajectory service description
+    (TODO) should be able to specify a specific demo
+    """
     assert isinstance(req, MakeTrajectoryRequest)
     
     new_object_clouds = [pc2xyzrgb(cloud)[0] for cloud in req.object_clouds]

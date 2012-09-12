@@ -1,3 +1,7 @@
+"""
+This file contains the function exec_traj that will execute a trajectory on the robot specified by ExecTrajectoryRequest
+"""
+
 from __future__ import division
 import rospy
 import itertools, os, lfd
@@ -92,11 +96,13 @@ def exec_traj(req):
 
 
     yn = yes_or_no("continue?")
-    lt.go_to_start(Globals.pr2, body_traj)
-    lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
+    if yn:
+        lt.go_to_start(Globals.pr2, body_traj)
+        lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
 
-    
-    Globals.pr2.join_all()
-    return ExecTrajectoryResponse(success=True)
+        Globals.pr2.join_all()
+        return ExecTrajectoryResponse(success=True)
+    else:
+        return ExecTrajectoryResponse(success=False)
 
     

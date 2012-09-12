@@ -1,3 +1,10 @@
+"""
+Some functions for generating trajectories.
+Also see brett2.trajectories.
+But these functions are slightly adapted for lfd stuff
+"""
+
+
 import numpy as np
 from kinematics import retiming, kinematics_utils
 import rospy
@@ -11,6 +18,13 @@ ALWAYS_FAKE_SUCESS = False
 USE_PLANNING = False
 
 def merge_nearby_grabs(inds_sides):
+    """
+    currently this function isn't implemented properly
+    here's what it's supposed to do: if you have an 'r' and an 'l' grab that are nearby in time
+    merge them into a 'b' grab at the same time
+    because it looks stupid when the robot grabs with one arm and then the other
+    (TODO)
+    """
     if len(inds_sides) < 2: 
         return inds_sides
     elif len(inds_sides) == 2:
@@ -18,10 +32,12 @@ def merge_nearby_grabs(inds_sides):
     else:
         raise NotImplementedError
 
-                
-    
-
 def follow_trajectory_with_grabs(pr2, bodypart2traj):
+    """
+    bodypart2traj is a dictionary with zero or more of the following fields: {l/r}_grab, {l/r}_gripper, {l/r_arm}
+    We'll follow all of these bodypart trajectories simultaneously
+    Also, if the trajectory involves grabbing with the gripper, and the grab fails, the trajectory will abort
+    """
     T = len(bodypart2traj.values()[0])
     l_grab = bodypart2traj["l_grab"] if "l_grab" in bodypart2traj else np.zeros(T,bool)
     r_grab = bodypart2traj["r_grab"] if "r_grab" in bodypart2traj else np.zeros(T,bool)
@@ -51,6 +67,7 @@ def follow_trajectory_with_grabs(pr2, bodypart2traj):
     return True
 
 def slice_traj(bodypart2traj, start, stop):
+    """slice each array between start and stop index"""    
     out = {}
     for (bodypart, traj) in bodypart2traj.items():
         out[bodypart] = traj[start:stop]
@@ -58,7 +75,7 @@ def slice_traj(bodypart2traj, start, stop):
 
 
 def go_to_start(pr2, bodypart2traj):
-
+"""go to start position of each trajectory in bodypart2traj"""
     name2part = {"l_gripper":pr2.lgrip, 
                  "r_gripper":pr2.rgrip, 
                  "l_arm":pr2.larm, 
@@ -77,7 +94,11 @@ def go_to_start(pr2, bodypart2traj):
     
     
 def follow_trajectory(pr2, bodypart2traj):    
-        
+    """
+    bodypart2traj is a dictionary with zero or more of the following fields: {l/r}_grab, {l/r}_gripper, {l/r_arm}
+    We'll follow all of these bodypart trajectories simultaneously
+    Also, if the trajectory involves grabbing with the gripper, and the grab fails, the trajectory will abort
+    """        
     rospy.loginfo("following trajectory with bodyparts %s", " ".join(bodypart2traj.keys()))
     trajectories = []
     vel_limits = []
@@ -122,7 +143,7 @@ def follow_trajectory(pr2, bodypart2traj):
     
 def close_gripper(pr2, side):
     """
-    True if it's grabbing an object
+    return True if it's grabbing an object
     False otherwise
     """
     
@@ -138,8 +159,16 @@ def close_gripper(pr2, side):
         if gripper.is_closed():
             rospy.logwarn("%s gripper grabbed air", side)
             success = False
-    return success or ALWAYS_FAKE_SUCESS        
+    return success or ALWAYS_FAKE_SUCESS    
+        
 def make_joint_traj(xyzs, quats, joint_seeds,manip, ref_frame, targ_frame,filter_options):
+    """
+    do ik to make a joint trajectory
+    joint_seeds are the joint angles that this function will try to be close to
+    I put that in so you could try to stay near the demonstration joint angles
+    in retrospect, using that argument might be bad idea because it'll make the trajectory much more jerky in some situations
+    (TODO)
+    """
     n = len(xyzs)
     assert len(quats) == n
     

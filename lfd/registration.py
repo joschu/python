@@ -122,6 +122,7 @@ class ThinPlateSpline(Transformation):
 
 
 class ThinPlateSplineFixedRot(ThinPlateSpline):
+    """same as ThinPlateSpline except during fitting, affine part is a fixed rotation around z axis"""
     
     def __init__(self, rot):
         ThinPlateSpline.__init__(self)
@@ -238,6 +239,12 @@ class Globals:
             time.sleep(.2)
     
 def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None):
+    """
+    tps-rpm algorithm mostly as described by chui and rangaran
+    reg_init/reg_final: regularization on curvature
+    rad_init/rad_final: radius for correspondence calculation (meters)
+    plotting: 0 means don't plot. integer n means plot every n iterations
+    """
     n,d = x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
@@ -270,6 +277,10 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
     return f
 
 def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True):
+    """
+    Do tps_rpm algorithm for each z angle rotation
+    Then don't reestimate affine part in tps optimization
+    """
     n,d = x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
