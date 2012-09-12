@@ -2,15 +2,10 @@
 import numpy as np
 
 import roslib
-roslib.load_manifest("rospy")
 import rospy
-roslib.load_manifest("sensor_msgs") 
 import sensor_msgs.msg as sm
-roslib.load_manifest("visualization_msgs")
 import visualization_msgs.msg as vm
-roslib.load_manifest("geometry_msgs")
 import geometry_msgs.msg as gm
-roslib.load_manifest("std_msgs")
 import std_msgs.msg as stdm
 from visualization_msgs.msg import Marker, MarkerArray
 

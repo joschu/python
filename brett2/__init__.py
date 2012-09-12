@@ -1,7 +1,10 @@
 import roslib
-roslib.load_manifest("pr2_controllers_msgs"); 
-roslib.load_manifest("move_base_msgs")
-
+try:
+    roslib.load_manifest("pr2_controllers_msgs"); 
+    roslib.load_manifest("move_base_msgs")
+except Exception:
+    print "could not import ros pr2 msgs"
+    
 try:
     import sensor_msgs
 except ImportError:    

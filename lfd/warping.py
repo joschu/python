@@ -27,13 +27,14 @@ def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):
     
     lines = []
     
-    for x in xcoarse:
-        for y in ycoarse:
-            xyz = np.zeros((nfine, 3))
-            xyz[:,0] = x
-            xyz[:,1] = y
-            xyz[:,2] = zfine
-            lines.append(f(xyz))
+    if len(zcoarse) > 1:    
+        for x in xcoarse:
+            for y in ycoarse:
+                xyz = np.zeros((nfine, 3))
+                xyz[:,0] = x
+                xyz[:,1] = y
+                xyz[:,2] = zfine
+                lines.append(f(xyz))
 
     for y in ycoarse:
         for z in zcoarse:

@@ -37,16 +37,16 @@ class Transformation(object):
         raise NotImplementedError
 
 class ThinPlateSpline(Transformation):
-    
+    def __init__(self, d):
+        self.n = 0
+        self.d = d
+        self.x_nd = np.zeros((0,d))
+        self.w_nd = np.zeros((0,d))
+        self.a_Dd = np.eye(d+1,d)
+        
     @staticmethod
     def identity(d):
-        tps = ThinPlateSpline()
-        tps.n = 0
-        tps.d = d
-        tps.x_nd = np.zeros((0,d))
-        tps.w_nd = np.zeros((0,d))
-        tps.a_Dd = np.eye(d+1,d)
-        return tps    
+        return ThinPlateSpline(d)
         
     def fit(self, x_nd, y_nd, smoothing=.1, angular_spring = 0, wt_n=None, verbose=True):
         """
@@ -76,7 +76,7 @@ class ThinPlateSpline(Transformation):
         b = np.r_[y_nd, reg_ratio * np.eye(d+1,d)]
 
         
-        coeffs = np.linalg.lstsq(A, b)[0]
+        coeffs = np.linalg.solve(A, b)
         self.w_nd = coeffs[:n,:]
         self.a_Dd = coeffs[n:,:]
         rotation_cost = angular_spring * ((np.eye(d) - self.a_Dd[:-1,:])**2).sum()
@@ -224,19 +224,6 @@ def loglinspace(a,b,n):
     "n numbers between a to b (inclusive) with constant ratio between consecutive numbers"
     return np.exp(np.linspace(np.log(a),np.log(b),n))    
 
-
-def tps_rpm_multi(source_clouds, targ_clouds, *args,**kw):
-    """
-    Given multiple source clouds and corresponding target clouds, solve for global transformation that matches them.
-    Right now, we just concatenate them all. Eventually, we'll do something more sophisticated, e.g. initially match each
-    source cloud to each target cloud, then use those correspondences to initialize tps-rpm on concatenated clouds.    
-    """
-    x_nd = np.concatenate([np.asarray(cloud).reshape(-1,3) for cloud in source_clouds], 0)
-    y_md = np.concatenate([np.asarray(cloud).reshape(-1,3) for cloud in targ_clouds], 0)
-    from jds_image_proc.clouds import voxel_downsample
-    x_nd = voxel_downsample(x_nd,.02)
-    y_md = voxel_downsample(y_md,.02)
-    return tps_rpm(x_nd, y_md, *args,**kw)
     
     
 class Globals:
@@ -276,7 +263,7 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
         f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, angular_spring = regs[i]*200	, verbose=verbose)
 
         if plotting and i%plotting==0:
-            plot_orig_and_warped_clouds(f, x_nd, y_md)                
+            plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)                
 
         
     f.corr = corr_nm
@@ -314,7 +301,7 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
             f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, verbose=verbose)
     
             if plotting and i%plotting==0:
-                plot_orig_and_warped_clouds(f, x_nd, y_md)
+                plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)
 
         print "zrot: %.3e, cost: %.3e,  meancorr: %.3e"%(zrot, f.cost, corr_nm.mean())
         cost = abs(zrot)/6 + f.cost
@@ -351,29 +338,29 @@ class FuncPlotter(object):
         plt.plot(self.xs, self.ys,'x')
         plt.draw()
  
-def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1): 
-    if f.d==2:
+def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1, d=3): 
+    if d==2:
         import matplotlib.pyplot as plt
         plt.plot(x_nd[:,1], x_nd[:,0],'r.')
         plt.plot(y_md[:,1], y_md[:,0], 'b.')
-    pred = f.transform_points(x_nd)
-    if f.d==2:
+    pred = f(x_nd)
+    if d==2:
         plt.plot(pred[:,1], pred[:,0], 'g.')
-    if f.d == 2:
-        plot_warped_grid_2d(f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0))
+    if d == 2:
+        plot_warped_grid_2d(f, x_nd.min(axis=0), x_nd.max(axis=0))
         plt.ginput()
-    elif f.d == 3:
+    elif d == 3:
         
         Globals.setup()
 
         mins = x_nd.min(axis=0)
         maxes = x_nd.max(axis=0)
-        mins -= .1
-        maxes += .1
-        Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=res, yres=res)
+        mins -= np.array([.1, .1, .01])
+        maxes += np.array([.1, .1, .01])
+        Globals.handles = warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res)
         orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
         target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
-        warped_pose_array = conversions.array_to_pose_array(f.transform_points(x_nd), 'base_footprint')
+        warped_pose_array = conversions.array_to_pose_array(f(x_nd), 'base_footprint')
         Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
         Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
         Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
