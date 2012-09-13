@@ -310,7 +310,7 @@ class RvizWrapper:
 @once
 def get_pr2_urdf():
     U = urdf.URDF()
-    U.load('/opt/ros/electric/stacks/pr2_mechanism/pr2_mechanism_model/pr2.urdf')
+    U.load('/opt/ros/fuerte/stacks/pr2_mechanism/pr2_mechanism_model/pr2.urdf')
     return U        
         
 def link_filter(names):

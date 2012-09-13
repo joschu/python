@@ -315,7 +315,7 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
                 plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)
 
         print "zrot: %.3e, cost: %.3e,  meancorr: %.3e"%(zrot, f.cost, corr_nm.mean())
-        cost = abs(zrot)/6 + f.cost
+        cost = abs(zrot)/2 + f.cost
         if plotting: plotter.addpt(zrot, cost)
         zrot2func[zrot] = f
         return cost

@@ -80,7 +80,7 @@ def exec_traj(req):
             gripper_xyzs.append(xyz)
             gripper_quats.append(quat)
         joint_positions, inds = trajectories.make_joint_traj(gripper_xyzs, gripper_quats, manip, 'base_footprint', '%s_gripper_tool_frame'%lr, filter_options = 1+18)
-        joint_positions = ku.smooth_positions(joint_positions, .01)
+        joint_positions = ku.smooth_positions(joint_positions, .15)
         
         if len(inds) == 0:
             return ExecTrajectoryResponse(success=False)                         

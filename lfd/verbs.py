@@ -10,7 +10,7 @@ import h5py
 h5path = osp.join(osp.dirname(lfd.__file__),"data","verbs2.h5")
 with open(osp.join(osp.dirname(lfd.__file__), "data", "verb_demos2.yaml"), "r") as fh:
     all_demo_info = yaml.load(fh)
-    
+    if all_demo_info is None: all_demo_info = {} 
 def get_all_demo_info():
     return all_demo_info
 def get_demo_info(demo_name):

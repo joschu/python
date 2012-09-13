@@ -59,7 +59,7 @@ def make_traj(req):
     y_md = voxel_downsample(new_object_clouds[0],.02)
     
     if transform_type == "tps":
-        warp = registration.tps_rpm_zrot(x_nd, y_md, plotting=2,reg_init=2,reg_final=.25, n_iter=10, verbose=False)
+        warp = registration.tps_rpm_zrot(x_nd, y_md, plotting=2,reg_init=2,reg_final=.05, n_iter=10, verbose=False)
     elif transform_type == "translation2d":
         warp = registration.Translation2d()
         warp.fit(x_nd, y_md)

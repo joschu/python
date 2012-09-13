@@ -101,7 +101,7 @@ class PR2(object):
         self.joint_listener = TopicListener("/joint_states", sm.JointState)
         self.tf_listener = ros_utils.get_tf_listener()
         
-        self.planner = rospy.ServiceProxy("/plan_traj", PlanTraj)     
+        #self.planner = rospy.ServiceProxy("/plan_traj", PlanTraj)     
                
         # rave to ros conversions
         joint_msg = self.get_last_joint_message()        

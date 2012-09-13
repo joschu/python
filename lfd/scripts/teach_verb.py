@@ -7,6 +7,8 @@ from lfd import verbs
 from jds_utils.yes_or_no import yes_or_no
 import argparse
 import time
+import os.path as osp
+import lfd
 
 def call_and_print(cmd,color='green'):
     print colorize(cmd, color, bold=True)
@@ -31,14 +33,14 @@ for i in xrange(1000):
         break
 
 
-    
-os.chdir("/home/joschu/python/lfd/data/images")
+data_dir = osp.join(osp.dirname(lfd.__file__), "data")
+os.chdir(data_dir + "/images")
 call_and_print("get_point_cloud.py %s"%demo_name)
 print colorize("now, select the target object", color="red", bold=True)
 call_and_print("manually_segment_point_cloud.py %s.npz --objs=%s"%(demo_name, target))
 
 print colorize("now, human, demonstrate the action on the robot", color="red", bold=True)
-os.chdir("/home/joschu/python/lfd/data/bags")
+os.chdir(data_dir + "/bags")
 
 call_and_print("rosrun pr2_controller_manager pr2_controller_manager stop r_arm_controller l_arm_controller")
 
@@ -81,7 +83,7 @@ new_entry_text = """
 
 yn = yes_or_no("save demonstration?")
 if yn:
-    with open("/home/joschu/python/lfd/data/verb_demos2.yaml", "a") as demofile:
+    with open(data_dir + "/verb_demos2.yaml", "a") as demofile:
         if not args.dry_run: demofile.write(new_entry_text)
     call_and_print("make_verb_library2.py")
 else:

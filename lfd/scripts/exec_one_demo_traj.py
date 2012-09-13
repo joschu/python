@@ -20,9 +20,9 @@ from jds_utils.yes_or_no import yes_or_no
 assert args.demo is not None or args.verb is not None
 if args.demo is not None:
     demo_name = args.demo
+    print "using demo", args.demo
 else:
     demo_name, _ = verbs.get_closest_demo(args.verb, "sdkfjsldk")
-
 
 if rospy.get_name() == "/unnamed": 
     rospy.init_node("test_get_verb_traj_service",disable_signals=True)
