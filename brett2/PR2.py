@@ -398,7 +398,7 @@ class Torso(TrajectoryControllerWrapper):
         
         
 class Gripper(object):
-    default_max_effort = -1
+    default_max_effort = 20
     def __init__(self,pr2,lr):
         assert isinstance(pr2, PR2)
         self.pr2 = pr2

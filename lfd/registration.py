@@ -53,29 +53,16 @@ class Transformation(object):
         return (self.transform_points(x_1d)[0] - self.transform_points(x_1d + dx_1d)[0])/float(dist)
 
 class ThinPlateSpline(Transformation):
-    
+    def __init__(self, d):
+        self.n = 0
+        self.d = d
+        self.x_nd = np.zeros((0,d))
+        self.w_nd = np.zeros((0,d))
+        self.a_Dd = np.eye(d+1,d)
+        
     @staticmethod
     def identity(d):
-        tps = ThinPlateSpline()
-        tps.n = 0
-        tps.d = d
-        tps.x_nd = np.zeros((0,d))
-        tps.w_nd = np.zeros((0,d))
-        tps.a_Dd = np.eye(d+1,d)
-        tps.id_interp = None
-        tps.subtract_id = False
-        return tps    
-
-    def copy(self):
-        tps = ThinPlateSpline()
-        tps.n = self.n
-        tps.d = self.d
-        tps.x_nd = self.x_nd.copy()
-        tps.w_nd = self.w_nd.copy()
-        tps.a_Dd = self.a_Dd.copy()
-        tps.id_interp = self.id_interp
-        tps.subtract_id = self.subtract_id
-        return tps
+        return ThinPlateSpline(d)
         
     def fit(self, x_nd, y_nd, smoothing=.1, angular_spring = 0, wt_n=None, verbose=True):
         """
@@ -104,7 +91,7 @@ class ThinPlateSpline(Transformation):
         A[-1,-1] = 0
         b = np.r_[y_nd, reg_ratio * np.eye(d+1,d)]
 
-        coeffs = np.linalg.lstsq(A, b)[0]
+        coeffs = np.linalg.solve(A, b)
         self.w_nd = coeffs[:n,:]
         self.a_Dd = coeffs[n:,:]
         rotation_cost = angular_spring * ((np.eye(d) - self.a_Dd[:-1,:])**2).sum()
@@ -126,10 +113,6 @@ class ThinPlateSpline(Transformation):
         K_mn = tps_kernel(dist_mn,d)
         xhom_mD = np.c_[x_md, np.ones((m,1))]
         ypred_md = np.dot(K_mn, self.w_nd) + np.dot(xhom_mD, self.a_Dd)
-        if self.id_interp is not None:
-            ypred_md = (1.-self.id_interp)*x_md + self.id_interp*ypred_md
-        if self.subtract_id:
-            ypred_md -= x_md
         return ypred_md
     
     def transform_frames(self, x_md, rot_mdd, orthogonalize=True):
@@ -150,21 +133,7 @@ class ThinPlateSpline(Transformation):
         K_mn = tps_kernel(dist_mn, self.d)
         ypred_md = np.dot(K_mn, self.w_nd) + np.dot(xhom_mD, self.a_Dd)
         if orthogonalize: newrot_mdd =  orthogonalize3(newrot_mdd)
-        if self.id_interp is not None:
-            ypred_md = (1.-self.id_interp)*x_md + self.id_interp*ypred_md
-        if self.subtract_id:
-            ypred_md -= x_md
         return ypred_md, newrot_mdd
-
-    def interp_with_identity(self, a):
-        tps = self.copy()
-        tps.id_interp = a
-        return tps
-
-    def subtract_identity(self):
-        tps = self.copy()
-        tps.subtract_id = True
-        return tps
 
 class CompositeTransformation(Transformation):
     def __init__(self, init_fn):
@@ -190,6 +159,7 @@ class CompositeTransformation(Transformation):
       return x_md, rot_mdd
 
 class ThinPlateSplineFixedRot(ThinPlateSpline):
+    """same as ThinPlateSpline except during fitting, affine part is a fixed rotation around z axis"""
     
     def __init__(self, rot):
         ThinPlateSpline.__init__(self)
@@ -292,21 +262,6 @@ def loglinspace(a,b,n):
     "n numbers between a to b (inclusive) with constant ratio between consecutive numbers"
     return np.exp(np.linspace(np.log(a),np.log(b),n))    
 
-
-def tps_rpm_multi(source_clouds, targ_clouds, *args,**kw):
-    """
-    Given multiple source clouds and corresponding target clouds, solve for global transformation that matches them.
-    Right now, we just concatenate them all. Eventually, we'll do something more sophisticated, e.g. initially match each
-    source cloud to each target cloud, then use those correspondences to initialize tps-rpm on concatenated clouds.    
-    """
-    x_nd = np.concatenate([np.asarray(cloud).reshape(-1,3) for cloud in source_clouds], 0)
-    y_md = np.concatenate([np.asarray(cloud).reshape(-1,3) for cloud in targ_clouds], 0)
-    from jds_image_proc.clouds import voxel_downsample
-    x_nd = voxel_downsample(x_nd,.02)
-    y_md = voxel_downsample(y_md,.02)
-    return tps_rpm(x_nd, y_md, *args,**kw)
-
-
 class Globals:
     handles = []
     rviz = None
@@ -315,85 +270,16 @@ class Globals:
         if Globals.rviz is None:
             from brett2.ros_utils import RvizWrapper
             Globals.rviz = RvizWrapper.create()
-
-def tps_rpm_with_overlap_control(x_nd, y_md, ctl_pts, jmin=0.3, **kwargs):
-  def calculate_overlap(f, jmin, ctl_pts):
-    def solve_interp_factor(T, pt, jmin, jac_eps=0.0001):
-        # returns a s.t. det(jacobian((1-a)*I + a*T)) = jmin
-        # from __future__ import division VERY IMPORTANT
-        # f_x is df/dx, f_y is df/dy, etc., where f, g, and h are the components of T.
-        f_x, g_x, h_x = T.approx_deriv(pt, [jac_eps, 0, 0], jac_eps)
-        f_y, g_y, h_y = T.approx_deriv(pt, [0, jac_eps, 0], jac_eps)
-        f_z, g_z, h_z = T.approx_deriv(pt, [0, 0, jac_eps], jac_eps)
-        print 'jacobian: '
-        print f_x, g_x, h_x
-        print f_y, g_y, h_y
-        print f_z, g_z, h_z
-        # I did this by hand
-        r0 = ((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))/((-1/2 - 3**(1/2)*1j/2)*((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3)) - (-1/2 - 3**(1/2)*1j/2)*((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x))
-        r1 = ((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))/((-1/2 + 3**(1/2)*1j/2)*((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3)) - (-1/2 + 3**(1/2)*1j/2)*((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x))
-        r2 = ((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))/((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3) - ((-jmin + 1)/(2*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) + (((f_x + g_y + h_z)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**2/(9*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2))**3 + ((-jmin + 1)/(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + 2*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**2/4)**(1/2) - (f_x + g_y + h_z)*(f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(6*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**2) + (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)**3/(27*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x)**3))**(1/3) - (f_x*g_y + f_x*h_z - f_y*g_x - f_z*h_x + g_y*h_z - g_z*h_y)/(3*(f_x*g_y*h_z - f_x*g_z*h_y - f_y*g_x*h_z + f_y*g_z*h_x + f_z*g_x*h_y - f_z*g_y*h_x))
-        print 'roots', (r0, r1, r2)
-        return [r.real for r in (r0, r1, r2) if r.imag == 0 and r.real > 0 and r.real <= 1] # only look at real solutions in (0, 1]
-
-    # choose a so that |jac((1-a)*I + a*f)| > jmin on ctl_pts
-    a = 1
-    for pt in ctl_pts:
-      rs = solve_interp_factor(f, pt, jmin)
-      chosen_r = 1 if len(rs) == 0 else min(rs)
-      a = min(a, chosen_r)
-    return a
-
-  orig_x_nd = x_nd.copy()
-  t = CompositeTransformation(ThinPlateSpline.identity(x_nd.shape[1]))
-  n_iter = 10
-  tps_rpm_kwargs = kwargs.copy(); tps_rpm_kwargs['plotting'] = False
-  for i in range(n_iter):
-    f = tps_rpm(x_nd, y_md, **tps_rpm_kwargs)
-    if i == n_iter - 1:
-      t.compose_with(f) # on the last iteration, force convergence
-    else:
-      a = calculate_overlap(f, jmin, t.transform_points(np.asarray(ctl_pts)))
-      print 'Smoothing out overlap: a:', a, 'iter:', i
-      t.compose_with(f.interp_with_identity(a))
-      if a == 1: break # converged
-    x_nd = t.get_last_fn().transform_points(x_nd)
-
-# orig_x_nd = x_nd.copy()
-# t = CompositeTransformation(ThinPlateSpline.identity(x_nd.shape[1]))
-# n_iter = 100
-# tps_rpm_kwargs = kwargs.copy(); tps_rpm_kwargs['plotting'] = False
-# for i in range(n_iter):
-#   f = tps_rpm(x_nd, y_md, **tps_rpm_kwargs)
-#   if i == n_iter - 1:
-#     t.compose_with(f) # on the last iteration, force convergence
-#   else:
-#     #a = calculate_overlap(f, jmin, t.transform_points(np.asarray(ctl_pts)))
-#     a = 0.02
-#     print 'Smoothing out overlap: a:', a, 'iter:', i
-#     t.compose_with(f.interp_with_identity(a))
-#     if a == 1: break # converged
-#   x_nd = t.get_last_fn().transform_points(x_nd)
-
-    if 'plotting' in kwargs and kwargs['plotting']:
-      from lfd import warping
-      from brett2.ros_utils import Marker
-      from jds_utils import conversions
-      Globals.setup()
-      mins = orig_x_nd.min(axis=0)
-      maxes = orig_x_nd.max(axis=0)
-      mins -= .1; maxes += .1
-      Globals.handles = warping.draw_grid(Globals.rviz, t.transform_points, mins, maxes, 'base_footprint', xres=.01, yres=.01, zres=-1)
-      orig_pose_array = conversions.array_to_pose_array(orig_x_nd, "base_footprint")
-      target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
-      warped_pose_array = conversions.array_to_pose_array(t.transform_points(orig_x_nd), 'base_footprint')
-      Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
-      Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
-      Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
-
-  return t
-
+            import time
+            time.sleep(.2)
+    
 def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None):
+    """
+    tps-rpm algorithm mostly as described by chui and rangaran
+    reg_init/reg_final: regularization on curvature
+    rad_init/rad_final: radius for correspondence calculation (meters)
+    plotting: 0 means don't plot. integer n means plot every n iterations
+    """
     n,d = x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
@@ -420,35 +306,15 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
         f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, angular_spring = regs[i]*200	, verbose=verbose)
 
         if plotting and i%plotting==0:
-            if f.d==2:
-                plt.plot(x_nd[:,1], x_nd[:,0],'r.')
-                plt.plot(y_md[:,1], y_md[:,0], 'b.')
-            pred = f.transform_points(x_nd)
-            if f.d==2:
-                plt.plot(pred[:,1], pred[:,0], 'g.')
-            if f.d == 2:
-                plot_warped_grid_2d(f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0))
-                plt.ginput()
-            elif f.d == 3:
-                Globals.setup()
-
-                mins = x_nd.min(axis=0)
-                maxes = x_nd.max(axis=0)
-#                mins[2] -= .1
-#                maxes[2] += .1
-                mins -= .1; maxes += .1
-                Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=.01, yres=.01, zres=-1)
-                orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
-                target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
-                warped_pose_array = conversions.array_to_pose_array(f.transform_points(x_nd), 'base_footprint')
-                Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
-                Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
-                Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
-
+            plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)                
     f.corr = corr_nm
     return f
 
 def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True):
+    """
+    Do tps_rpm algorithm for each z angle rotation
+    Then don't reestimate affine part in tps optimization
+    """
     n,d = x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
@@ -480,7 +346,7 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
             f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, verbose=verbose)
     
             if plotting and i%plotting==0:
-                plot_orig_and_warped_clouds(f, x_nd, y_md)
+                plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)
 
         print "zrot: %.3e, cost: %.3e,  meancorr: %.3e"%(zrot, f.cost, corr_nm.mean())
         cost = abs(zrot)/6 + f.cost
@@ -517,29 +383,29 @@ class FuncPlotter(object):
         plt.plot(self.xs, self.ys,'x')
         plt.draw()
  
-def plot_orig_and_warped_clouds(f, x_nd, y_md): 
-    if f.d==2:
+def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1, d=3): 
+    if d==2:
         import matplotlib.pyplot as plt
         plt.plot(x_nd[:,1], x_nd[:,0],'r.')
         plt.plot(y_md[:,1], y_md[:,0], 'b.')
-    pred = f.transform_points(x_nd)
-    if f.d==2:
+    pred = f(x_nd)
+    if d==2:
         plt.plot(pred[:,1], pred[:,0], 'g.')
-    if f.d == 2:
-        plot_warped_grid_2d(f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0))
+    if d == 2:
+        plot_warped_grid_2d(f, x_nd.min(axis=0), x_nd.max(axis=0))
         plt.ginput()
-    elif f.d == 3:
+    elif d == 3:
         
         Globals.setup()
 
         mins = x_nd.min(axis=0)
         maxes = x_nd.max(axis=0)
-        mins[2] -= .1
-        maxes[2] += .1
-        Globals.handles = warping.draw_grid(Globals.rviz, f.transform_points, mins, maxes, 'base_footprint', xres=.1, yres=.1)
+        mins -= np.array([.1, .1, .01])
+        maxes += np.array([.1, .1, .01])
+        Globals.handles = warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res)
         orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
         target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
-        warped_pose_array = conversions.array_to_pose_array(f.transform_points(x_nd), 'base_footprint')
+        warped_pose_array = conversions.array_to_pose_array(f(x_nd), 'base_footprint')
         Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
         Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
         Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))

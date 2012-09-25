@@ -1,0 +1,15 @@
+<launch>
+
+  <arg name="camera" default="kinect"/>
+  <arg name="online" default="true"/>
+  <arg name="bus1" default="1"/>
+  <arg name="bus2" default="2"/>
+  <arg name="filename"/>
+
+
+  <node name="drop2" pkg="topic_tools" type="drop" args="/$(arg camera)2/depth_registered/points 2 3 /drop/$(arg camera)2/points"/>
+  
+  <node name="merger" pkg="binary_symlinks" type="cloud_merger_node" output="screen" args="--cameraTopics=/camera/depth_registered/points --cameraTopics=/drop/$(arg camera)2/points --outputTopic=/kinect_merged/points --calibrationType=1 --calibrateOnce=1 --tfParent=0 --saveTransform=0"/>
+  
+
+</launch>

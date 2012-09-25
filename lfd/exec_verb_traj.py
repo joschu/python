@@ -1,3 +1,7 @@
+"""
+This file contains the function exec_traj that will execute a trajectory on the robot specified by ExecTrajectoryRequest
+"""
+
 from __future__ import division
 import rospy
 import itertools, os, lfd
@@ -17,6 +21,7 @@ from jds_utils.func_utils import once
 import sensor_msgs.msg as sm
 from lfd import lfd_traj as lt
 from jds_utils.yes_or_no import yes_or_no
+import kinematics.kinematics_utils as ku
 
 class Globals:
     handles = []
@@ -75,6 +80,7 @@ def exec_traj(req):
             gripper_xyzs.append(xyz)
             gripper_quats.append(quat)
         joint_positions, inds = trajectories.make_joint_traj(gripper_xyzs, gripper_quats, manip, 'base_footprint', '%s_gripper_tool_frame'%lr, filter_options = 1+18)
+        joint_positions = ku.smooth_positions(joint_positions, .01)
         
         if len(inds) == 0:
             return ExecTrajectoryResponse(success=False)                         
@@ -90,11 +96,13 @@ def exec_traj(req):
 
 
     yn = yes_or_no("continue?")
-    lt.go_to_start(Globals.pr2, body_traj)
-    lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
+    if yn:
+        lt.go_to_start(Globals.pr2, body_traj)
+        lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
 
-    
-    Globals.pr2.join_all()
-    return ExecTrajectoryResponse(success=True)
+        Globals.pr2.join_all()
+        return ExecTrajectoryResponse(success=True)
+    else:
+        return ExecTrajectoryResponse(success=False)
 
     

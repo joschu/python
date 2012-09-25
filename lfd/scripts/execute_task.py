@@ -7,12 +7,16 @@ Currently works for tying an overhand knot or folding up a laid-out towel
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("--task", action='store',default="overhand_knot")
+parser.add_argument("--task")
 parser.add_argument("--human_select_demo", action="store_true")
 parser.add_argument("--prompt_before_motion", action="store_true")
 parser.add_argument("--count_steps",action="store_true")
 parser.add_argument("--hard_table",action="store_true")
 parser.add_argument("--test",action="store_true")
+parser.add_argument("--use_tracking", action="store_true")
+parser.add_argument("--reg_final", type=float, default=.025)
+parser.add_argument("--use_rigid", action="store_true")
+parser.add_argument("--cloud_topic", type=str, default="/preprocessor/points")
 args = parser.parse_args()
 
 
@@ -36,6 +40,10 @@ try:
     from jds_image_proc.alpha_shapes import get_concave_hull
 except Exception:
     pass
+try:
+    from bulletsim_msgs.msg import TrackedObject
+except Exception:
+    pass
 import h5py
 from collections import defaultdict
 import yaml
@@ -46,7 +54,7 @@ with open(osp.join(data_dir, "knot_demos.yaml"),"r") as fh:
     
 DS_LENGTH = .025
 DS_METHOD = "voxel"
-if args.task == "fold_towel":
+if args.task.startswith("fold"):
     DS_METHOD="hull"
 #else:
     #DS_METHOD = "voxel"
@@ -70,6 +78,13 @@ def draw_table():
 def load_table():
     table_bounds = map(float, rospy.get_param("table_bounds").split())
     kinbodies.create_box_from_bounds(Globals.pr2.env,table_bounds, name="table")
+    
+def increment_pose(arm, translation):
+    cur_pose = arm.get_pose_matrix("base_footprint", "r_gripper_tool_frame")
+    new_pose = cur_pose.copy()
+    new_pose[:3,3] += translation
+    arm.goto_pose_matrix(new_pose, "base_footprint", "r_gripper_tool_frame")
+        
     
 
 class Globals:
@@ -119,8 +134,14 @@ class LookAtObject(smach.State):
         """
         Globals.handles = []
         
-        Globals.pr2.larm.goto_posture('side')
-        Globals.pr2.rarm.goto_posture('side')
+        if not args.use_tracking:
+            Globals.pr2.larm.goto_posture('side')
+            Globals.pr2.rarm.goto_posture('side')
+        else:
+            try: increment_pose(Globals.pr2.rarm, [0,0,.02])
+            except PR2.IKFail: print "couldn't raise right arm"
+            try: increment_pose(Globals.pr2.larm, [0,0,.02])
+            except PR2.IKFail: print "couldn't raise left arm"
         Globals.pr2.rgrip.set_angle(.08)
         Globals.pr2.lgrip.set_angle(.08)
         Globals.pr2.join_all()
@@ -128,8 +149,11 @@ class LookAtObject(smach.State):
 
         if args.test:
             xyz = np.squeeze(np.asarray(demos[select_from_list(demos.keys())]["cloud_xyz"]))
+        elif args.use_tracking:
+            msg = rospy.wait_for_message("/tracker/object", TrackedObject)
+            xyz = [(pt.x, pt.y, pt.z) for pt in msg.rope.nodes]
         else:
-            msg = rospy.wait_for_message("/preprocessor/points", sensor_msgs.msg.PointCloud2)
+            msg = rospy.wait_for_message(args.cloud_topic, sensor_msgs.msg.PointCloud2)
             xyz, rgb = ros_utils.pc2xyzrgb(msg)
             xyz = xyz.reshape(-1,3)
             xyz = ros_utils.transform_points(xyz, Globals.pr2.tf_listener, "base_footprint", msg.header.frame_id)
@@ -210,7 +234,7 @@ class SelectTrajectory(smach.State):
             best_demo = demos[seg_name]         
             pts0,_ = best_demo["cloud_xyz_ds"]
             pts1,_ = downsample(xyz_new)
-            self.f = registration.tps_rpm(pts0, pts1, plotting = 4, reg_init=1,reg_final=.025,n_iter=40)                            
+            self.f = registration.tps_rpm(pts0, pts1, plotting = 4, reg_init=1,reg_final=args.reg_final,n_iter=40)                            
         else:            
             
             if args.count_steps: candidate_demo_names = self.count2segnames[Globals.stage]
@@ -234,7 +258,11 @@ class SelectTrajectory(smach.State):
         
         if args.test: n_iter = 21
         else: n_iter = 101
-        self.f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting = 20, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False)                
+        if args.use_rigid:
+            self.f = registration.Translation2d()
+            self.f.fit(xyz_demo_ds, xyz_new_ds)
+        else:
+            self.f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting = 20, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False)                
 
 
 
@@ -327,6 +355,9 @@ if __name__ == "__main__":
     Globals.setup()
     #Globals.pr2.torso.go_up()
     #Globals.pr2.head.set_pan_tilt(0, HEAD_TILT)
+    if args.use_tracking:
+        Globals.pr2.larm.goto_posture('side')
+        Globals.pr2.rarm.goto_posture('side')        
     Globals.pr2.join_all()
     tie_knot_sm = make_tie_knot_sm()
     tie_knot_sm.execute()
