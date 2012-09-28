@@ -9,6 +9,13 @@ import yaml
 
 PARALLEL = False
 
+class DebugDrawing:
+  enabled = False
+  lines = []
+  @staticmethod
+  def clear():
+    DebugDrawing.lines = []
+
 def downsample(xyz):
   from jds_image_proc.clouds import voxel_downsample
   DS_LENGTH = .025
@@ -48,6 +55,17 @@ class BasicMatcher(object):
   def get_name(self): raise NotImplementedError
   def match(self, xyz): raise NotImplementedError
 
+#class NearestNeighborMatcher(BasicMatcher):
+#  def match(self, xyz):
+#    costs_names = [(self.calc_dist(self.dataset[seg_name], xyz_new_ds, dists_new), seg_name) for seg_name in self.dataset.keys()]
+#    for cost, name in sorted(costs_names):
+#      print 'Segment %s: cost %f' % (name, cost)
+#    best_cost, best_name = min(costs_names)
+#    return best_name, best_cost
+#
+#  def calc_dist(self, dataset_item, item):
+#    raise NotImplementedError
+
 class GeodesicDistMatcher(BasicMatcher):
   def __init__(self, dataset):
     BasicMatcher.__init__(self, dataset)
@@ -75,23 +93,45 @@ class GeodesicDistMatcher(BasicMatcher):
     best_cost, best_name = min(costs_names)
     return best_name, best_cost
 
-def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20):
+def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20, normalize_angles=False, pca_radius=0.1):
   xy = xy[:,:2]
-  def calc_one_hist(c):
-#   xy_cv, lp_cv = cv.fromarray(xy), cv.fromarray(xy)
-#   print 'center', c, list(c), (c[0], c[1])
-#   cv.LogPolar(xy_cv, lp_cv, center=map(float, list(c)), M=1)
-    lp = np.empty_like(xy)
-    for i in xrange(xy.shape[0]):
-      p = xy[i]
-      dist, angle = np.linalg.norm(p-c), np.arctan2(p[1]-c[1], p[0]-c[0])
-      lp[i] = np.log(dist + 1e-6), angle
-    #draw_comparison(xy, lp)
-    hist, _ = np.histogramdd(lp, (logr_bins, theta_bins))
-    return hist
+  npoints = xy.shape[0]
 
-  hists = np.zeros((xy.shape[0], logr_bins, theta_bins))
-  for k in xrange(xy.shape[0]):
+  if normalize_angles:
+    from scipy import spatial
+    princomps = np.zeros((npoints, 2))
+    princomp_angles = np.zeros((npoints, 1))
+    kdtree = spatial.KDTree(xy)
+    for i in xrange(npoints):
+      ball = xy[kdtree.query_ball_point(xy[i], pca_radius)] - xy[i]
+      pc = np.linalg.svd(ball)[2][0]
+      princomps[i] = pc
+      princomp_angles[i] = np.arctan2(pc[1], pc[0])
+      if DebugDrawing.enabled:
+        DebugDrawing.lines.append((xy[i], xy[i] + princomps[i]/np.linalg.norm(princomps[i])*0.1))
+
+  def calc_one_hist(c):
+    lp = np.empty_like(xy)
+    for i in xrange(npoints):
+      dp = xy[i] - c
+      logdist = np.log(np.linalg.norm(dp) + 1e-6)
+      angle = np.arctan2(dp[1], dp[0])
+      if normalize_angles:
+        # look at angle relative to tangent (first principal component)
+        angle -= princomp_angles[i]
+      lp[i] = logdist, angle
+
+    if DebugDrawing.enabled:
+      draw_comparison(xy, lp)
+
+    return np.histogram2d( \
+      lp[:,0], lp[:,1], \
+      bins=(logr_bins, theta_bins), \
+      range=((-1e6, 3), (0, 2.*np.pi)) \
+    )[0]
+
+  hists = np.zeros((npoints, logr_bins, theta_bins))
+  for k in xrange(npoints):
     hists[k] = calc_one_hist(xy[k])
   return hists
 
@@ -124,7 +164,6 @@ class ShapeContextMatcher(BasicMatcher):
 
     xyz_new_ds, ds_inds = downsample(xyz_new)
     hists_new = calc_shape_context_hists(xyz_new_ds)
-    #dists_new = recognition.calc_geodesic_distances_downsampled_old(xyz_new, xyz_new_ds, ds_inds)
     costs_names = [(_calc_seg_cost(self.dataset[seg_name], xyz_new_ds, hists_new), seg_name) for seg_name in self.dataset.keys()]
     for cost, name in sorted(costs_names):
       print 'Segment %s: cost %f' % (name, cost)
@@ -169,6 +208,8 @@ def draw_comparison(left_cloud, right_cloud):
     @on_trait_change('scene1.activated')
     def redraw_scene1(self):
       self.redraw_scene(self.scene1, left_cloud)
+      for line in DebugDrawing.lines:
+        mlab.plot3d([line[0][0], line[1][0]], [line[0][1], line[1][1]], [0, 0], tube_radius=None, figure=self.scene1.mayavi_scene)
 
     @on_trait_change('scene2.activated')
     def redraw_scene2(self):
