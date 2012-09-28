@@ -85,7 +85,6 @@ def calc_match_score(xyz0, xyz1, dists0 = None, dists1 = None):
     
     if dists0 is None: dists0 = calc_geodesic_distances(xyz0)
     if dists1 is None: dists1 = calc_geodesic_distances(xyz1)
-    print 'dists0 shape', dists0.shape
 
     starts, ends = np.meshgrid(partners, partners)
 
