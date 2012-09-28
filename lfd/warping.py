@@ -20,13 +20,13 @@ def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):
     nfine = 30
     xcoarse = np.arange(xmin, xmax, xres)
     ycoarse = np.arange(ymin, ymax, yres)
-    zcoarse = np.arange(zmin, zmax, zres)
+    if zres == -1: zcoarse = [(zmin+zmax)/2.]
+    else: zcoarse = np.arange(zmin, zmax, zres)
     xfine = np.linspace(xmin, xmax, nfine)
     yfine = np.linspace(ymin, ymax, nfine)
     zfine = np.linspace(zmin, zmax, nfine)
     
     lines = []
-    
     if len(zcoarse) > 1:    
         for x in xcoarse:
             for y in ycoarse:
@@ -53,7 +53,7 @@ def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):
             lines.append(f(xyz))
 
     for line in lines:
-        grid_handles.append(rviz.draw_curve(conversions.array_to_pose_array(line, frame_id),width=.001,rgba=(1,1,0,1)))
+        grid_handles.append(rviz.draw_curve(conversions.array_to_pose_array(line, frame_id),width=.0005,rgba=(1,1,0,1)))
                                 
     return grid_handles
 
@@ -156,8 +156,9 @@ def transform_demo_with_fingertips(f, demo):
             tool_quats = []
             tool_angles = []
         
-            for (pos0, pos1, ori) in zip(xyz_fingertip0, xyz_fingertip1, ori):
-                hmat, ang = calc_hand_pose(pos0, pos1, ori)
+            print calc_hand_pose(xyz_fingertip0[0], xyz_fingertip1[0], ori[0])[0][:3,:3]
+            for (pos0, pos1, o) in zip(xyz_fingertip0, xyz_fingertip1, ori):
+                hmat, ang = calc_hand_pose(pos0, pos1, o)
                 xyz, quat = conversions.hmat_to_trans_rot(hmat)
                 tool_xyzs.append(xyz)
                 tool_quats.append(quat)

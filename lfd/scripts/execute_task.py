@@ -100,7 +100,7 @@ class Globals:
     @staticmethod
     def setup():
         if Globals.pr2 is None: 
-            Globals.pr2 = PR2.PR2.create()
+            Globals.pr2 = PR2.PR2.create(rave_only=args.test)
             if not args.test: load_table()
         if Globals.rviz is None: Globals.rviz = ros_utils.RvizWrapper.create()
         Globals.table_height = rospy.get_param("table_height")
@@ -185,7 +185,8 @@ def calc_seg_cost(seg_name, xyz_new_ds, dists_new):
     candidate_demo = demos[seg_name]
     xyz_demo_ds = np.squeeze(candidate_demo["cloud_xyz_ds"])
     dists_demo = candidate_demo["geodesic_dists"]
-    cost = recognition.calc_match_score(xyz_new_ds, xyz_demo_ds, dists0 = dists_new, dists1 = dists_demo)
+  #  cost = recognition.calc_match_score(xyz_new_ds, xyz_demo_ds, dists0 = dists_new, dists1 = dists_demo)
+    cost = recognition.calc_match_score(xyz_demo_ds, xyz_new_ds, dists0 = dists_demo, dists1 = dists_new)
     print "seg_name: %s. cost: %s"%(seg_name, cost)
     return cost, seg_name
 
@@ -241,8 +242,8 @@ class SelectTrajectory(smach.State):
             
             from joblib import parallel
             
-            #costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
-            costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
+            costs_names = parallel.Parallel(n_jobs = 8)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
+            #costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
             #costs_names = [calc_seg_cost(seg_name) for seg_name in candidate_demo_names]
             _, best_name = min(costs_names)
 

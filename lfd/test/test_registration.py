@@ -95,8 +95,8 @@ def test_registration_rope_images():
     tps = registration.tps_rpm(rope[:,:2], sim_ropes[i][:,:2],plotting=10,reg_init=1,reg_final=.025,n_iter=200)
     
 
-def test_registration_3d():
-#if __name__ == "__main__":
+#def test_registration_3d():
+if __name__ == "__main__":
     import rospy, itertools, glob
     from jds_utils.colorize import colorize
     if rospy.get_name() == "/unnamed": rospy.init_node('test_registration_3d',disable_signals=True)
@@ -111,9 +111,10 @@ def test_registration_3d():
         print colorize("comparing %s to %s"%(files[i0], files[i1]),'red',bold=True)
         rope0 = np.loadtxt(osp.join(data_dir,files[i0]))
         rope1 = np.loadtxt(osp.join(data_dir,files[i1]))
-        f = registration.tps_rpm(rope0, rope1, plotting=True,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
-        distmat1[i0, i1] = f.cost
-        distmat2[i0, i1] = f.corr_sum
+        f = registration.tps_rpm(rope0, rope1, plotting=1,reg_init=100,reg_final=1,n_iter=51, verbose=False)
+        ##distmat1[i0, i1] = f.cost
+        #distmat2[i0, i1] = f.corr_sum
+        break
 
 
     plt.figure(1)    
@@ -124,7 +125,7 @@ def test_registration_3d():
     plt.title("corr_sums")
     np.savez("cross_registration_results", distmat = distmat1, names = files)
 
-#if __name__ == "__main__":?
+#if __name__ == "__main__":
 def test_cups():
     import rospy, itertools, glob
     from jds_utils.colorize import colorize
@@ -148,7 +149,8 @@ def test_cups():
     f = registration.tps_rpm(3*xyz1, 3*xyz2, plotting=4,reg_init=1,reg_final=.05,n_iter=200, verbose=False)
 
 
-if __name__ == "__main__":
+#if __name__ == "__main__":
+def test_plate():
     import rospy, itertools, glob
     from jds_utils.colorize import colorize
     from jds_image_proc.pcd_io import load_xyzrgb

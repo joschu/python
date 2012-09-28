@@ -37,13 +37,30 @@ class Transformation(object):
     def transform_frames(self, x_nd, rot_nkk, orthogonalize=True):
         raise NotImplementedError
 
+    def jacobian(self, x_d, epsilon=0.0001):
+        x0 = np.asfarray(x_d)
+        f0 = self.transform_points(x0)
+        jac = np.zeros(len(x0), len(f0))
+        dx = np.zeros(len(x0))
+        for i in range(len(x0)):
+            dx[i] = epsilon
+            jac[i] = (self.transform_points(x0+dx) - f0) / epsilon
+            dx[i] = 0.
+        return jac.transpose()
+
+    def approx_deriv(self, x_d, dx_d, dist=None):
+        x_1d, dx_1d = np.asarray([x_d]), np.asarray([dx_d])
+        if dist is None: dist = np.linalg.norm(dx_d)
+        return (self.transform_points(x_1d)[0] - self.transform_points(x_1d + dx_1d)[0])/float(dist)
+
 class ThinPlateSpline(Transformation):
     def __init__(self, d):
         self.n = 0
         self.d = d
-        self.x_nd = np.zeros((0,d))
-        self.lin_ag = np.eye((d,d))
+        self.x_na = np.zeros((0,d))
+        self.lin_ag = np.eye(d)
         self.trans_g = np.zeros(d)
+        self.w_ng = np.zeros((0,d))
         
     @staticmethod
     def identity(d):
@@ -58,34 +75,58 @@ class ThinPlateSpline(Transformation):
         wt_n: weight the points        
         """
         self.n, self.d = n,d = x_na.shape
-        self.lin_ga, self.trans_g, self.w_ng = tps.tps_fit(x_na, y_ng, bend_coef, rot_coef, wt_n)
+        self.lin_ag, self.trans_g, self.w_ng = tps.tps_fit2(x_na, y_ng, bend_coef, rot_coef, wt_n)
         self.x_na = x_na
         
     def transform_points(self, x_md):
         return tps.tps_eval(x_md, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
     
-    def transform_frames(self, x_ma, rot_mda, orthogonalize="qr"):
+    def transform_frames(self, x_ma, rot_mda, orthogonalize="cross"):
         """
         orthogonalize: none, svd, qr
         """
         m,d = x_ma.shape
         
-        grad_mga = tps.tps_grad(x_ma, self.lin_ga, self.trans_g, self.w_ng, self.x_na)
+        grad_mga = tps.tps_grad(x_ma, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
         newrot_mdg = (rot_mda[:,:,None,:] * grad_mga[:,None,:,:]).sum(axis=3)
         # mdg               md_a                  m_ga
         
-        newpt_mg = tps.tps_eval(x_ma, self.lin_ga, self.trans_g, self.w_ng, self.x_na)
+        newpt_mg = tps.tps_eval(x_ma, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
 
 
         if orthogonalize == "qr": 
             newrot_mdg =  orthogonalize3_qr(newrot_mdg)
         elif orthogonalize == "svd":
             newrot_mdg = orthogonalize3_svd(newrot_mdg)
+        elif orthogonalize == "cross":
+            newrot_mdg = orthogonalize3_cross(newrot_mdg)
         elif orthogonalize == "none":
             pass
         else: raise Exception("unknown orthogonalization method %s"%orthogonalize)
         return newpt_mg, newrot_mdg
 
+class CompositeTransformation(Transformation):
+    def __init__(self, init_fn):
+      self.fns = [init_fn]
+
+    def compose_with(self, f):
+      self.fns.append(f)
+
+    def get_last_fn(self):
+      return self.fns[-1]
+
+    def fit(self, x_nd, y_nd):
+      assert False
+
+    def transform_points(self, x_md):
+      for f in self.fns:
+        x_md = f.transform_points(x_md)
+      return x_md
+
+    def transform_frames(self, x_md, rot_mdd, orthogonalize=True):
+      for f in self.fns:
+        x_md, rot_mdd = f.transform_frames(x_md, rot_mdd, orthogonalize)
+      return x_md, rot_mdd
 
 class ThinPlateSplineFixedRot(ThinPlateSpline):
     """same as ThinPlateSpline except during fitting, affine part is a fixed rotation around z axis"""
@@ -192,8 +233,6 @@ def loglinspace(a,b,n):
     "n numbers between a to b (inclusive) with constant ratio between consecutive numbers"
     return np.exp(np.linspace(np.log(a),np.log(b),n))    
 
-    
-    
 class Globals:
     handles = []
     rviz = None
@@ -205,7 +244,7 @@ class Globals:
             import time
             time.sleep(.2)
     
-def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None):
+def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None, return_full = False):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
     reg_init/reg_final: regularization on curvature
@@ -216,9 +255,11 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
     f = ThinPlateSpline.identity(d)
+    #f.trans_g = y_md.mean(axis=0) - x_nd.mean(axis=0)
+    
     for i in xrange(n_iter):
-        if f.d==2 and i%plotting==0: 
-            import matplotlib.pyplot as plt            
+        if f.d==2 and i%plotting==0:
+            import matplotlib.pyplot as plt
             plt.clf()
         if i==0 and f_init is not None:
             xwarped_nd = f_init(x_nd)
@@ -227,21 +268,34 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
             xwarped_nd = f.transform_points(x_nd)
         # targ_nd = find_targets(x_nd, y_md, corr_opts = dict(r = rads[i], p = .1))
         corr_nm = calc_correspondence_matrix(xwarped_nd, y_md, r=rads[i], p=.2)
-        
+
         wt_n = corr_nm.sum(axis=1)
-        targ_nd = np.dot(corr_nm/wt_n[:,None], y_md)
         
+        goodn = wt_n > .1
+        
+        
+        targ_Nd = np.dot(corr_nm[goodn, :]/wt_n[goodn][:,None], y_md)
+
         # if plotting:
         #     plot_correspondence(x_nd, targ_nd)
         #print "warning: changed angular spring!"        
-        f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, angular_spring = regs[i]*200	, verbose=verbose)
+        f.fit(x_nd[goodn], targ_Nd, bend_coef = regs[i], wt_n = wt_n[goodn], rot_coef = 10*regs[i], verbose=verbose)
 
         if plotting and i%plotting==0:
-            plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)                
-
-        
-    f.corr = corr_nm
-    return f
+            plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)   
+            targ_pose_array = conversions.array_to_pose_array(targ_Nd, 'base_footprint')
+            Globals.handles.append(Globals.rviz.draw_curve(targ_pose_array,rgba=(1,1,0,1),type=Marker.CUBE_LIST))
+            
+    if return_full:
+        info = {}
+        info["corr_nm"] = corr_nm
+        info["goodn"] = goodn
+        info["x_Nd"] = x_nd[goodn,:]
+        info["targ_Nd"] = targ_Nd
+        info["wt_N"] = wt_n[goodn]
+        return f, info
+    else:
+        return f
 
 def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True):
     """
@@ -335,13 +389,13 @@ def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1, d=3):
         maxes = x_nd.max(axis=0)
         mins -= np.array([.1, .1, .01])
         maxes += np.array([.1, .1, .01])
-        Globals.handles = warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res)
+        Globals.handles = warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res, zres=-1)
         orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
         target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
         warped_pose_array = conversions.array_to_pose_array(f(x_nd), 'base_footprint')
-        Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
-        Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
-        Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
+        Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,.4),type=Marker.CUBE_LIST))
+        Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,.4),type=Marker.CUBE_LIST))
+        Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,.4),type=Marker.CUBE_LIST))
 
         
 def find_targets(x_md, y_nd, corr_opts):
@@ -387,10 +441,12 @@ def orthogonalize3_cross(mats_n33):
     
 
 def orthogonalize3_svd(x_k33):
-    u_k33, s_k3, vt_k33 = svds(x_k33)
-    return (u_k33[:,:,:,None] * vt_k33[:,None,:,:]).sum(axis=3)
+    u_k33, s_k3, v_k33 = svds(x_k33)
+    return (u_k33[:,:,:,None] * v_k33[:,None,:,:]).sum(axis=3)
 def orthogonalize3_qr(x_k33):
     raise NotImplementedError
+
+    
     
 def fit_score(src, targ, dist_param):
     "how good of a partial match is src to targ"

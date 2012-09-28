@@ -24,10 +24,10 @@ def svds(x_k33):
 def svds_slow(x_k33):
     s2,u2,v2 = [],[],[]
     for x_33 in x_k33:
-        u,s,v = np.linalg.svd(x_33)
+        u,s,vt = np.linalg.svd(x_33)
         s2.append(s)
         u2.append(u)
-        v2.append(v)
+        v2.append(vt)
     s2 = np.array(s2)
     u2 = np.array(u2)
     v2 = np.array(v2)
