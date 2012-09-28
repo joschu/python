@@ -75,13 +75,6 @@ class GeodesicDistMatcher(BasicMatcher):
     best_cost, best_name = min(costs_names)
     return best_name, best_cost
 
-def logpolar(xy, c):
-#  xy = xyz[:,:2]
-#  min_pt, max_pt = xy.min(axis=0), xy.max(axis=0)
-  xy_lp = xy.copy()
-  cv.LogPolar(xy, xy_lp, c, 1)
-  return xy_lp
-
 def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20):
   xy = xy[:,:2]
   def calc_one_hist(c):
@@ -93,7 +86,7 @@ def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20):
       p = xy[i]
       dist, angle = np.linalg.norm(p-c), np.arctan2(p[1]-c[1], p[0]-c[0])
       lp[i] = np.log(dist + 1e-6), angle
-    draw_comparison(xy, lp)
+    #draw_comparison(xy, lp)
     hist, _ = np.histogramdd(lp, (logr_bins, theta_bins))
     return hist
 
@@ -102,11 +95,11 @@ def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20):
     hists[k] = calc_one_hist(xy[k])
   return hists
 
-
 def compare_hists_with_permutation(h1, h2, perm):
   h2_permed = h2[perm]
   assert h2_permed.shape == h1.shape
-  return 0.5*((h2_permed - h1)**2 / (1 + h2_permed + h1)).sum()
+  # chi-squared test statistic
+  return 0.5*((h2_permed - h1)**2 / (h2_permed + h1 + 1)).sum() / h1.shape[0]
 
 class ShapeContextMatcher(BasicMatcher):
   def __init__(self, dataset):
@@ -208,20 +201,33 @@ def select_from_list(lst, prompt='Choose from the following options: '):
 def main():
   import argparse
   parser = argparse.ArgumentParser()
+  parser.add_argument('--dataset', default='overhand_knot', help='name of dataset')
   parser.add_argument('--method', choices=['geodesic_dist', 'shape_context'], default='geodesic_dist', help='matching algorithm')
-  parser.add_argument('--dataset', default='overhand_knot', help='dataset')
   parser.add_argument('--input_mode', choices=['from_dataset', 'kinect'], default='kinect', help='input cloud acquisition method')
+  parser.add_argument('--cloud_topic', default='/preprocessor/kinect1/points', help='ros topic for kinect input mode')
   args = parser.parse_args()
 
-  dataset = DataSet.LoadFromTaskDemos('overhand_knot')
+  dataset = DataSet.LoadFromTaskDemos(args.dataset)
 
+  # read input to match
   input_xyz = None
   if args.input_mode == 'from_dataset':
     key = select_from_list(sorted(dataset.keys()))
     input_xyz = np.squeeze(np.asarray(dataset[key]['cloud_xyz']))
+  elif args.input_mode == 'kinect':
+    import rospy
+    from brett2 import ros_utils
+    import sensor_msgs
+    if rospy.get_name() == '/unnamed':
+      rospy.init_node('matcher', disable_signals=True)
+    msg = rospy.wait_for_message(args.cloud_topic, sensor_msgs.msg.PointCloud2)
+    xyz, rgb = ros_utils.pc2xyzrgb(msg)
+    xyz = xyz.reshape(-1, 3)
+    input_xyz = ros_utils.transform_points(xyz, ros_utils.get_tf_listener(), "ground", msg.header.frame_id)
   else:
     raise NotImplementedError
 
+  # create the matcher
   matcher = None
   if args.method == 'geodesic_dist':
     matcher = GeodesicDistMatcher(dataset)
@@ -230,6 +236,7 @@ def main():
   else:
     raise NotImplementedError
 
+  # do the matching
   best_match_name, best_match_cost = matcher.match(input_xyz)
   print 'Best match name:', best_match_name, 'with cost:', best_match_cost
   draw_comparison(left_cloud=input_xyz, right_cloud=dataset[best_match_name]['cloud_xyz'])
