@@ -227,10 +227,30 @@ def create_segments(bag, link_names):
         elif button == 14: done_times.append(time)
         
     kinematics_info = extract_kinematics_from_bag(bag, link_names)
-    
+
+    # try to correct errors in start/stop/look
+    all_times = []
+    for t in start_times: all_times.append((t, 'start'))
+    for t in stop_times: all_times.append((t, 'stop'))
+    for t in look_times: all_times.append((t, 'look'))
+    all_times.sort()
+    print all_times
+    corrected_all_times = []
+    expected_action = 'look'
+    for i in range(len(all_times)):
+      t, action = all_times[i]
+      if action == expected_action:
+        corrected_all_times.append((t, action))
+        expected_action = {'look':'start', 'start':'stop', 'stop':'look'}[action]
+      else:
+        print "WARNING: ignoring button press '%s' at time %s (was expecting '%s')" % (action, str(t), expected_action)
+    print corrected_all_times
+    start_times = [t for t, action in corrected_all_times if action == 'start']
+    stop_times = [t for t, action in corrected_all_times if action == 'stop']
+    look_times = [t for t, action in corrected_all_times if action == 'look']
     assert len(start_times)==len(stop_times)==len(look_times)
-                    
-        
+
+
     N = len(kinematics_info["time"])
     
     l_open = np.zeros(N, bool)

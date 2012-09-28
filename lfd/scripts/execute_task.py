@@ -7,13 +7,16 @@ Currently works for tying an overhand knot or folding up a laid-out towel
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("--task", choices=["overhand_knot","figure8_knot","fold_towel"],default="overhand_knot")
+parser.add_argument("--task")
 parser.add_argument("--human_select_demo", action="store_true")
 parser.add_argument("--prompt_before_motion", action="store_true")
 parser.add_argument("--count_steps",action="store_true")
 parser.add_argument("--hard_table",action="store_true")
 parser.add_argument("--test",action="store_true")
 parser.add_argument("--use_tracking", action="store_true")
+parser.add_argument("--reg_final", type=float, default=.025)
+parser.add_argument("--use_rigid", action="store_true")
+parser.add_argument("--cloud_topic", type=str, default="/preprocessor/points")
 args = parser.parse_args()
 
 
@@ -51,7 +54,7 @@ with open(osp.join(data_dir, "knot_demos.yaml"),"r") as fh:
     
 DS_LENGTH = .025
 DS_METHOD = "voxel"
-if args.task == "fold_towel":
+if args.task.startswith("fold"):
     DS_METHOD="hull"
 #else:
     #DS_METHOD = "voxel"
@@ -97,7 +100,7 @@ class Globals:
     @staticmethod
     def setup():
         if Globals.pr2 is None: 
-            Globals.pr2 = PR2.PR2.create()
+            Globals.pr2 = PR2.PR2.create(rave_only=args.test)
             if not args.test: load_table()
         if Globals.rviz is None: Globals.rviz = ros_utils.RvizWrapper.create()
         Globals.table_height = rospy.get_param("table_height")
@@ -150,7 +153,7 @@ class LookAtObject(smach.State):
             msg = rospy.wait_for_message("/tracker/object", TrackedObject)
             xyz = [(pt.x, pt.y, pt.z) for pt in msg.rope.nodes]
         else:
-            msg = rospy.wait_for_message("/preprocessor/points", sensor_msgs.msg.PointCloud2)
+            msg = rospy.wait_for_message(args.cloud_topic, sensor_msgs.msg.PointCloud2)
             xyz, rgb = ros_utils.pc2xyzrgb(msg)
             xyz = xyz.reshape(-1,3)
             xyz = ros_utils.transform_points(xyz, Globals.pr2.tf_listener, "base_footprint", msg.header.frame_id)
@@ -182,7 +185,8 @@ def calc_seg_cost(seg_name, xyz_new_ds, dists_new):
     candidate_demo = demos[seg_name]
     xyz_demo_ds = np.squeeze(candidate_demo["cloud_xyz_ds"])
     dists_demo = candidate_demo["geodesic_dists"]
-    cost = recognition.calc_match_score(xyz_new_ds, xyz_demo_ds, dists0 = dists_new, dists1 = dists_demo)
+  #  cost = recognition.calc_match_score(xyz_new_ds, xyz_demo_ds, dists0 = dists_new, dists1 = dists_demo)
+    cost = recognition.calc_match_score(xyz_demo_ds, xyz_new_ds, dists0 = dists_demo, dists1 = dists_new)
     print "seg_name: %s. cost: %s"%(seg_name, cost)
     return cost, seg_name
 
@@ -230,7 +234,7 @@ class SelectTrajectory(smach.State):
             best_demo = demos[seg_name]         
             pts0,_ = best_demo["cloud_xyz_ds"]
             pts1,_ = downsample(xyz_new)
-            self.f = registration.tps_rpm(pts0, pts1, plotting = 4, reg_init=1,reg_final=.025,n_iter=40)                            
+            self.f = registration.tps_rpm(pts0, pts1, plotting = 4, reg_init=1,reg_final=args.reg_final,n_iter=40)                            
         else:            
             
             if args.count_steps: candidate_demo_names = self.count2segnames[Globals.stage]
@@ -238,8 +242,8 @@ class SelectTrajectory(smach.State):
             
             from joblib import parallel
             
-            #costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
-            costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
+            costs_names = parallel.Parallel(n_jobs = 8)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
+            #costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
             #costs_names = [calc_seg_cost(seg_name) for seg_name in candidate_demo_names]
             _, best_name = min(costs_names)
 
@@ -254,7 +258,11 @@ class SelectTrajectory(smach.State):
         
         if args.test: n_iter = 21
         else: n_iter = 101
-        self.f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting = 20, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False)                
+        if args.use_rigid:
+            self.f = registration.Translation2d()
+            self.f.fit(xyz_demo_ds, xyz_new_ds)
+        else:
+            self.f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting = 20, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False)                
 
 
 

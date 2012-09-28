@@ -13,7 +13,8 @@ from lfd import warping
 from brett2.ros_utils import Marker
 from jds_utils import conversions
 import matplotlib.pyplot as plt
-
+import tps
+from svds import svds
 
 def tps_kernel(dist, dim):
     if dim == 1:
@@ -36,19 +37,36 @@ class Transformation(object):
     def transform_frames(self, x_nd, rot_nkk, orthogonalize=True):
         raise NotImplementedError
 
+    def jacobian(self, x_d, epsilon=0.0001):
+        x0 = np.asfarray(x_d)
+        f0 = self.transform_points(x0)
+        jac = np.zeros(len(x0), len(f0))
+        dx = np.zeros(len(x0))
+        for i in range(len(x0)):
+            dx[i] = epsilon
+            jac[i] = (self.transform_points(x0+dx) - f0) / epsilon
+            dx[i] = 0.
+        return jac.transpose()
+
+    def approx_deriv(self, x_d, dx_d, dist=None):
+        x_1d, dx_1d = np.asarray([x_d]), np.asarray([dx_d])
+        if dist is None: dist = np.linalg.norm(dx_d)
+        return (self.transform_points(x_1d)[0] - self.transform_points(x_1d + dx_1d)[0])/float(dist)
+
 class ThinPlateSpline(Transformation):
     def __init__(self, d):
         self.n = 0
         self.d = d
-        self.x_nd = np.zeros((0,d))
-        self.w_nd = np.zeros((0,d))
-        self.a_Dd = np.eye(d+1,d)
+        self.x_na = np.zeros((0,d))
+        self.lin_ag = np.eye(d)
+        self.trans_g = np.zeros(d)
+        self.w_ng = np.zeros((0,d))
         
     @staticmethod
     def identity(d):
         return ThinPlateSpline(d)
         
-    def fit(self, x_nd, y_nd, smoothing=.1, angular_spring = 0, wt_n=None, verbose=True):
+    def fit(self, x_na, y_ng, bend_coef=.1, rot_coef = 1e-5, wt_n=None, verbose=True):
         """
         x_nd: source cloud
         y_nd: target cloud
@@ -56,75 +74,65 @@ class ThinPlateSpline(Transformation):
         angular_spring: penalize rotation
         wt_n: weight the points        
         """
-        self.n, self.d = n,d = x_nd.shape
-        
-        dists_tri = ssd.pdist(x_nd)
-        K_nn = ssd.squareform(tps_kernel(dists_tri, d))
-        
-        P = np.c_[x_nd, np.ones((n,1))]
-        
-        
-        if wt_n is None:
-            wt_n = np.ones(n)
-
-        reg_nn = smoothing * np.diag(1/(wt_n+1e-6))
-        reg_ratio = angular_spring/smoothing
-        A = np.r_[
-            np.c_[K_nn + reg_nn, P],
-            np.c_[P.T, reg_ratio * np.eye(d+1,d+1)]]
-        A[-1,-1] = 0
-        b = np.r_[y_nd, reg_ratio * np.eye(d+1,d)]
-
-        
-        coeffs = np.linalg.solve(A, b)
-        self.w_nd = coeffs[:n,:]
-        self.a_Dd = coeffs[n:,:]
-        rotation_cost = angular_spring * ((np.eye(d) - self.a_Dd[:-1,:])**2).sum()
-        
-        self.x_nd = x_nd
-
-        residual_cost = (wt_n[:,None] * ((y_nd - self.transform_points(x_nd))**2).sum(axis=1)).sum()
-        curvature_cost = smoothing * np.trace(np.dot(self.w_nd.T, np.dot(K_nn, self.w_nd)))
-        self.cost = residual_cost + curvature_cost + rotation_cost
-        if verbose:
-            print "cost = residual + curvature + rotation"
-            print " %.3g = %.3g + %.3g + %.3g"%(self.cost, residual_cost, curvature_cost, rotation_cost)
-            print "affine transform:\n", self.a_Dd
+        self.n, self.d = n,d = x_na.shape
+        self.lin_ag, self.trans_g, self.w_ng = tps.tps_fit2(x_na, y_ng, bend_coef, rot_coef, wt_n)
+        self.x_na = x_na
         
     def transform_points(self, x_md):
-        m,d = x_md.shape
-        assert d==self.d
-        dist_mn = ssd.cdist(x_md, self.x_nd)
-        K_mn = tps_kernel(dist_mn,d)
-        xhom_mD = np.c_[x_md, np.ones((m,1))]
-        ypred_md = np.dot(K_mn, self.w_nd) + np.dot(xhom_mD, self.a_Dd)
-        return ypred_md
+        return tps.tps_eval(x_md, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
     
-    def transform_frames(self, x_md, rot_mdd, orthogonalize=True):
-        m,d = x_md.shape
-        assert d == self.d
-
-        dist_mn = ssd.cdist(x_md, self.x_nd)
-        grad_mdd = np.zeros((m,d,d))
-        for i_d in xrange(d):
-            diffs_mn = x_md[:,i_d][:,None] - self.x_nd[:,i_d][None,:]
-            if self.d == 2:
-                raise NotImplementedError
-            elif self.d == 3:
-                grad_mdd[:,:,i_d] = self.a_Dd[i_d,:][None,:] + np.dot(nan2zero(diffs_mn / dist_mn),self.w_nd[:,i_d])[:,None]
-        newrot_mdd = (grad_mdd[:,:,:,None]* rot_mdd[:,None,:,:]).sum(axis=2)
+    def transform_frames(self, x_ma, rot_mda, orthogonalize="cross"):
+        """
+        orthogonalize: none, svd, qr
+        """
+        m,d = x_ma.shape
         
-        xhom_mD = np.c_[x_md, np.ones((m,1))]
-        K_mn = tps_kernel(dist_mn, self.d)
-        ypred_md = np.dot(K_mn, self.w_nd) + np.dot(xhom_mD, self.a_Dd)
-        if orthogonalize: newrot_mdd =  orthogonalize3(newrot_mdd)
-        return ypred_md, newrot_mdd
+        grad_mga = tps.tps_grad(x_ma, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
+        newrot_mdg = (rot_mda[:,:,None,:] * grad_mga[:,None,:,:]).sum(axis=3)
+        # mdg               md_a                  m_ga
+        
+        newpt_mg = tps.tps_eval(x_ma, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
 
+
+        if orthogonalize == "qr": 
+            newrot_mdg =  orthogonalize3_qr(newrot_mdg)
+        elif orthogonalize == "svd":
+            newrot_mdg = orthogonalize3_svd(newrot_mdg)
+        elif orthogonalize == "cross":
+            newrot_mdg = orthogonalize3_cross(newrot_mdg)
+        elif orthogonalize == "none":
+            pass
+        else: raise Exception("unknown orthogonalization method %s"%orthogonalize)
+        return newpt_mg, newrot_mdg
+
+class CompositeTransformation(Transformation):
+    def __init__(self, init_fn):
+      self.fns = [init_fn]
+
+    def compose_with(self, f):
+      self.fns.append(f)
+
+    def get_last_fn(self):
+      return self.fns[-1]
+
+    def fit(self, x_nd, y_nd):
+      assert False
+
+    def transform_points(self, x_md):
+      for f in self.fns:
+        x_md = f.transform_points(x_md)
+      return x_md
+
+    def transform_frames(self, x_md, rot_mdd, orthogonalize=True):
+      for f in self.fns:
+        x_md, rot_mdd = f.transform_frames(x_md, rot_mdd, orthogonalize)
+      return x_md, rot_mdd
 
 class ThinPlateSplineFixedRot(ThinPlateSpline):
     """same as ThinPlateSpline except during fitting, affine part is a fixed rotation around z axis"""
     
     def __init__(self, rot):
+        raise NotImplementedError
         ThinPlateSpline.__init__(self)
         assert rot.ndim == 2 and rot.shape[0] == rot.shape[1]
         self.n = 0
@@ -225,8 +233,6 @@ def loglinspace(a,b,n):
     "n numbers between a to b (inclusive) with constant ratio between consecutive numbers"
     return np.exp(np.linspace(np.log(a),np.log(b),n))    
 
-    
-    
 class Globals:
     handles = []
     rviz = None
@@ -238,7 +244,7 @@ class Globals:
             import time
             time.sleep(.2)
     
-def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None):
+def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None, return_full = False):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
     reg_init/reg_final: regularization on curvature
@@ -249,9 +255,11 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
     f = ThinPlateSpline.identity(d)
+    #f.trans_g = y_md.mean(axis=0) - x_nd.mean(axis=0)
+    
     for i in xrange(n_iter):
-        if f.d==2 and i%plotting==0: 
-            import matplotlib.pyplot as plt            
+        if f.d==2 and i%plotting==0:
+            import matplotlib.pyplot as plt
             plt.clf()
         if i==0 and f_init is not None:
             xwarped_nd = f_init(x_nd)
@@ -260,21 +268,34 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
             xwarped_nd = f.transform_points(x_nd)
         # targ_nd = find_targets(x_nd, y_md, corr_opts = dict(r = rads[i], p = .1))
         corr_nm = calc_correspondence_matrix(xwarped_nd, y_md, r=rads[i], p=.2)
-        
+
         wt_n = corr_nm.sum(axis=1)
-        targ_nd = np.dot(corr_nm/wt_n[:,None], y_md)
         
+        goodn = wt_n > .1
+        
+        
+        targ_Nd = np.dot(corr_nm[goodn, :]/wt_n[goodn][:,None], y_md)
+
         # if plotting:
         #     plot_correspondence(x_nd, targ_nd)
         #print "warning: changed angular spring!"        
-        f.fit(x_nd, targ_nd, regs[i], wt_n = wt_n, angular_spring = regs[i]*200	, verbose=verbose)
+        f.fit(x_nd[goodn], targ_Nd, bend_coef = regs[i], wt_n = wt_n[goodn], rot_coef = 10*regs[i], verbose=verbose)
 
         if plotting and i%plotting==0:
-            plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)                
-
-        
-    f.corr = corr_nm
-    return f
+            plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)   
+            targ_pose_array = conversions.array_to_pose_array(targ_Nd, 'base_footprint')
+            Globals.handles.append(Globals.rviz.draw_curve(targ_pose_array,rgba=(1,1,0,1),type=Marker.CUBE_LIST))
+            
+    if return_full:
+        info = {}
+        info["corr_nm"] = corr_nm
+        info["goodn"] = goodn
+        info["x_Nd"] = x_nd[goodn,:]
+        info["targ_Nd"] = targ_Nd
+        info["wt_N"] = wt_n[goodn]
+        return f, info
+    else:
+        return f
 
 def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True):
     """
@@ -368,13 +389,13 @@ def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1, d=3):
         maxes = x_nd.max(axis=0)
         mins -= np.array([.1, .1, .01])
         maxes += np.array([.1, .1, .01])
-        Globals.handles = warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res)
+        Globals.handles = warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res, zres=-1)
         orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
         target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
         warped_pose_array = conversions.array_to_pose_array(f(x_nd), 'base_footprint')
-        Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),type=Marker.CUBE_LIST))
-        Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,1),type=Marker.CUBE_LIST))
-        Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),type=Marker.CUBE_LIST))
+        Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,.4),type=Marker.CUBE_LIST))
+        Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,.4),type=Marker.CUBE_LIST))
+        Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,.4),type=Marker.CUBE_LIST))
 
         
 def find_targets(x_md, y_nd, corr_opts):
@@ -405,7 +426,7 @@ def nan2zero(x):
     np.putmask(x, np.isnan(x), 0)
     return x
 
-def orthogonalize3(mats_n33):
+def orthogonalize3_cross(mats_n33):
     "turns each matrix into a rotation"
 
     x_n3 = mats_n33[:,:,0]
@@ -417,6 +438,15 @@ def orthogonalize3(mats_n33):
     ynew_n3 = math_utils.normr(np.cross(znew_n3, xnew_n3))
     
     return np.concatenate([xnew_n3[:,:,None], ynew_n3[:,:,None], znew_n3[:,:,None]],2)
+    
+
+def orthogonalize3_svd(x_k33):
+    u_k33, s_k3, v_k33 = svds(x_k33)
+    return (u_k33[:,:,:,None] * v_k33[:,None,:,:]).sum(axis=3)
+def orthogonalize3_qr(x_k33):
+    raise NotImplementedError
+
+    
     
 def fit_score(src, targ, dist_param):
     "how good of a partial match is src to targ"

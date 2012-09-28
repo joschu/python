@@ -9,6 +9,7 @@ import networkx as nx
 from matplotlib.delaunay import Triangulation
 from lfd import registration
 from scipy import sparse
+import jds_utils.math_utils as mu
 
 
 
@@ -52,7 +53,7 @@ def calc_geodesic_distances_downsampled(xyz, xyz_ds, ds_inds):
     return D[:len(xyz_ds), :len(xyz_ds)]
 
     
-def calc_geodesic_distances(xyz):
+def calc_geodesic_distances(xyz, res=.03):
     """
     Calculates pairwise geodesic distances.
     Note that we generate the graph by projecting to 2D
@@ -65,7 +66,7 @@ def calc_geodesic_distances(xyz):
         G.add_node(i0)
     for (i0, i1) in tri.edge_db:
         dist = np.linalg.norm(xyz[i1] - xyz[i0])
-        if dist < .03:
+        if dist < res:
             G.add_edge(i0, i1, weight = np.linalg.norm(xyz[i1] - xyz[i0]))
     distmat = np.asarray(nx.floyd_warshall_numpy(G))
     
@@ -74,20 +75,40 @@ def calc_geodesic_distances(xyz):
     return distmat
 
 
-def calc_match_score(xyz0, xyz1, dists0 = None, dists1 = None):
+def calc_match_score(xyz0, xyz1, dists0 = None, dists1 = None, plotting = False):
     """
     calculate similarity between xyz0 and xyz1 using geodesic distances
     """
     
-    f = registration.tps_rpm(xyz0, xyz1, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
-    corr = f.corr
-    partners = corr.argmax(axis=1)
-    
-    if dists0 is None: dists0 = calc_geodesic_distances(xyz0)
-    if dists1 is None: dists1 = calc_geodesic_distances(xyz1)
-
+    f,info = registration.tps_rpm(xyz0, xyz1, plotting=plotting,reg_init=1,reg_final=.1,n_iter=21, verbose=False, return_full=True)
+    partners = info["corr_nm"].argmax(axis=1)
     starts, ends = np.meshgrid(partners, partners)
 
-    dists_targ = dists1[starts, ends]
+    reses = [.05, .07, .09]
+    nres = len(reses)
+
+    targ_dist_mats, src_dist_mats = [],[]
     
-    return np.abs(dists0 - dists_targ).sum()/dists0.size
+
+    for i in xrange(nres):
+    
+        dists0 = calc_geodesic_distances(xyz0, reses[i])
+        dists1 = calc_geodesic_distances(xyz1, reses[i])
+
+
+        dists_targ = dists1[starts, ends]
+        
+        dists0_normed = dists0 / np.median(dists0)
+        dists_targ_normed = dists_targ / np.median(dists1)
+        
+        src_dist_mats.append(dists0_normed)
+        targ_dist_mats.append(dists_targ_normed)
+    distmat = np.empty((nres, nres))
+    for i in xrange(nres):
+        for j in xrange(nres):
+            distmat[i,j] = np.abs(src_dist_mats[i] - targ_dist_mats[j]).mean()
+            
+
+    print "dist at res:", distmat, distmat.min()
+    return distmat.min()
+

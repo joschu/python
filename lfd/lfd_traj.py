@@ -75,7 +75,7 @@ def slice_traj(bodypart2traj, start, stop):
 
 
 def go_to_start(pr2, bodypart2traj):
-"""go to start position of each trajectory in bodypart2traj"""
+    """go to start position of each trajectory in bodypart2traj"""
     name2part = {"l_gripper":pr2.lgrip, 
                  "r_gripper":pr2.rgrip, 
                  "l_arm":pr2.larm, 
