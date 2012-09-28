@@ -223,3 +223,8 @@ def transform_verb_demo(warp, demo,l_offset = None, r_offset = None):
             warped_demo["object_clouds"][key]["xyz"] = new_cloud_xyz_pts
         
     return warped_demo
+
+# using the transformation from the demo point cloud in the gripper frame to the new point cloud in the gripper frame, find the new trajectory
+def transform_stage_demo_for_tool(transformation, demo):
+    # need to invert transformation and apply demo
+    pass
