@@ -19,18 +19,44 @@ h5path = osp.join(data_dir, "verbs2.h5")
 if os.path.exists(h5path): os.remove(h5path)
 verb_lib = h5py.File(h5path,"w")
 
-for (verb_name, verb_info) in verbs.get_all_demo_info().items():
-    print colorize("processing demo: %s"%verb_name, "red")
-    bag = rosbag.Bag(osp.join(data_dir, verb_info["bag_file"]))
-    
-    segs = bag_proc.create_segment_without_look(bag, link_names)    
-    if len(segs) > 1: print "warning: more than one segment found"
-    kinematics_data = segs[0]
-    
-    verb_data = copy(kinematics_data)
-    seg_file = h5py.File(osp.join(data_dir,verb_info["seg_file"]),"r")
-    
-    bag_proc.dict_to_hdf(verb_lib, verb_data, verb_name)
-    seg_file.copy("/", verb_lib[verb_name],"object_clouds")
-    verb_lib[verb_name]["arms_used"] = verb_info["arms_used"]
-    
+def make_verb_library_single():
+    for (verb_name, verb_info) in verbs.get_all_demo_info().items():
+        print colorize("processing demo: %s"%verb_name, "red")
+        bag = rosbag.Bag(osp.join(data_dir, verb_info["bag_file"]))
+        
+        segs = bag_proc.create_segment_without_look(bag, link_names)    
+        if len(segs) > 1: print "warning: more than one segment found"
+        kinematics_data = segs[0]
+        
+        verb_data = copy(kinematics_data)
+        seg_file = h5py.File(osp.join(data_dir,verb_info["seg_file"]),"r")
+        
+        bag_proc.dict_to_hdf(verb_lib, verb_data, verb_name)
+        seg_file.copy("/", verb_lib[verb_name],"object_clouds")
+        verb_lib[verb_name]["arms_used"] = verb_info["arms_used"]
+
+# make the verb library for a multiple stage action    
+# instead of creating a single entry in the hdf5 file for <verb_name>-<item_name>, create an entry for each stage
+def make_verb_library_multi():
+    for (verb_name, verb_info) in verbs.get_all_demo_info().items():
+        print colorize("processing demo: %s"%verb_name, "red")
+        for stage_num, stage in enumerate(verb_info["stages"]):
+            bag_file_name = "bags/%s.bag" % (stage)
+            seg_file_name = "images/%s.seg.h5" % (stage)
+
+            bag = rosbag.Bag(osp.join(data_dir, bag_file_name))
+            
+            segs = bag_proc.create_segment_without_look(bag, link_names)    
+            if len(segs) > 1: print "warning: more than one segment found"
+            kinematics_data = segs[0]
+            
+            stage_data = copy(kinematics_data)
+            seg_file = h5py.File(osp.join(data_dir, seg_file_name), "r")
+            
+            bag_proc.dict_to_hdf(verb_lib, stage_data, stage)
+            seg_file.copy("/", verb_lib[stage], "object_clouds")
+            # is the following needed, since it is stored in the yaml file?
+            verb_lib[stage]["arms_used"] = verb_info["arms_used"][stage_num]
+
+if __name__ == "__main__":
+    make_verb_library_single()

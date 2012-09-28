@@ -102,7 +102,85 @@ def make_traj(req):
     pose_array = conversions.array_to_pose_array(y_md, 'base_footprint')
     Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (0,0,1,1),width=.01,type=Marker.CUBE_LIST))
     return resp
+
+def get_transformation(old_object_cloud, new_object_cloud, transform_type):
+    x_nd = voxel_downsample(old_object_cloud,.02)
+    y_md = voxel_downsample(new_object_cloud,.02)
     
+    if transform_type == "tps":
+        warp = registration.tps_rpm_zrot(x_nd, y_md, plotting=2,reg_init=2,reg_final=.05, n_iter=10, verbose=False)
+    elif transform_type == "translation2d":
+        warp = registration.Translation2d()
+        warp.fit(x_nd, y_md)
+    elif transform_type == "rigid2d":
+        warp = registration.Rigid2d()
+        warp.fit(x_nd, y_md)
+    else:
+        raise Exception("transform type %s is not yet implemented"%transform_type)        
+
+    return warp
+    
+# make trajectory for a certain stage of a task
+# current_stage_info is the demo information to use
+# stage_num is the current task stage number; previous information is unused if this is zero
+# previous_new_cloud is the point cloud of the object from the previous stage; used to transform the demo trajectory based on how the current tool is being held
+def make_traj_multi_stage(req, current_stage_info, stage_num, previous_stage_info, previous_new_clouds):
+
+    assert isinstance(req, MakeTrajectoryRequest)
+
+    verb_stage_data = verbs.get_demo_data(current_stage_info.stage_name)
+
+    if stage_num > 0:
+        previous_stage_data = verbs.get_demo_data(previous_stage_info.stage_name)
+        previous_old_object_clouds = [previous_stage_data["object_clouds"][obj_name]["xyz"] for obj_name in previous_stage_data["object_clouds"].keys()]
+        tool_transform_type = "rigid2d"
+        previous_transformation = get_transformation(previous_old_object_clouds[0], previous_new_clouds[0], tool_transform_type)
+        stage_traj = warping.transform_stage_demo_for_tool(previous_transformation, verb_stage_data)
+    else:
+        stage_traj = verb_stage_data
+
+    transform_type = "tps"
+    
+    old_object_clouds = [verb_stage_data["object_clouds"][obj_name]["xyz"]
+            for obj_name in verb_stage_data["object_clouds"].keys()]
+    if len(old_object_clouds) > 1:
+        raise Exception("i don't know what to do with multiple object clouds")
+    
+    new_object_clouds = [pc2xyzrgb(cloud)[0] for cloud in req.object_clouds]
+    
+    warp = get_transformation(old_object_clouds[0], new_object_clouds[0], transform_type)
+
+    l_offset,r_offset = np.zeros(3), np.zeros(3)
+    #if "r_tool" in best_stage_info:
+        #r_offset = asarray(tool_info[this_verb_info["r_tool"]]["translation"])
+    #if "l_tool" in best_stage_info:
+        #l_offset = asarray(tool_info[this_verb_info["l_tool"]]["translation"])
+
+    arms_used = current_stage_info.arms_used
+    warped_demo_data = warping.transform_verb_demo(warp, verb_stage_data)        
+
+    resp = MakeTrajectoryResponse()
+    traj = resp.traj
+        
+    traj.arms_used = arms_used
+    if arms_used in "lb":        
+        traj.l_gripper_poses.poses = xyzs_quats_to_poses(warped_demo_data["l_gripper_tool_frame"]["position"], warped_demo_data["l_gripper_tool_frame"]["orientation"])
+        traj.l_gripper_angles = warped_demo_data["l_gripper_joint"]
+        traj.l_gripper_poses.header.frame_id = req.object_clouds[0].header.frame_id
+        if "l_tool" in best_stage_info: traj.l_gripper_angles *= 0
+    if arms_used in "rb":
+        traj.r_gripper_poses.poses = xyzs_quats_to_poses(warped_demo_data["r_gripper_tool_frame"]["position"], warped_demo_data["r_gripper_tool_frame"]["orientation"])
+        traj.r_gripper_angles = warped_demo_data["r_gripper_joint"]
+        traj.r_gripper_poses.header.frame_id = req.object_clouds[0].header.frame_id
+        if "r_tool" in best_stage_info: traj.r_gripper_angles *= 0
+        
+    Globals.handles = []
+    plot_original_and_warped_demo(verb_stage_data, warped_demo_data, traj)
+    
+    pose_array = conversions.array_to_pose_array(y_md, 'base_footprint')
+    Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (0,0,1,1),width=.01,type=Marker.CUBE_LIST))
+    return resp
+
 def plot_original_and_warped_demo(best_demo, warped_demo, traj):
     arms_used = best_demo["arms_used"]
 
@@ -134,9 +212,6 @@ def plot_original_and_warped_demo(best_demo, warped_demo, traj):
         cloud = voxel_downsample(cloud, .02)
         pose_array = conversions.array_to_pose_array(cloud, 'base_footprint')
         Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = rgba,width=.01,type=Marker.CUBE_LIST))
-
-        
-    
 
 def sorted_values(d):
     return [d[key] for key in sorted(d.keys())]
