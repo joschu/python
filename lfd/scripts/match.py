@@ -22,6 +22,7 @@ def downsample(xyz):
   xyz_ds, ds_inds = voxel_downsample(xyz, DS_LENGTH, return_inds = True)
   return xyz_ds, ds_inds
 
+
 class DataSet(object):
   def __init__(self): self.data = {}
   def keys(self): return self.data.keys()
@@ -47,6 +48,7 @@ class DataSet(object):
       ds[name] = demo
     return ds
 
+
 class BasicMatcher(object):
   def __init__(self, dataset):
     assert isinstance(dataset, DataSet)
@@ -55,18 +57,24 @@ class BasicMatcher(object):
   def get_name(self): raise NotImplementedError
   def match(self, xyz): raise NotImplementedError
 
-#class NearestNeighborMatcher(BasicMatcher):
-#  def match(self, xyz):
-#    costs_names = [(self.calc_dist(self.dataset[seg_name], xyz_new_ds, dists_new), seg_name) for seg_name in self.dataset.keys()]
-#    for cost, name in sorted(costs_names):
-#      print 'Segment %s: cost %f' % (name, cost)
-#    best_cost, best_name = min(costs_names)
-#    return best_name, best_cost
-#
-#  def calc_dist(self, dataset_item, item):
-#    raise NotImplementedError
 
-class GeodesicDistMatcher(BasicMatcher):
+class NearestNeighborMatcher(BasicMatcher):
+  def match(self, xyz):
+    input = self.preprocess_input(xyz)
+    costs_names = [(self.calc_dist(self.dataset[seg_name], input), seg_name) for seg_name in self.dataset.keys()]
+    for cost, name in sorted(costs_names):
+      print 'Segment %s: cost %f' % (name, cost)
+    best_cost, best_name = min(costs_names)
+    return best_name, best_cost
+
+  def preprocess_input(self, input):
+    return input
+
+  def calc_dist(self, dataset_item, preprocessed_input):
+    raise NotImplementedError
+
+
+class GeodesicDistMatcher(NearestNeighborMatcher):
   def __init__(self, dataset):
     BasicMatcher.__init__(self, dataset)
     # preprocess dataset
@@ -78,97 +86,91 @@ class GeodesicDistMatcher(BasicMatcher):
   def get_name(self):
     return 'GeodesicDistMatcher'
 
-  def match(self, xyz_new):
-    # nearest neighbor based on geodesic distances
-    def _calc_seg_cost(dataset_item, xyz_new_ds, dists_new):
-      xyz_demo_ds = np.squeeze(dataset_item["cloud_xyz_ds"])
-      dists_demo = dataset_item['geodesic_dists']
-      cost = recognition.calc_match_score(xyz_demo_ds, xyz_new_ds, dists0=dists_demo, dists1=dists_new)
-      return cost
+  def preprocess_input(self, xyz_new):
     xyz_new_ds, ds_inds = downsample(xyz_new)
     dists_new = recognition.calc_geodesic_distances_downsampled_old(xyz_new, xyz_new_ds, ds_inds)
-    costs_names = [(_calc_seg_cost(self.dataset[seg_name], xyz_new_ds, dists_new), seg_name) for seg_name in self.dataset.keys()]
-    for cost, name in sorted(costs_names):
-      print 'Segment %s: cost %f' % (name, cost)
-    best_cost, best_name = min(costs_names)
-    return best_name, best_cost
+    return xyz_new_ds, dists_new
 
-def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20, normalize_angles=False, pca_radius=0.1):
-  xy = xy[:,:2]
-  npoints = xy.shape[0]
+  def calc_dist(self, dataset_item, preprocessed_input):
+    xyz_new_ds, dists_new = preprocessed_input
+    xyz_demo_ds = np.squeeze(dataset_item["cloud_xyz_ds"])
+    dists_demo = dataset_item['geodesic_dists']
+    cost = recognition.calc_match_score(xyz_demo_ds, xyz_new_ds, dists0=dists_demo, dists1=dists_new)
+    return cost
 
-  if normalize_angles:
-    from scipy import spatial
-    princomps = np.zeros((npoints, 2))
-    princomp_angles = np.zeros((npoints, 1))
-    kdtree = spatial.KDTree(xy)
-    for i in xrange(npoints):
-      ball = xy[kdtree.query_ball_point(xy[i], pca_radius)] - xy[i]
-      pc = np.linalg.svd(ball)[2][0]
-      princomps[i] = pc
-      princomp_angles[i] = np.arctan2(pc[1], pc[0])
-      if DebugDrawing.enabled:
-        DebugDrawing.lines.append((xy[i], xy[i] + princomps[i]/np.linalg.norm(princomps[i])*0.1))
 
-  def calc_one_hist(c):
-    lp = np.empty_like(xy)
-    for i in xrange(npoints):
-      dp = xy[i] - c
-      logdist = np.log(np.linalg.norm(dp) + 1e-6)
-      angle = np.arctan2(dp[1], dp[0])
-      if normalize_angles:
-        # look at angle relative to tangent (first principal component)
-        angle -= princomp_angles[i]
-      lp[i] = logdist, angle
-
-    if DebugDrawing.enabled:
-      draw_comparison(xy, lp)
-
-    return np.histogram2d( \
-      lp[:,0], lp[:,1], \
-      bins=(logr_bins, theta_bins), \
-      range=((-1e6, 3), (0, 2.*np.pi)) \
-    )[0]
-
-  hists = np.zeros((npoints, logr_bins, theta_bins))
-  for k in xrange(npoints):
-    hists[k] = calc_one_hist(xy[k])
-  return hists
-
-def compare_hists_with_permutation(h1, h2, perm):
-  h2_permed = h2[perm]
-  assert h2_permed.shape == h1.shape
-  # chi-squared test statistic
-  return 0.5*((h2_permed - h1)**2 / (h2_permed + h1 + 1)).sum() / h1.shape[0]
-
-class ShapeContextMatcher(BasicMatcher):
+class ShapeContextMatcher(NearestNeighborMatcher):
   def __init__(self, dataset):
     BasicMatcher.__init__(self, dataset)
     for _, demo in self.dataset.items():
       demo["cloud_xyz_ds"], ds_inds = downsample(demo["cloud_xyz"])
       demo["cloud_xyz"] = np.squeeze(demo["cloud_xyz"])
-      demo['shape_context_hists'] = calc_shape_context_hists(demo['cloud_xyz_ds'])
+      demo['shape_context_hists'] = ShapeContextMatcher.calc_shape_context_hists(demo['cloud_xyz_ds'])
 
   def get_name(self):
     return 'ShapeContextMatcher'
 
-  def match(self, xyz_new):
-    def _calc_seg_cost(dataset_item, xyz_new_ds, hists_new):
-      xyz_demo_ds = np.squeeze(dataset_item["cloud_xyz_ds"])
-      hists_demo = dataset_item['shape_context_hists']
-
-      f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
-      partners = f.corr.argmax(axis=1)
-
-      return compare_hists_with_permutation(hists_demo, hists_new, partners)
-
+  def preprocess_input(self, xyz_new):
     xyz_new_ds, ds_inds = downsample(xyz_new)
-    hists_new = calc_shape_context_hists(xyz_new_ds)
-    costs_names = [(_calc_seg_cost(self.dataset[seg_name], xyz_new_ds, hists_new), seg_name) for seg_name in self.dataset.keys()]
-    for cost, name in sorted(costs_names):
-      print 'Segment %s: cost %f' % (name, cost)
-    best_cost, best_name = min(costs_names)
-    return best_name, best_cost
+    hists_new = ShapeContextMatcher.calc_shape_context_hists(xyz_new_ds)
+    return xyz_new_ds, hists_new
+
+  def calc_dist(self, dataset_item, preprocessed_input):
+    xyz_new_ds, hists_new = preprocessed_input
+    xyz_demo_ds, hists_demo = np.squeeze(dataset_item["cloud_xyz_ds"]), dataset_item['shape_context_hists']
+    f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
+    partners = f.corr.argmax(axis=1)
+    return ShapeContextMatcher.compare_hists_with_permutation(hists_demo, hists_new, partners)
+
+  @staticmethod
+  def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20, normalize_angles=False, pca_radius=0.1):
+    xy = xy[:,:2]
+    npoints = xy.shape[0]
+
+    if normalize_angles:
+      from scipy import spatial
+      princomps = np.zeros((npoints, 2))
+      princomp_angles = np.zeros((npoints, 1))
+      kdtree = spatial.KDTree(xy)
+      for i in xrange(npoints):
+        ball = xy[kdtree.query_ball_point(xy[i], pca_radius)] - xy[i]
+        pc = np.linalg.svd(ball)[2][0]
+        princomps[i] = pc
+        princomp_angles[i] = np.arctan2(pc[1], pc[0])
+        if DebugDrawing.enabled:
+          DebugDrawing.lines.append((xy[i], xy[i] + princomps[i]/np.linalg.norm(princomps[i])*0.1))
+
+    def calc_one_hist(c):
+      lp = np.empty_like(xy)
+      for i in xrange(npoints):
+        dp = xy[i] - c
+        logdist = np.log(np.linalg.norm(dp) + 1e-6)
+        angle = np.arctan2(dp[1], dp[0])
+        if normalize_angles:
+          # look at angle relative to tangent (first principal component)
+          angle -= princomp_angles[i]
+        lp[i] = logdist, angle
+
+      if DebugDrawing.enabled:
+        draw_comparison(xy, lp)
+
+      return np.histogram2d( \
+        lp[:,0], lp[:,1], \
+        bins=(logr_bins, theta_bins), \
+        range=((-1e6, 3), (0, 2.*np.pi)) \
+      )[0]
+
+    hists = np.zeros((npoints, logr_bins, theta_bins))
+    for k in xrange(npoints):
+      hists[k] = calc_one_hist(xy[k])
+    return hists
+
+  @staticmethod
+  def compare_hists_with_permutation(h1, h2, perm):
+    h2_permed = h2[perm]
+    assert h2_permed.shape == h1.shape
+    # chi-squared test statistic
+    return 0.5*((h2_permed - h1)**2 / (h2_permed + h1 + 1)).sum() / h1.shape[0]
 
 def draw_comparison(left_cloud, right_cloud):
   from traits.api import HasTraits, Instance, Button, on_trait_change
