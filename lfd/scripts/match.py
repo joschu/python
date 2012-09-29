@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import numpy as np
 
 import lfd
@@ -72,6 +74,31 @@ class NearestNeighborMatcher(BasicMatcher):
 
   def calc_dist(self, dataset_item, preprocessed_input):
     raise NotImplementedError
+
+
+class CombinedNNMatcher(NearestNeighborMatcher):
+  def __init__(self, dataset, nn_matchers, weights):
+    NearestNeighborMatcher.__init__(self, dataset)
+    assert len(nn_matchers) == len(weights)
+    self.nn_matchers = [matcher_class(dataset) for matcher_class in nn_matchers]
+    self.weights = weights
+
+  def match(self, xyz):
+    seg_names = sorted(self.dataset.keys())
+    total_costs = np.zeros(len(seg_names))
+    matcher_costs = []
+    for i, matcher in enumerate(self.nn_matchers):
+      input = matcher.preprocess_input(xyz)
+      costs = [self.weights[i] * matcher.calc_dist(self.dataset[seg_name], input) for seg_name in seg_names]
+      matcher_costs.append(costs)
+      total_costs += costs
+    total_costs_names = sorted((total_cost, seg_names[i]) for i, total_cost in enumerate(total_costs))
+    for i, cost_name in enumerate(total_costs_names):
+      total_cost, name = cost_name
+      comb_str = ' + '.join('%.2f*%f' % (self.weights[j], matcher_cost[i]) for j, matcher_cost in enumerate(matcher_costs))
+      print 'Segment %s: cost %f = %s' % (name, total_cost, comb_str)
+    best_cost, best_name = total_costs_names[0]
+    return best_name, best_cost
 
 
 class GeodesicDistMatcher(NearestNeighborMatcher):
@@ -172,6 +199,7 @@ class ShapeContextMatcher(NearestNeighborMatcher):
     # chi-squared test statistic
     return 0.5*((h2_permed - h1)**2 / (h2_permed + h1 + 1)).sum() / h1.shape[0]
 
+
 def draw_comparison(left_cloud, right_cloud):
   from traits.api import HasTraits, Instance, Button, on_trait_change
   from traitsui.api import View, Item, HSplit, Group
@@ -245,7 +273,7 @@ def main():
   import argparse
   parser = argparse.ArgumentParser()
   parser.add_argument('--dataset', default='overhand_knot', help='name of dataset')
-  parser.add_argument('--method', choices=['geodesic_dist', 'shape_context'], default='geodesic_dist', help='matching algorithm')
+  parser.add_argument('--method', choices=['geodesic_dist', 'shape_context', 'geodesic_dist+shape_context'], default='geodesic_dist', help='matching algorithm')
   parser.add_argument('--input_mode', choices=['from_dataset', 'kinect'], default='kinect', help='input cloud acquisition method')
   parser.add_argument('--cloud_topic', default='/preprocessor/kinect1/points', help='ros topic for kinect input mode')
   args = parser.parse_args()
@@ -276,6 +304,8 @@ def main():
     matcher = GeodesicDistMatcher(dataset)
   elif args.method == 'shape_context':
     matcher = ShapeContextMatcher(dataset)
+  elif args.method == 'geodesic_dist+shape_context':
+    matcher = CombinedNNMatcher(dataset, [GeodesicDistMatcher, ShapeContextMatcher], [0.5, 0.5])
   else:
     raise NotImplementedError
 
