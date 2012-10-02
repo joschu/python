@@ -63,7 +63,7 @@ class BasicMatcher(object):
 class NearestNeighborMatcher(BasicMatcher):
   def match(self, xyz):
     input = self.preprocess_input(xyz)
-    costs_names = [(self.calc_dist(self.dataset[seg_name], input), seg_name) for seg_name in self.dataset.keys()]
+    costs_names = [(self.calc_cost(self.dataset[seg_name], input), seg_name) for seg_name in self.dataset.keys()]
     for cost, name in sorted(costs_names):
       print 'Segment %s: cost %f' % (name, cost)
     best_cost, best_name = min(costs_names)
@@ -72,7 +72,7 @@ class NearestNeighborMatcher(BasicMatcher):
   def preprocess_input(self, input):
     return input
 
-  def calc_dist(self, dataset_item, preprocessed_input):
+  def calc_cost(self, dataset_item, preprocessed_input):
     raise NotImplementedError
 
 
@@ -89,16 +89,15 @@ class CombinedNNMatcher(NearestNeighborMatcher):
     matcher_costs = []
     for i, matcher in enumerate(self.nn_matchers):
       input = matcher.preprocess_input(xyz)
-      costs = [self.weights[i] * matcher.calc_dist(self.dataset[seg_name], input) for seg_name in seg_names]
+      costs = [matcher.calc_cost(self.dataset[seg_name], input) for seg_name in seg_names]
       matcher_costs.append(costs)
-      total_costs += costs
-    total_costs_names = sorted((total_cost, seg_names[i]) for i, total_cost in enumerate(total_costs))
-    for i, cost_name in enumerate(total_costs_names):
-      total_cost, name = cost_name
+      total_costs += [self.weights[i] * c for c in costs]
+    sorted_total_costs = sorted((total_cost, i) for i, total_cost in enumerate(total_costs))
+    for total_cost, i in sorted_total_costs:
       comb_str = ' + '.join('%.2f*%f' % (self.weights[j], matcher_cost[i]) for j, matcher_cost in enumerate(matcher_costs))
-      print 'Segment %s: cost %f = %s' % (name, total_cost, comb_str)
-    best_cost, best_name = total_costs_names[0]
-    return best_name, best_cost
+      print 'Segment %s: cost %f = %s' % (seg_names[i], total_cost, comb_str)
+    best_cost, best_idx = sorted_total_costs[0]
+    return seg_names[best_idx], best_cost
 
 
 class GeodesicDistMatcher(NearestNeighborMatcher):
@@ -118,7 +117,7 @@ class GeodesicDistMatcher(NearestNeighborMatcher):
     dists_new = recognition.calc_geodesic_distances_downsampled_old(xyz_new, xyz_new_ds, ds_inds)
     return xyz_new_ds, dists_new
 
-  def calc_dist(self, dataset_item, preprocessed_input):
+  def calc_cost(self, dataset_item, preprocessed_input):
     xyz_new_ds, dists_new = preprocessed_input
     xyz_demo_ds = np.squeeze(dataset_item["cloud_xyz_ds"])
     dists_demo = dataset_item['geodesic_dists']
@@ -142,7 +141,7 @@ class ShapeContextMatcher(NearestNeighborMatcher):
     hists_new = ShapeContextMatcher.calc_shape_context_hists(xyz_new_ds)
     return xyz_new_ds, hists_new
 
-  def calc_dist(self, dataset_item, preprocessed_input):
+  def calc_cost(self, dataset_item, preprocessed_input):
     xyz_new_ds, hists_new = preprocessed_input
     xyz_demo_ds, hists_demo = np.squeeze(dataset_item["cloud_xyz_ds"]), dataset_item['shape_context_hists']
     f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
@@ -289,12 +288,15 @@ def main():
     import rospy
     from brett2 import ros_utils
     import sensor_msgs
+    import time
     if rospy.get_name() == '/unnamed':
       rospy.init_node('matcher', disable_signals=True)
     msg = rospy.wait_for_message(args.cloud_topic, sensor_msgs.msg.PointCloud2)
     xyz, rgb = ros_utils.pc2xyzrgb(msg)
     xyz = xyz.reshape(-1, 3)
-    input_xyz = ros_utils.transform_points(xyz, ros_utils.get_tf_listener(), "ground", msg.header.frame_id)
+    tf_listener = ros_utils.get_tf_listener()
+    time.sleep(1) # so tf works
+    input_xyz = ros_utils.transform_points(xyz, tf_listener, "ground", msg.header.frame_id)
   else:
     raise NotImplementedError
 
@@ -305,7 +307,7 @@ def main():
   elif args.method == 'shape_context':
     matcher = ShapeContextMatcher(dataset)
   elif args.method == 'geodesic_dist+shape_context':
-    matcher = CombinedNNMatcher(dataset, [GeodesicDistMatcher, ShapeContextMatcher], [0.5, 0.5])
+    matcher = CombinedNNMatcher(dataset, [GeodesicDistMatcher, ShapeContextMatcher], [1, 0.1])
   else:
     raise NotImplementedError
 

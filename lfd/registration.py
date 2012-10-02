@@ -514,6 +514,63 @@ class Rigid2d(Transformation):
         return newx_n3, newrot_n33
 
 
+class Rigid3d(Transformation):
+    n_params = 6
+    tx = 0
+    ty = 0
+    tz = 0
+    alpha = 0
+    beta = 0
+    gamma = 0
+
+    def set_params(self, params):
+        self.tx, self.ty, self.tz, self.alpha, self.beta, self.gamma = params
+    def get_params(self):
+        return np.r_[self.tx, self.ty, self.tz, self.alpha, self.beta, self.gamma]
+
+    def fit(self, x_n3, y_n3, prev_params=None):
+
+        if prev_params is None:
+            trans_init = y_n3.mean(axis=0) - x_n3.mean(axis=0)
+            rot_inits = [(0, 0, 0)]
+        else:
+            trans_init = prev_params[:3]
+            rot_inits = [prev_params[3:]]
+
+        self_copy = deepcopy(self)
+        def f(params):
+            self_copy.set_params(params)
+            xmapped_n3 = self_copy.transform_points(x_n3)
+            return fit_score(xmapped_n3, y_n3,.5)
+
+
+        vals_params = []
+        for rot_init in rot_inits:
+            opt_params, opt_val, _, _, _ = opt.fmin_cg(f, np.r_[trans_init, rot_init],full_output=True)
+            vals_params.append((opt_val, opt_params))
+
+
+        best_val, best_params = min(vals_params, key = lambda x:x[0])
+        print "best_params:", best_params
+        self.set_params(best_params)
+        self.objective = best_val
+
+    def rot_mat(self):
+        a, b, c = self.alpha, self.beta, self.gamma
+        return np.array([[cos(a)*cos(b), cos(a)*sin(b)*sin(c)-sin(a)*cos(c), cos(a)*sin(b)*cos(c)+sin(a)*sin(c)],
+                         [sin(a)*cos(b), sin(a)*sin(b)*sin(c)+cos(a)*cos(c), sin(a)*sin(b)*cos(c)-cos(a)*sin(c)],
+                         [-sin(b), cos(b)*sin(c), cos(b)*cos(c)]])
+
+    def transform_points(self, x_n3):
+        return np.dot(x_n3, self.rot_mat().T) + np.r_[self.tx, self.ty, 0][None,:]
+
+    def transform_frames(self, x_n3, rot_n33, orthogonalize=True):
+        newx_n3 = self.transform_points(x_n3)
+        j = self.rot_mat()
+        newrot_n33 = np.array([np.dot(j, rot) for rot in rot_n33])
+        return newx_n3, newrot_n33
+
+
 class Translation2d(Transformation):
     n_params = 2
     tx = 0
