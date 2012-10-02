@@ -136,23 +136,25 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
   #if args.obj == "cloth": xyz_new = voxel_downsample(xyz_new, .025)
   xyz_new_ds, ds_inds = downsample(xyz_new)
 #  xyz_new_ds, ds_inds = xyz_new.reshape(-1,3), np.arange(0, len(xyz_new)).reshape(-1, 1)
-  dists_new = recognition.calc_geodesic_distances_downsampled_old(xyz_new,xyz_new_ds, ds_inds)
-  candidate_demo_names = Globals.demos.keys()
+# dists_new = recognition.calc_geodesic_distances_downsampled_old(xyz_new,xyz_new_ds, ds_inds)
+# candidate_demo_names = Globals.demos.keys()
 
   # HACK: never choose the done step on the first step
-  print 'curr step', curr_step
-  if curr_step == 0:
-    filtered_demo_names = []
-    for n in candidate_demo_names:
-      if not Globals.demos[n]['done']:
-        filtered_demo_names.append(n)
-    candidate_demo_names = filtered_demo_names
+# print 'curr step', curr_step
+# if curr_step == 0:
+#   filtered_demo_names = []
+#   for n in candidate_demo_names:
+#     if not Globals.demos[n]['done']:
+#       filtered_demo_names.append(n)
+#   candidate_demo_names = filtered_demo_names
 
-  from joblib import parallel
-  costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
-  #costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
-  _, best_name = min(costs_names)
-  rospy.loginfo('costs_names %s', costs_names)
+# from joblib import parallel
+# costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
+# #costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
+# _, best_name = min(costs_names)
+# rospy.loginfo('costs_names %s', costs_names)
+  matcher = recognition.CombinedNNMatcher(recognition.DataSet.LoadFromDict(Globals.demos), [recognition.GeodesicDistMatcher, recognition.ShapeContextMatcher], [1, 0.1])
+  best_name, best_cost = matcher.match(xyz_new)
 
   best_demo = Globals.demos[best_name]
   if best_demo["done"]:
