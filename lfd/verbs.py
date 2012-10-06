@@ -11,10 +11,11 @@ with open(osp.join(osp.dirname(lfd.__file__), "data", "verb_demos2.yaml"), "r") 
 
 
 class VerbStageInfo:
-    def __init__(self, stage_name, item, arms_used):
+    def __init__(self, stage_name, item, arms_used, special_pt):
         self.stage_name = stage_name
         self.item = item
         self.arms_used = arms_used
+        self.special_pt = special_pt
 
 def get_all_demo_info():
     return all_demo_info
@@ -34,7 +35,10 @@ def get_closest_demo_verb_info_by_stage(verb, scene_info, stage_num):
     verb_infos = get_verb_info(verb)
     if len(verb_infos) == 0: raise Exception("%s isn't in library"%verb)
     verb_info = verb_infos[0]
-    return VerbStageInfo(verb_info["stages"][stage_num], verb_info["args"][stage_num], verb_info["arms_used"][stage_num])
+    return VerbStageInfo(verb_info["stages"][stage_num]
+                         verb_info["args"][stage_num],
+                         verb_info["arms_used"][stage_num],
+                         verb_info["special_pts"][stage_num])
 
 def get_demo_data(demo_name):
     h5file = h5py.File(h5path, "r")

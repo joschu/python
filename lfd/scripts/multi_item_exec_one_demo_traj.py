@@ -57,10 +57,6 @@ for stage_num, obj_name in enumerate(demo_info["args"]):
     pc_sel = seg_svc.call(ProcessCloudRequest(cloud_in = pc_tf)).cloud_out
     make_req.object_clouds.append(pc_sel)
 
-    # save the previous information for the next stage
-    previous_stage_info = current_stage_info
-    previous_new_clouds = make_req.object_clouds
-
     make_resp = make_verb_traj.make_traj_multi_stage(make_req, stage_num, previous_stage_info, previous_new_clouds)
     
     yn = yes_or_no("continue?")
@@ -71,3 +67,7 @@ for stage_num, obj_name in enumerate(demo_info["args"]):
         exec_req = ExecTrajectoryRequest()
         exec_req.traj = make_resp.traj
         exec_verb_traj.exec_traj(exec_req)
+
+    # save the previous information for the next stage
+    previous_stage_info = current_stage_info
+    previous_new_clouds = make_req.object_clouds
