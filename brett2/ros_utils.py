@@ -199,20 +199,24 @@ class RvizWrapper:
     @once
     def create():
         return RvizWrapper()
-    
-    
+
     def __init__(self):
         self.pub = rospy.Publisher('visualization_marker', Marker)
         self.array_pub = rospy.Publisher("visualization_marker_array", MarkerArray)        
         self.ids = set([])
         register_deletion()
+
     def draw_curve(self, pose_array, id=None, rgba = (0,1,0,1), width = .01, ns = "default_ns", duration=0, type=Marker.LINE_STRIP):
         if id is None: id = self.get_unused_id()
         marker = Marker(type=type,action=Marker.ADD)
         marker.header = pose_array.header
         marker.points = [pose.position for pose in pose_array.poses]
         marker.lifetime = rospy.Duration(0)
-        marker.color = stdm.ColorRGBA(*rgba)
+        if isinstance(rgba, list):
+            assert len(rgba) == len(pose_array.poses)
+            marker.colors = [stdm.ColorRGBA(*c) for c in rgba]
+        else:
+            marker.color = stdm.ColorRGBA(*rgba)
         marker.scale = gm.Vector3(width,width,width)
         marker.id = id
         marker.ns = ns

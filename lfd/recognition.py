@@ -93,6 +93,62 @@ def calc_match_score(xyz0, xyz1, dists0 = None, dists1 = None):
 
     return np.abs(dists0/(1e-9+dists0.max(axis=1)[:,None]) - dists_targ/(1e-9 + dists_targ.max(axis=1)[:,None])).sum()/dists0.size
 
+def match_and_calc_shape_context(xyz_demo_ds, xyz_new_ds, hists_demo=None, hists_new=None, normalize_costs=False):
+  def compare_hists_with_permutation(h1, h2):
+    assert h2.shape == h1.shape
+    # (single terms of) chi-squared test statistic
+    return 0.5/h1.shape[0] * ((h2 - h1)**2 / (h2 + h1 + 1))
+
+  if hists_demo is None:
+    hists_demo = calc_shape_context_hists(xyz_demo_ds)
+  if hists_new is None:
+    hists_new = calc_shape_context_hists(xyz_new_ds)
+
+  f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
+  partners = f.corr.argmax(axis=1)
+  costs = compare_hists_with_permutation(hists_demo, hists_new[partners]).sum(axis=1).sum(axis=1)
+  if normalize_costs:
+    print max(costs)
+    m = max(0.5, max(costs))
+    if m != 0: costs /= m
+  return costs
+
+def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20, normalize_angles=False, pca_radius=0.1):
+  xy = xy[:,:2]
+  npoints = xy.shape[0]
+
+  if normalize_angles:
+    from scipy import spatial
+    princomps = np.zeros((npoints, 2))
+    princomp_angles = np.zeros((npoints, 1))
+    kdtree = spatial.KDTree(xy)
+    for i in xrange(npoints):
+      ball = xy[kdtree.query_ball_point(xy[i], pca_radius)] - xy[i]
+      pc = np.linalg.svd(ball)[2][0]
+      princomps[i] = pc
+      princomp_angles[i] = np.arctan2(pc[1], pc[0])
+
+  def calc_one_hist(c):
+    lp = np.empty_like(xy)
+    for i in xrange(npoints):
+      dp = xy[i] - c
+      logdist = np.log(np.linalg.norm(dp) + 1e-6)
+      angle = np.arctan2(dp[1], dp[0])
+      if normalize_angles:
+        # look at angle relative to tangent (first principal component)
+        angle -= princomp_angles[i]
+      lp[i] = logdist, angle
+
+    return np.histogram2d( \
+      lp[:,0], lp[:,1], \
+      bins=(logr_bins, theta_bins), \
+      range=((-1e6, 3), (0, 2.*np.pi)) \
+    )[0]
+
+  hists = np.zeros((npoints, logr_bins, theta_bins))
+  for k in xrange(npoints):
+    hists[k] = calc_one_hist(xy[k])
+  return hists
 
 def downsample(xyz):
   from jds_image_proc.clouds import voxel_downsample
@@ -216,66 +272,19 @@ class ShapeContextMatcher(NearestNeighborMatcher):
       demo["cloud_xyz_ds"], ds_inds = downsample(demo["cloud_xyz"])
       demo["cloud_xyz"] = np.squeeze(demo["cloud_xyz"])
       if 'shape_context_hists' not in demo:
-        demo['shape_context_hists'] = ShapeContextMatcher.calc_shape_context_hists(demo['cloud_xyz_ds'])
+        demo['shape_context_hists'] = calc_shape_context_hists(demo['cloud_xyz_ds'])
 
   def get_name(self):
     return 'ShapeContextMatcher'
 
   def preprocess_input(self, xyz_new):
     xyz_new_ds, ds_inds = downsample(xyz_new)
-    hists_new = ShapeContextMatcher.calc_shape_context_hists(xyz_new_ds)
+    hists_new = calc_shape_context_hists(xyz_new_ds)
     return xyz_new_ds, hists_new
 
   def calc_cost(self, dataset_item, preprocessed_input):
     xyz_new_ds, hists_new = preprocessed_input
     xyz_demo_ds, hists_demo = np.squeeze(dataset_item["cloud_xyz_ds"]), dataset_item['shape_context_hists']
-    f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
-    partners = f.corr.argmax(axis=1)
-    return ShapeContextMatcher.compare_hists_with_permutation(hists_demo, hists_new, partners)
-
-  @staticmethod
-  def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20, normalize_angles=False, pca_radius=0.1):
-    xy = xy[:,:2]
-    npoints = xy.shape[0]
-
-    if normalize_angles:
-      from scipy import spatial
-      princomps = np.zeros((npoints, 2))
-      princomp_angles = np.zeros((npoints, 1))
-      kdtree = spatial.KDTree(xy)
-      for i in xrange(npoints):
-        ball = xy[kdtree.query_ball_point(xy[i], pca_radius)] - xy[i]
-        pc = np.linalg.svd(ball)[2][0]
-        princomps[i] = pc
-        princomp_angles[i] = np.arctan2(pc[1], pc[0])
-
-    def calc_one_hist(c):
-      lp = np.empty_like(xy)
-      for i in xrange(npoints):
-        dp = xy[i] - c
-        logdist = np.log(np.linalg.norm(dp) + 1e-6)
-        angle = np.arctan2(dp[1], dp[0])
-        if normalize_angles:
-          # look at angle relative to tangent (first principal component)
-          angle -= princomp_angles[i]
-        lp[i] = logdist, angle
-
-      return np.histogram2d( \
-        lp[:,0], lp[:,1], \
-        bins=(logr_bins, theta_bins), \
-        range=((-1e6, 3), (0, 2.*np.pi)) \
-      )[0]
-
-    hists = np.zeros((npoints, logr_bins, theta_bins))
-    for k in xrange(npoints):
-      hists[k] = calc_one_hist(xy[k])
-    return hists
-
-  @staticmethod
-  def compare_hists_with_permutation(h1, h2, perm):
-    h2_permed = h2[perm]
-    assert h2_permed.shape == h1.shape
-    # chi-squared test statistic
-    return 0.5*((h2_permed - h1)**2 / (h2_permed + h1 + 1)).sum() / h1.shape[0]
-
-
+    costs = match_and_calc_shape_context(xyz_demo_ds, xyz_new_ds, hists_demo, hists_new)
+    dataset_item['shape_context_costs'] = costs
+    return costs.sum()

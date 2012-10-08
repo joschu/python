@@ -9,14 +9,7 @@ import os.path as osp
 
 PARALLEL = False
 
-class DebugDrawing:
-  enabled = False
-  lines = []
-  @staticmethod
-  def clear():
-    DebugDrawing.lines = []
-
-def draw_comparison(left_cloud, right_cloud):
+def draw_comparison(left_cloud, right_cloud, show_shape_context=False):
   from traits.api import HasTraits, Instance, Button, on_trait_change
   from traitsui.api import View, Item, HSplit, Group
   from mayavi import mlab
@@ -51,15 +44,25 @@ def draw_comparison(left_cloud, right_cloud):
       resizable=True,
     )
 
+    def draw_shape_context(self, scene, xyz_matched):
+      assert 'shape_context_costs' in xyz_matched
+      costs, matched_ds = xyz_matched['shape_context_costs'].copy(), xyz_matched['cloud_xyz_ds']
+      costs -= min(costs)
+      costs /= max(costs)
+      print costs, costs.shape
+      print matched_ds.shape
+      x, y, z = matched_ds.transpose()
+      mlab.points3d(x, y, z, costs, mode='sphere', figure=scene.mayavi_scene)
+
     @on_trait_change('scene1.activated')
     def redraw_scene1(self):
       self.redraw_scene(self.scene1, left_cloud)
-      for line in DebugDrawing.lines:
-        mlab.plot3d([line[0][0], line[1][0]], [line[0][1], line[1][1]], [0, 0], tube_radius=None, figure=self.scene1.mayavi_scene)
 
     @on_trait_change('scene2.activated')
     def redraw_scene2(self):
-      self.redraw_scene(self.scene2, right_cloud)
+      self.redraw_scene(self.scene2, right_cloud['cloud_xyz'])
+      if show_shape_context:
+        self.draw_shape_context(self.scene2, right_cloud)
 
     def redraw_scene(self, scene, input_xyz):
       mlab.clf(figure=scene.mayavi_scene)
@@ -92,6 +95,7 @@ def main():
   parser.add_argument('--method', choices=['geodesic_dist', 'shape_context', 'geodesic_dist+shape_context'], default='geodesic_dist', help='matching algorithm')
   parser.add_argument('--input_mode', choices=['from_dataset', 'kinect'], default='kinect', help='input cloud acquisition method')
   parser.add_argument('--cloud_topic', default='/preprocessor/kinect1/points', help='ros topic for kinect input mode')
+  parser.add_argument('--show_shape_context', action='store_true')
   args = parser.parse_args()
 
   dataset = recognition.DataSet.LoadFromTaskDemos(args.dataset)
@@ -131,7 +135,7 @@ def main():
   # do the matching
   best_match_name, best_match_cost = matcher.match(input_xyz)
   print 'Best match name:', best_match_name, 'with cost:', best_match_cost
-  draw_comparison(left_cloud=input_xyz, right_cloud=dataset[best_match_name]['cloud_xyz'])
+  draw_comparison(left_cloud=input_xyz, right_cloud=dataset[best_match_name], show_shape_context=args.show_shape_context)
 
 if __name__ == '__main__':
   main()

@@ -3,6 +3,10 @@ from collections import defaultdict
 
 
 def voxel_downsample(xyz,s, return_inds = False):
+    if xyz.size == 0:
+        if return_inds: return xyz, xyz
+        else: return xyz
+
     xyz = xyz.reshape(-1,3)
     xyz = xyz[np.isfinite(xyz[:,0])]
     d = defaultdict(list)

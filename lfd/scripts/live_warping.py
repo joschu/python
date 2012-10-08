@@ -8,7 +8,7 @@ from jds_utils import conversions
 import rospy
 import match
 import lfd, yaml, os, h5py
-from lfd import warping, registration
+from lfd import warping, registration, recognition
 
 class Globals:
   rviz = None
@@ -43,7 +43,7 @@ def load_demo(taskname='overhand_knot', demos_list_file='knot_demos.yaml', seg_n
   if seg_name is None:
     seg_name = select_from_list(sorted(demos.keys()))
   demo = demos[seg_name]
-  demo["cloud_xyz_ds"], ds_inds = match.downsample(demo["cloud_xyz"])
+  demo["cloud_xyz_ds"], ds_inds = recognition.downsample(demo["cloud_xyz"])
   demo["cloud_xyz"] = np.squeeze(demo["cloud_xyz"])
   return demo
 
@@ -64,6 +64,8 @@ def main():
   parser.add_argument('--nonrigid', action='store_true')
   parser.add_argument('--frame', default='camera_rgb_frame')
   parser.add_argument('--input_topic', default='/preprocessor/kinect1/points')
+  parser.add_argument('--show_shape_contexts', action='store_true')
+  parser.add_argument('--warp_once_only', action='store_true')
   args = parser.parse_args()
 
   if rospy.get_name() == '/unnamed':
@@ -72,28 +74,44 @@ def main():
 
   demo = load_demo(args.taskname, args.demos_list_file, args.seg_name)
 
-  # align demo to test
+  # align demo to test in a loop
   prev_params = None
+  keep_warping = True
   while True:
     xyz_new = load_cloud_from_sensor(args.input_topic, args.frame)
+    if xyz_new.size == 0: continue
 
     xyz_demo_ds = demo['cloud_xyz_ds']
-    xyz_new_ds = match.downsample(xyz_new)[0]
+    xyz_new_ds = recognition.downsample(xyz_new)[0]
 
-    if args.nonrigid:
-      f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
+    if keep_warping:
+      if args.nonrigid:
+        f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
+      else:
+        f = registration.Rigid3d()
+        f.fit(xyz_demo_ds, xyz_new_ds, prev_params)
+        prev_params = f.get_params()
+
+      if args.warp_once_only:
+        keep_warping = False
+
+    if args.show_shape_contexts:
+      shape_context_costs = recognition.match_and_calc_shape_context(xyz_demo_ds, xyz_new_ds, normalize_costs=True)
+      colors = [(c, 1-c, 0, 1) for c in shape_context_costs]
     else:
-      f = registration.Rigid3d()
-      f.fit(xyz_demo_ds, xyz_new_ds, prev_params)
-      prev_params = f.get_params()
+      colors = [(1, 0, 0, 1)] * len(shape_context_costs)
 
-    warped_pose_array = conversions.array_to_pose_array(f.transform_points(np.squeeze(demo['cloud_xyz_ds'])), args.frame)
+    warped_pose_array = conversions.array_to_pose_array(f.transform_points(xyz_demo_ds), args.frame)
     Globals.handles = []
-    Globals.handles.append(Globals.rviz.draw_curve( \
-      warped_pose_array,
-      rgba=(1, 0, 1, 1),
-      type=Marker.CUBE_LIST \
-    ))
+    import geometry_msgs.msg as gm
+    for p, rgba in zip(warped_pose_array.poses, colors):
+      ps = gm.PoseStamped()
+      ps.header = warped_pose_array.header
+      ps.pose = p
+      Globals.handles.append(Globals.rviz.draw_marker(ps, scale=(.01, .01, .01), rgba=rgba))
+#    Globals.handles.append(Globals.rviz.draw_curve(
+#      warped_pose_array, rgba=colors, type=Marker.SPHERE_LIST
+#    ))
 
 if __name__ == '__main__':
   main()
