@@ -93,27 +93,33 @@ def calc_match_score(xyz0, xyz1, dists0 = None, dists1 = None):
 
     return np.abs(dists0/(1e-9+dists0.max(axis=1)[:,None]) - dists_targ/(1e-9 + dists_targ.max(axis=1)[:,None])).sum()/dists0.size
 
-def match_and_calc_shape_context(xyz_demo_ds, xyz_new_ds, hists_demo=None, hists_new=None, normalize_costs=False):
-  def compare_hists_with_permutation(h1, h2):
+def match_and_calc_shape_context(xyz_demo_ds, xyz_new_ds, hists_demo=None, hists_new=None, normalize_costs=False, return_tuple=False):
+  def compare_hists(h1, h2):
     assert h2.shape == h1.shape
     # (single terms of) chi-squared test statistic
     return 0.5/h1.shape[0] * ((h2 - h1)**2 / (h2 + h1 + 1))
 
+  f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
+  partners = f.corr.argmax(axis=1)
+
   if hists_demo is None:
     hists_demo = calc_shape_context_hists(xyz_demo_ds)
   if hists_new is None:
-    hists_new = calc_shape_context_hists(xyz_new_ds)
+    hists_new = calc_shape_context_hists(xyz_new_ds[partners])
 
-  f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
-  partners = f.corr.argmax(axis=1)
-  costs = compare_hists_with_permutation(hists_demo, hists_new[partners]).sum(axis=1).sum(axis=1)
+  costs = compare_hists(hists_demo, hists_new).sum(axis=1).sum(axis=1)
   if normalize_costs:
     print max(costs)
     m = max(0.5, max(costs))
     if m != 0: costs /= m
+
+  if return_tuple:
+    return f, partners, hists_demo, hists_new, costs
+
   return costs
 
-def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20, normalize_angles=False, pca_radius=0.1):
+def calc_shape_context_hists(xy, logr_bins=10, theta_bins=8, normalize_angles=False, pca_radius=0.1):
+#def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20, normalize_angles=False, pca_radius=0.1):
   xy = xy[:,:2]
   npoints = xy.shape[0]
 
@@ -148,6 +154,7 @@ def calc_shape_context_hists(xy, logr_bins=10, theta_bins=20, normalize_angles=F
   hists = np.zeros((npoints, logr_bins, theta_bins))
   for k in xrange(npoints):
     hists[k] = calc_one_hist(xy[k])
+#    hists[k] = (hists[k] > 0).astype('float')
   return hists
 
 def downsample(xyz):
@@ -285,6 +292,6 @@ class ShapeContextMatcher(NearestNeighborMatcher):
   def calc_cost(self, dataset_item, preprocessed_input):
     xyz_new_ds, hists_new = preprocessed_input
     xyz_demo_ds, hists_demo = np.squeeze(dataset_item["cloud_xyz_ds"]), dataset_item['shape_context_hists']
-    costs = match_and_calc_shape_context(xyz_demo_ds, xyz_new_ds, hists_demo, hists_new)
+    costs = match_and_calc_shape_context(xyz_demo_ds, xyz_new_ds)#, hists_demo, hists_new)
     dataset_item['shape_context_costs'] = costs
     return costs.sum()

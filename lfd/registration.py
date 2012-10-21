@@ -364,8 +364,23 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
     zrot_best = so.golden(fit0, brack = (zrots[i_best] - zspacing, zrots[i_best], zrots[i_best] + zspacing), tol = .15)
     f_best = zrot2func[zrot_best]
     return f_best
-    
- 
+
+def fit_affine_by_tpsrpm(x_nd, y_md):
+  # use tps-rpm to get correspondences, then fit an affine transformation by least squares
+  f = tps_rpm(x_nd, y_md, reg_init=.1,reg_final=.1,n_iter=100,verbose=False, plotting=False)
+  partners = f.corr.argmax(axis=1)
+
+  M = np.zeros((3*len(x_nd), 12))
+  for i, pt in enumerate(x_nd):
+    M[3*i,:3] = M[3*i+1,3:6] = M[3*i+2,6:9] = pt
+    M[3*i,9] = M[3*i+1,10] = M[3*i+2,11] = 1
+  q = y_md[partners].reshape((-1, 1))
+  print 'M', M, 'q', q
+  S, c, _, _ = np.linalg.lstsq(M, q)
+  print 'residues', c
+  print 'S', S, S[0,:], S[1,:], S[2,:]
+  return S, S[0:9].reshape(3,3), (S[9:].T)[0]
+
 class FuncPlotter(object):
     def __init__(self, fignum = 1):
         self.fignum = fignum
@@ -562,7 +577,7 @@ class Rigid3d(Transformation):
                          [-sin(b), cos(b)*sin(c), cos(b)*cos(c)]])
 
     def transform_points(self, x_n3):
-        return np.dot(x_n3, self.rot_mat().T) + np.r_[self.tx, self.ty, 0][None,:]
+        return np.dot(x_n3, self.rot_mat().T) + np.r_[self.tx, self.ty, self.tz][None,:]
 
     def transform_frames(self, x_n3, rot_n33, orthogonalize=True):
         newx_n3 = self.transform_points(x_n3)
@@ -615,5 +630,49 @@ class Translation2d(Transformation):
         newx_n3 = self.transform_points(x_n3)
 
         return newx_n3, rot_n33
+
+class Translation3d(Transformation):
+    n_params = 3
+    tx = 0
+    ty = 0
+    tz = 0
+
+    def set_params(self, params):
+        self.tx, self.ty, self.tz = params
+    def get_params(self):
+        return np.r_[self.tx, self.ty, self.tz]
+
+    def fit(self, x_n3, y_n3):        
+
+        trans_init = (y_n3.mean(axis=0) - x_n3.mean(axis=0))[:3]
+
+        self_copy = deepcopy(self)
+        def f(params):
+            self_copy.set_params(params)
+            xmapped_n3 = self_copy.transform_points(x_n3)
+            return fit_score(xmapped_n3, y_n3,.5)
+
+
+        # vals_params = []
+        # for rot_init in rot_inits:
+        #     opt_params, opt_val, _, _, _ = opt.fmin_cg(f, np.r_[trans_init],full_output=True)
+        #     vals_params.append((opt_val, opt_params))
+        # 
+        # 
+        # best_val, best_params = min(vals_params, key = lambda x:x[0])
         
+        best_params, best_val, _,_,_ = opt.fmin_cg(f, np.r_[trans_init], full_output=True)
         
+        print "best_params:", best_params
+        self.set_params(best_params)
+        self.objective = best_val
+
+    def transform_points(self, x_n3):
+
+        return x_n3 + np.r_[self.tx, self.ty, self.tz][None,:]
+
+
+    def transform_frames(self, x_n3, rot_n33, orthogonalize=True):
+        newx_n3 = self.transform_points(x_n3)
+
+        return newx_n3, rot_n33

@@ -125,6 +125,9 @@ def rviz_draw_points(pts, **kwargs):
   pose_array = conversions.array_to_pose_array(np.squeeze(pts), "base_footprint")
   Globals.handles.append(Globals.rviz.draw_curve(pose_array, **kwargs))
 
+def get_demos():
+  return Globals.demos
+
 def select_trajectory(points, curr_robot_joint_vals, curr_step):
   """
   - lookup closest trajectory from database
@@ -200,6 +203,11 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
 
   Globals.pr2.update_rave_without_ros(curr_robot_joint_vals)
   trajectory = {}
+  trajectory['seg_name'] = best_name
+  trajectory['demo'] = best_demo
+  if 'tracked_states' in best_demo:
+    trajectory['orig_tracked_states'] = best_demo['tracked_states']
+    trajectory['tracked_states'] = warping.transform_tracked_states(warping_map, best_demo)
 
   for lr in "lr":
     leftright = {"l":"left","r":"right"}[lr]

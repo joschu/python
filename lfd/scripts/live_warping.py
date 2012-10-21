@@ -9,6 +9,7 @@ import rospy
 import match
 import lfd, yaml, os, h5py
 from lfd import warping, registration, recognition
+import multiprocessing as mp
 
 class Globals:
   rviz = None
@@ -55,29 +56,53 @@ def load_cloud_from_sensor(input_topic, frame):
   xyz = ros_utils.transform_points(xyz, Globals.tf_listener, frame, msg.header.frame_id)
   return xyz
 
-def main():
-  import argparse
-  parser = argparse.ArgumentParser(description='Tool for aligning a demo to a live point cloud')
-  parser.add_argument('--demos_list_file', default='knot_demos.yaml')
-  parser.add_argument('--taskname', default='overhand_knot')
-  parser.add_argument('--seg_name', default=None)
-  parser.add_argument('--nonrigid', action='store_true')
-  parser.add_argument('--frame', default='camera_rgb_frame')
-  parser.add_argument('--input_topic', default='/preprocessor/kinect1/points')
-  parser.add_argument('--show_shape_contexts', action='store_true')
-  parser.add_argument('--warp_once_only', action='store_true')
-  args = parser.parse_args()
+def fit_warp(args, cloud1, cloud2, set_warp_params=None):
+  def read_warp_params(params):
+    return ([float(p.strip()) for p in set_warp_params.strip().split()])
 
+  if args.warp_type == 'nonrigid':
+    f = registration.tps_rpm(cloud1, cloud2, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
+  elif args.warp_type == 'rigid3d':
+    f = registration.Rigid3d()
+    if set_warp_params is not None:
+      f.set_params(read_warp_params(set_warp_params))
+    else:
+      f.fit(cloud1, cloud2)
+  elif args.warp_type == 'translation3d':
+    f = registration.Translation3d()
+    if set_warp_params is not None:
+      f.set_params(read_warp_params(set_warp_params))
+    else:
+      f.fit(cloud1, cloud2)
+  else:
+    raise NotImplementedError
+  return f
+
+def warping_loop(args, take_snapshot, quit):
   if rospy.get_name() == '/unnamed':
     rospy.init_node('publish_single_cloud', disable_signals=True)
   Globals.setup()
 
   demo = load_demo(args.taskname, args.demos_list_file, args.seg_name)
 
+  imarker_server = None
+  if args.warp_type == 'rigid_interactive':
+    from interactive_markers.interactive_marker_server import *
+
+    init_pos = demo['cloud_xyz'].mean(axis=0)[:3]
+    marker_6dof = utils_rviz.make_interactive_marker_6dof(init_pos, args.frame)
+    imarker_server = InteractiveMarkerServer('demo_pose_control')
+    def callback_fn(feedback):
+      xyz = feedback.pose.position.x, feedback.pose.position.y, feedback.pose.position.z
+    imarker_server.insert(marker_6dof, callback_fn)
+    imarker_server.applyChanges()
+
   # align demo to test in a loop
-  prev_params = None
+  #prev_params = None
   keep_warping = True
-  while True:
+  num_saved = 0
+
+  while not quit.value:
     xyz_new = load_cloud_from_sensor(args.input_topic, args.frame)
     if xyz_new.size == 0: continue
 
@@ -85,13 +110,9 @@ def main():
     xyz_new_ds = recognition.downsample(xyz_new)[0]
 
     if keep_warping:
-      if args.nonrigid:
-        f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting=False,reg_init=1,reg_final=.1,n_iter=21, verbose=False)
-      else:
-        f = registration.Rigid3d()
-        f.fit(xyz_demo_ds, xyz_new_ds, prev_params)
-        prev_params = f.get_params()
-
+      f = fit_warp(args, xyz_demo_ds, xyz_new_ds, set_warp_params=args.set_warp_params)
+      if hasattr(f, 'get_params') and args.set_warp_params is None:
+        print 'fitted warp params: "%s"' % (' '.join(map(str, f.get_params())), )
       if args.warp_once_only:
         keep_warping = False
 
@@ -99,7 +120,8 @@ def main():
       shape_context_costs = recognition.match_and_calc_shape_context(xyz_demo_ds, xyz_new_ds, normalize_costs=True)
       colors = [(c, 1-c, 0, 1) for c in shape_context_costs]
     else:
-      colors = [(1, 0, 0, 1)] * len(shape_context_costs)
+      import itertools
+      colors = itertools.repeat((1, 0, 0, 1))
 
     warped_pose_array = conversions.array_to_pose_array(f.transform_points(xyz_demo_ds), args.frame)
     Globals.handles = []
@@ -109,9 +131,57 @@ def main():
       ps.header = warped_pose_array.header
       ps.pose = p
       Globals.handles.append(Globals.rviz.draw_marker(ps, scale=(.01, .01, .01), rgba=rgba))
-#    Globals.handles.append(Globals.rviz.draw_curve(
-#      warped_pose_array, rgba=colors, type=Marker.SPHERE_LIST
-#    ))
+
+    if take_snapshot.value:
+      filename = '%s%04d' % (args.save_prefix, num_saved)
+      print 'Saving snapshot to %s' % (filename,)
+      take_snapshot.value = False
+
+      finv = fit_warp(args, xyz_new_ds, xyz_demo_ds, set_warp_params=args.set_inv_warp_params)
+      xyz_new_ds_out = finv.transform_points(xyz_new_ds)
+      xyz_new_out = finv.transform_points(xyz_new)
+
+      np.savez(filename, cloud_xyz=xyz_new_out, cloud_xyz_ds=xyz_new_ds_out)
+      num_saved += 1
+      print 'Done saving snapshot. (used inverse transformation "%s")' % (' '.join(map(str, finv.get_params())), )
+
+def main():
+  import argparse
+  parser = argparse.ArgumentParser(description='Tool for aligning a demo to a live point cloud')
+  parser.add_argument('--demos_list_file', default='knot_demos.yaml')
+  parser.add_argument('--taskname', default='overhand_knot')
+  parser.add_argument('--seg_name', default=None)
+  parser.add_argument('--warp_type', choices=['nonrigid', 'rigid3d', 'translation3d' 'rigid_interactive'], default='rigid3d')
+  parser.add_argument('--set_warp_params', default=None)
+  parser.add_argument('--set_inv_warp_params', default=None)
+  parser.add_argument('--frame', default='camera_rgb_frame')
+  parser.add_argument('--input_topic', default='/preprocessor/kinect1/points')
+  parser.add_argument('--show_shape_contexts', action='store_true')
+  parser.add_argument('--warp_once_only', action='store_true')
+  parser.add_argument('--save_prefix', default='/tmp/xyz_')
+  args = parser.parse_args()
+
+  take_snapshot = mp.Value('b', False)
+  quit = mp.Value('b', False)
+  loop_proc = mp.Process(target=warping_loop, args=(args, take_snapshot, quit))
+  loop_proc.start()
+
+  while True:
+    user_input = raw_input('([s]napshot/[h]elp/[q]uit)> ').strip()
+    if user_input == 's' or user_input == 'snapshot':
+      take_snapshot.value = True
+    elif user_input == 'q' or user_input == 'quit':
+      quit.value = True
+      break
+    elif user_input == 'h' or user_input == 'help':
+      print "'snapshot' saves the current cloud to a file determined by save_prefix\n'help' prints this message\n'quit' quits"
+    elif user_input == '':
+      continue
+    else:
+      print 'unrecognized input: ', user_input
+
+  loop_proc.join()
+
 
 if __name__ == '__main__':
   main()
