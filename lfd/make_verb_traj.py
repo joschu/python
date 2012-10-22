@@ -56,7 +56,7 @@ def make_traj(req):
     
     old_object_clouds = [best_demo_data["object_clouds"][obj_name]["xyz"]
             for obj_name in best_demo_data["object_clouds"].keys()]
-    
+
     if len(old_object_clouds) > 1:
         raise Exception("i don't know what to do with multiple object clouds")
     x_nd = voxel_downsample(old_object_clouds[0],.02)
@@ -87,10 +87,6 @@ def make_traj(req):
     resp = MakeTrajectoryResponse()
     traj = resp.traj
 
-    for i in xrange(10):
-        print warped_demo_data["r_gripper_tool_frame"]["position"][i]
-        print warped_demo_data["r_gripper_tool_frame"]["orientation"][i]
-        
     traj.arms_used = arms_used
     if arms_used in "lb":        
         traj.l_gripper_poses.poses = xyzs_quats_to_poses(warped_demo_data["l_gripper_tool_frame"]["position"], warped_demo_data["l_gripper_tool_frame"]["orientation"])
@@ -112,17 +108,21 @@ def make_traj(req):
     Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (0,0,1,1),width=.01,type=Marker.CUBE_LIST))
     return resp
 
-def get_tps_transform(old_object_cloud, new_object_cloud):
-    return registration.tps_rpm(old_object_cloud, new_object_cloud)
+def get_tps_transform(from_cloud, to_cloud):
+    #return registration.tps_rpm(from_cloud, to_cloud)
+    return registration.tps_rpm(from_cloud, to_cloud, plotting=2,reg_init=2,reg_final=.05, n_iter=10, verbose=False)
     
 # get the transformation from old_object_cloud to new_object_cloud linearized at lin_point (3-element vector) and made into a rigid transformation (orthogonalized)
+# if f is the tps_transform and a is the lin_point, then f(x) ~= f(a) + gradient(f)*(x-a)
+# translation part of matrix is f(a) + gradient(f)*(-a); orientation part is gradient(f)
 def lin_rigid_tps_transform(tps_transform, lin_point):
     lin_ag, trans_g, w_ng, x_na = tps_transform.lin_ag, tps_transform.trans_g, tps_transform.w_ng, tps_transform.x_na
-    trans = tps.tps_eval(np.array([lin_point]), lin_ag, trans_g, w_ng, x_na)[0]
-    print "trans ", trans
-    orien = juc.mat2quat(tps.tps_grad(np.array([lin_point]), lin_ag, trans_g, w_ng, x_na)[0])
-    linearized_transform = juc.trans_rot_to_hmat(trans, orien)
-    return orthogonalize3_cross(linearized_transform)
+    # orientation part is gradient(f)
+    orien = tps.tps_grad(np.array([lin_point]), lin_ag, trans_g, w_ng, x_na)[0]
+    # translation part is f(a) - gradient(f)*a
+    trans = tps.tps_eval(np.array([lin_point]), lin_ag, trans_g, w_ng, x_na)[0] - np.dot(orien, lin_point)
+    linearized_transform = juc.trans_rot_to_hmat(trans, juc.mat2quat(orthogonalize3_cross(np.array([orien]))))
+    return linearized_transform
 
 def get_homog_coord(point):
     homog = np.ones(4)
@@ -148,10 +148,6 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
 
     verb_stage_data = verbs.get_demo_data(current_stage_info.stage_name)
 
-    # get current transformation from base to gripper
-    # (prev_exp_base_to_gripper_trans, prev_exp_base_to_gripper_rot) = get_transform("base_footprint", "r_gripper")
-    # prev_exp_base_to_gripper_transform = juc.trans_rot_to_hmat(prev_exp_base_to_gripper_trans, prev_exp_base_to_gripper_rot)
-
     if stage_num == 0:
         # don't do any extra transformation for the first stage
         prev_exp_to_demo_grip_transform_lin_rigid = np.identity(4)
@@ -160,7 +156,7 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
     elif stage_num > 0:
         prev_stage_data = verbs.get_demo_data(prev_stage_info.stage_name)
         prev_demo_pc = prev_stage_data["object_clouds"][prev_stage_info.item]["xyz"]
-        prev_exp_pc = [pc2xyzrgb(cloud)[0] for cloud in prev_exp_clouds[0]]
+        prev_exp_pc = [pc2xyzrgb(cloud)[0] for cloud in prev_exp_clouds][0]
         prev_demo_pc_down = voxel_downsample(prev_demo_pc, .02)
         prev_exp_pc_down = voxel_downsample(prev_exp_pc, .02)
 
@@ -171,29 +167,30 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
         prev_demo_gripper_orien = prev_stage_data["r_gripper_tool_frame"]["orientation"][-1]
         prev_demo_gripper_to_base_transform = juc.trans_rot_to_hmat(prev_demo_gripper_pos, prev_demo_gripper_orien)
         prev_demo_base_to_gripper_transform = np.linalg.inv(prev_demo_gripper_to_base_transform)
-        prev_demo_pc_in_gripper_frame = [apply_transform(prev_demo_base_to_gripper_transform, point) for point in prev_demo_pc_down]
+        prev_demo_pc_in_gripper_frame = np.array([apply_transform(prev_demo_base_to_gripper_transform, point) for point in prev_demo_pc_down])
 
         # get the new point cloud in the new gripper frame
         # prev_exp_pc_in_gripper_frame = [apply_transform(prev_exp_base_to_gripper_transform, point) for point in prev_exp_pc_down]
-        prev_exp_pc_in_gripper_frame = ru.transform_points(prev_exp_pc_down, ru.get_tf_listener(), "base_footprint", "r_gripper")
+        prev_exp_pc_in_gripper_frame = ru.transform_points(prev_exp_pc_down, ru.get_tf_listener(), "r_gripper_tool_frame", "base_footprint")
 
         # get the transformation from the new point cloud to the old point cloud for the previous stage
         prev_exp_to_demo_grip_transform = get_tps_transform(prev_exp_pc_in_gripper_frame, prev_demo_pc_in_gripper_frame)
 
         # transforms gripper trajectory point into special point trajectory point
-        if prev_stage_data.special_point is None:
+        if prev_stage_info.special_point is None:
             # if there is no special point, linearize at origin
-            prev_exp_to_demo_grip_transform_lin_rigid = lin_rigid_tps_transform(prev_exp_to_demo_grip_transform, [0, 0, 0])
+            prev_exp_to_demo_grip_transform_lin_rigid = lin_rigid_tps_transform(prev_exp_to_demo_grip_transform, np.zeros(3))
             # don't do a special point translation if there is no specified special point
             special_point_translation = np.identity(4)
         else:
-            prev_exp_to_demo_grip_transform_lin_rigid = lin_rigid_tps_transform(prev_exp_to_demo_grip_transform, prev_stage_data.special_point)
-            special_point_translation = translation_matrix(np.array(prev_stage_data.special_point))
+            prev_exp_to_demo_grip_transform_lin_rigid = lin_rigid_tps_transform(prev_exp_to_demo_grip_transform, np.array(prev_stage_info.special_point))
+            # translation from gripper pose in world frame to special point pose in world frame
+            special_point_translation = jut.translation_matrix(np.array(prev_stage_info.special_point))
 
     # find the special point trajectory before the target transformation
     cur_demo_gripper_traj_xyzs = verb_stage_data["r_gripper_tool_frame"]["position"]
-    cur_demo_gripper_traj_orien = verb_stage_data["r_gripper_tool_frame"]["orientation"]
-    cur_demo_gripper_traj_mats = [juc.trans_rot_to_hmat(trans, orien) for (trans, orien) in zip(cur_demo_gripper_traj_xyzs, cur_demo_gripper_traj_orien)]
+    cur_demo_gripper_traj_oriens = verb_stage_data["r_gripper_tool_frame"]["orientation"]
+    cur_demo_gripper_traj_mats = [juc.trans_rot_to_hmat(trans, orien) for (trans, orien) in zip(cur_demo_gripper_traj_xyzs, cur_demo_gripper_traj_oriens)]
     cur_demo_spec_pt_traj_mats = [np.dot(np.dot(gripper_mat, prev_exp_to_demo_grip_transform_lin_rigid), special_point_translation) for gripper_mat in cur_demo_gripper_traj_mats]
 
     # find the target transformation for the experiment scene
@@ -206,11 +203,18 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
     # transformation from old target object to new target object in world frame
     cur_demo_to_exp_transform = get_tps_transform(x_nd, y_md)
 
-    cur_exp_spec_pt_traj_mats = []
-    for spec_pt_traj_xyz, spec_pt_traj_mat in zip(cur_demo_spec_pt_traj_xyzs, cur_demo_spec_pt_traj_mats):
-        # get the special point trajectory; if there is no special point, then the special_point_translation will just be the identity
-        cur_demo_to_exp_transform_lin_rigid = lin_rigid_tps_transform(cur_demo_to_exp_transform, special_point_xyz)
-        cur_exp_spec_pt_traj_mats.append(np.dot(np.dot(cur_demo_to_exp_transform_lin_rigid, spec_pt_traj_mat), prev_exp_to_demo_grip_transform_lin_rigid))
+    # apply the target warping transformation to the special point trajectory
+    cur_demo_spec_pt_traj_xyzs, cur_demo_spec_pt_traj_oriens = [], []
+    for cur_demo_spec_pt_traj_mat in cur_demo_spec_pt_traj_mats:
+        cur_demo_spec_pt_traj_xyz, cur_demo_spec_pt_traj_orien = juc.hmat_to_trans_rot(cur_demo_spec_pt_traj_mat)
+        cur_demo_spec_pt_traj_xyzs.append(cur_demo_spec_pt_traj_xyz)
+        cur_demo_spec_pt_traj_oriens.append(juc.quat2mat(cur_demo_spec_pt_traj_orien))
+    cur_exp_spec_pt_traj_xyzs, cur_exp_spec_pt_traj_oriens = cur_demo_to_exp_transform.transform_frames(np.array(cur_demo_spec_pt_traj_xyzs), np.array(cur_demo_spec_pt_traj_oriens))
+    cur_exp_spec_pt_traj_mats = [juc.trans_rot_to_hmat(cur_exp_spec_pt_traj_xyz, mat2quat(cur_exp_spec_pt_traj_orien)) for cur_exp_spec_pt_traj_xyz, cur_exp_spec_pt_traj_orien in zip(cur_exp_spec_pt_traj_xyzs, cur_exp_spec_pt_traj_oriens)]
+
+    # transform the warped special point trajectory back to a gripper trajectory
+    inv_special_point_translation = np.linalg.inv(special_point_translation) #special point to gripper translation
+    cur_exp_gripper_traj_mats = [np.dot(spec_pt_mat, inv_special_point_translation) for spec_pt_mat in cur_exp_spec_pt_traj_mats]
 
     # assume only right arm is used for now
     #arms_used = current_stage_info.arms_used
@@ -223,7 +227,6 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
         warped_pos, warped_orien = juc.hmat_to_trans_rot(exp_traj_mat)
         warped_stage_data["r_gripper_tool_frame"]["position"].append(warped_pos)
         warped_stage_data["r_gripper_tool_frame"]["orientation"].append(warped_orien)
-        #print "mat ", exp_traj_mat, "pos ", warped_pos, "orien ", warped_orien
 
     resp = MakeTrajectoryResponse()
     traj = resp.traj

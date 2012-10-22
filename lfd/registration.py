@@ -132,7 +132,7 @@ class ThinPlateSplineFixedRot(ThinPlateSpline):
     """same as ThinPlateSpline except during fitting, affine part is a fixed rotation around z axis"""
     
     def __init__(self, rot):
-        raise NotImplementedError
+        #raise NotImplementedError
         ThinPlateSpline.__init__(self)
         assert rot.ndim == 2 and rot.shape[0] == rot.shape[1]
         self.n = 0
