@@ -34,9 +34,9 @@ data_dir = osp.join(osp.dirname(lfd.__file__), "data")
 
 def ask_special_point():
     while True:
-        special_pt_in = raw_input("Specify the special point relative to the gripper ((x y z) in m), or (N)one: ")
+        special_pt_in = raw_input("Specify the special point relative to the gripper ((x y z) in m), or (n)one: ")
 
-        if special_pt_in in ["N", "None"]:
+        if special_pt_in in ["n", "none"]:
             return None
 
         try:

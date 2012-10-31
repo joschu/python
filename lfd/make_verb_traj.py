@@ -21,6 +21,7 @@ import jds_utils.transformations as jut
 import jds_utils.conversions as juc
 from registration import orthogonalize3_cross
 from utils_lfd import group_to_dict
+from lfd import multi_item_verbs
 
 #with open(osp.join(osp.dirname(lfd.__file__),"data","tool_info.yaml"),"r") as fh:
     #tool_info = yaml.load(fh)
@@ -146,7 +147,7 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
 
     assert isinstance(req, MakeTrajectoryRequest)
 
-    verb_stage_data = verbs.get_demo_data(current_stage_info.stage_name)
+    verb_stage_data = multi_item_verbs.get_demo_data(current_stage_info.stage_name)
 
     if stage_num == 0:
         # don't do any extra transformation for the first stage
@@ -154,7 +155,7 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
         # no special point translation for first stage since no tool yet
         special_point_translation = np.identity(4)
     elif stage_num > 0:
-        prev_stage_data = verbs.get_demo_data(prev_stage_info.stage_name)
+        prev_stage_data = multi_item_verbs.get_demo_data(prev_stage_info.stage_name)
         prev_demo_pc = prev_stage_data["object_clouds"][prev_stage_info.item]["xyz"]
         prev_exp_pc = [pc2xyzrgb(cloud)[0] for cloud in prev_exp_clouds][0]
         prev_demo_pc_down = voxel_downsample(prev_demo_pc, .02)
