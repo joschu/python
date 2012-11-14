@@ -22,6 +22,7 @@ import jds_utils.conversions as juc
 from registration import orthogonalize3_cross
 from utils_lfd import group_to_dict
 from lfd import multi_item_verbs
+from jds_utils.yes_or_no import yes_or_no
 
 #with open(osp.join(osp.dirname(lfd.__file__),"data","tool_info.yaml"),"r") as fh:
     #tool_info = yaml.load(fh)
@@ -175,16 +176,18 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
         prev_exp_pc_in_gripper_frame = ru.transform_points(prev_exp_pc_down, ru.get_tf_listener(), "r_gripper_tool_frame", "base_footprint")
 
         # get the transformation from the new point cloud to the old point cloud for the previous stage
-        prev_exp_to_demo_grip_transform = get_tps_transform(prev_exp_pc_in_gripper_frame, prev_demo_pc_in_gripper_frame)
+        prev_demo_to_exp_grip_transform = get_tps_transform(prev_demo_pc_in_gripper_frame, prev_exp_pc_in_gripper_frame)
 
         # transforms gripper trajectory point into special point trajectory point
         if prev_stage_info.special_point is None:
             # if there is no special point, linearize at origin
-            prev_exp_to_demo_grip_transform_lin_rigid = lin_rigid_tps_transform(prev_exp_to_demo_grip_transform, np.zeros(3))
+            prev_demo_to_exp_grip_transform_lin_rigid = lin_rigid_tps_transform(prev_demo_to_exp_grip_transform, np.zeros(3))
+            prev_exp_to_demo_grip_transform_lin_rigid = np.linalg.inv(prev_demo_to_exp_grip_transform_lin_rigid)
             # don't do a special point translation if there is no specified special point
             special_point_translation = np.identity(4)
         else:
-            prev_exp_to_demo_grip_transform_lin_rigid = lin_rigid_tps_transform(prev_exp_to_demo_grip_transform, np.array(prev_stage_info.special_point))
+            prev_demo_to_exp_grip_transform_lin_rigid = lin_rigid_tps_transform(prev_demo_to_exp_grip_transform, np.array(prev_stage_info.special_point))
+            prev_exp_to_demo_grip_transform_lin_rigid = np.linalg.inv(prev_demo_to_exp_grip_transform_lin_rigid)
             # translation from gripper pose in world frame to special point pose in world frame
             special_point_translation = jut.translation_matrix(np.array(prev_stage_info.special_point))
 
@@ -192,7 +195,21 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
     cur_demo_gripper_traj_xyzs = verb_stage_data["r_gripper_tool_frame"]["position"]
     cur_demo_gripper_traj_oriens = verb_stage_data["r_gripper_tool_frame"]["orientation"]
     cur_demo_gripper_traj_mats = [juc.trans_rot_to_hmat(trans, orien) for (trans, orien) in zip(cur_demo_gripper_traj_xyzs, cur_demo_gripper_traj_oriens)]
-    cur_demo_spec_pt_traj_mats = [np.dot(np.dot(gripper_mat, prev_exp_to_demo_grip_transform_lin_rigid), special_point_translation) for gripper_mat in cur_demo_gripper_traj_mats]
+    cur_mid_spec_pt_traj_mats = [np.dot(np.dot(gripper_mat, prev_exp_to_demo_grip_transform_lin_rigid), special_point_translation) for gripper_mat in cur_demo_gripper_traj_mats]
+    cur_exp_inv_special_point_transformation = np.linalg.inv(np.dot(np.linalg.inv(prev_exp_to_demo_grip_transform_lin_rigid), special_point_translation))
+
+    # save the demo special point traj for plotting
+    plot_spec_pt_traj = []
+    for gripper_mat in cur_demo_gripper_traj_mats:
+        spec_pt_xyz, spec_pt_orien = juc.hmat_to_trans_rot(np.dot(gripper_mat, special_point_translation))
+        plot_spec_pt_traj.append(spec_pt_xyz)
+
+    print 'grip transform:'
+    print np.linalg.inv(prev_exp_to_demo_grip_transform_lin_rigid)
+    print 'special point translation:'
+    print special_point_translation
+    print 'inverse special point translation:'
+    print cur_exp_inv_special_point_transformation
 
     # find the target transformation for the experiment scene
     demo_object_clouds = [verb_stage_data["object_clouds"][obj_name]["xyz"] for obj_name in verb_stage_data["object_clouds"].keys()]
@@ -206,16 +223,16 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
 
     # apply the target warping transformation to the special point trajectory
     cur_demo_spec_pt_traj_xyzs, cur_demo_spec_pt_traj_oriens = [], []
-    for cur_demo_spec_pt_traj_mat in cur_demo_spec_pt_traj_mats:
+    for cur_demo_spec_pt_traj_mat in cur_mid_spec_pt_traj_mats:
         cur_demo_spec_pt_traj_xyz, cur_demo_spec_pt_traj_orien = juc.hmat_to_trans_rot(cur_demo_spec_pt_traj_mat)
         cur_demo_spec_pt_traj_xyzs.append(cur_demo_spec_pt_traj_xyz)
         cur_demo_spec_pt_traj_oriens.append(juc.quat2mat(cur_demo_spec_pt_traj_orien))
     cur_exp_spec_pt_traj_xyzs, cur_exp_spec_pt_traj_oriens = cur_demo_to_exp_transform.transform_frames(np.array(cur_demo_spec_pt_traj_xyzs), np.array(cur_demo_spec_pt_traj_oriens))
+    plot_warped_spec_pt_traj = cur_exp_spec_pt_traj_xyzs #save the special point traj for plotting
     cur_exp_spec_pt_traj_mats = [juc.trans_rot_to_hmat(cur_exp_spec_pt_traj_xyz, mat2quat(cur_exp_spec_pt_traj_orien)) for cur_exp_spec_pt_traj_xyz, cur_exp_spec_pt_traj_orien in zip(cur_exp_spec_pt_traj_xyzs, cur_exp_spec_pt_traj_oriens)]
 
-    # transform the warped special point trajectory back to a gripper trajectory
-    inv_special_point_translation = np.linalg.inv(special_point_translation) #special point to gripper translation
-    cur_exp_gripper_traj_mats = [np.dot(spec_pt_mat, inv_special_point_translation) for spec_pt_mat in cur_exp_spec_pt_traj_mats]
+    # transform the warped special point trajectory back to a gripper trajectory in the experiment
+    cur_exp_gripper_traj_mats = [np.dot(spec_pt_mat, cur_exp_inv_special_point_transformation) for spec_pt_mat in cur_exp_spec_pt_traj_mats]
 
     # assume only right arm is used for now
     #arms_used = current_stage_info.arms_used
@@ -240,11 +257,15 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
         traj.r_gripper_poses.header.frame_id = req.object_clouds[0].header.frame_id
         
     Globals.handles = []
-    plot_original_and_warped_demo(verb_stage_data, warped_stage_data, traj)
+    plot_original_and_warped_demo_and_spec_pt(verb_stage_data, warped_stage_data, plot_spec_pt_traj, plot_warped_spec_pt_traj, traj)
     
     pose_array = conversions.array_to_pose_array(y_md, 'base_footprint')
     Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (0,0,1,1),width=.01,type=Marker.CUBE_LIST))
     return resp
+
+def plot_curve(points, rgba):
+    pose_array = conversions.array_to_pose_array(asarray(points), 'base_footprint')
+    Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = rgba,ns = "make_verb_traj_service"))
 
 def plot_original_and_warped_demo(best_demo, warped_demo, traj):
     arms_used = best_demo["arms_used"]
@@ -260,6 +281,42 @@ def plot_original_and_warped_demo(best_demo, warped_demo, traj):
         Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1),ns = "make_verb_traj_service"))
         pose_array = conversions.array_to_pose_array(asarray(warped_demo["r_gripper_tool_frame"]["position"]), 'base_footprint')
         Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (0,1,0,1),ns = "make_verb_traj_service"))
+
+    Globals.handles.extend(Globals.rviz.draw_trajectory(traj.l_gripper_poses, traj.l_gripper_angles, ns = "make_verb_traj_service_grippers"))
+    if arms_used == 'b':
+        Globals.handles.extend(Globals.rviz.draw_trajectory(traj.r_gripper_poses, traj.r_gripper_angles, ns = "make_verb_traj_service_grippers"))
+        
+
+    for (clouds,rgba) in [(sorted_values(best_demo["object_clouds"]),(1,0,0,.5)),
+                          (sorted_values(warped_demo["object_clouds"]),(0,1,0,.5))]:
+
+        cloud = []
+        for subcloud in clouds:
+            cloud.extend(np.asarray(subcloud["xyz"]).reshape(-1,3))
+        cloud = np.array(cloud)
+        
+        cloud = voxel_downsample(cloud, .02)
+        pose_array = conversions.array_to_pose_array(cloud, 'base_footprint')
+        Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = rgba,width=.01,type=Marker.CUBE_LIST))
+
+def plot_original_and_warped_demo_and_spec_pt(best_demo, warped_demo, spec_pt_traj, warped_spec_pt_traj, traj):
+    arms_used = best_demo["arms_used"]
+
+    if arms_used in "lb":
+        pose_array = conversions.array_to_pose_array(asarray(best_demo["l_gripper_tool_frame"]["position"]), 'base_footprint')
+        Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1),ns = "make_verb_traj_service"))
+        pose_array = conversions.array_to_pose_array(asarray(warped_demo["l_gripper_tool_frame"]["position"]), 'base_footprint')
+        Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (0,1,0,1),ns = "make_verb_traj_service"))
+        
+    if arms_used in "rb":
+        pose_array = conversions.array_to_pose_array(asarray(best_demo["r_gripper_tool_frame"]["position"]), 'base_footprint')
+        Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1),ns = "make_verb_traj_service"))
+        # pose_array = conversions.array_to_pose_array(asarray(warped_demo["r_gripper_tool_frame"]["position"]), 'base_footprint')
+        # Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (0,1,0,1),ns = "make_verb_traj_service"))
+        pose_array = conversions.array_to_pose_array(asarray(spec_pt_traj), 'base_footprint')
+        Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (0,0,1,1),ns = "make_verb_traj_service"))
+        pose_array = conversions.array_to_pose_array(asarray(warped_spec_pt_traj), 'base_footprint')
+        Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,1,1),ns = "make_verb_traj_service"))
 
     Globals.handles.extend(Globals.rviz.draw_trajectory(traj.l_gripper_poses, traj.l_gripper_angles, ns = "make_verb_traj_service_grippers"))
     if arms_used == 'b':

@@ -23,6 +23,8 @@ from lfd import lfd_traj as lt
 from jds_utils.yes_or_no import yes_or_no
 import kinematics.kinematics_utils as ku
 
+from lfd import make_verb_traj
+
 class Globals:
     handles = []
     pr2 = None
@@ -79,6 +81,7 @@ def exec_traj(req):
             xyz,quat = conversions.pose_to_trans_rot(pose)
             gripper_xyzs.append(xyz)
             gripper_quats.append(quat)
+        make_verb_traj.plot_curve(gripper_xyzs, (1, 1, 0, 1))
         joint_positions, inds = trajectories.make_joint_traj(gripper_xyzs, gripper_quats, manip, 'base_footprint', '%s_gripper_tool_frame'%lr, filter_options = 1+18)
         joint_positions = ku.smooth_positions(joint_positions, .15)
         
