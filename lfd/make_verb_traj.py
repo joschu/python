@@ -138,7 +138,7 @@ def get_array3(homog):
 def apply_transform(transform, point):
     applied = np.dot(transform, get_homog_coord(point))
     return get_array3(applied)
-    
+
 # make trajectory for a certain stage of a task
 # current_stage_info is the demo information to use
 # stage_num is the current task stage number; previous information is unused if this is zero
@@ -152,7 +152,7 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
 
     if stage_num == 0:
         # don't do any extra transformation for the first stage
-        prev_exp_to_demo_grip_transform_lin_rigid = np.identity(4)
+        prev_demo_to_exp_grip_transform_lin_rigid = np.identity(4)
         # no special point translation for first stage since no tool yet
         special_point_translation = np.identity(4)
     elif stage_num > 0:
@@ -182,12 +182,10 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
         if prev_stage_info.special_point is None:
             # if there is no special point, linearize at origin
             prev_demo_to_exp_grip_transform_lin_rigid = lin_rigid_tps_transform(prev_demo_to_exp_grip_transform, np.zeros(3))
-            prev_exp_to_demo_grip_transform_lin_rigid = np.linalg.inv(prev_demo_to_exp_grip_transform_lin_rigid)
             # don't do a special point translation if there is no specified special point
             special_point_translation = np.identity(4)
         else:
             prev_demo_to_exp_grip_transform_lin_rigid = lin_rigid_tps_transform(prev_demo_to_exp_grip_transform, np.array(prev_stage_info.special_point))
-            prev_exp_to_demo_grip_transform_lin_rigid = np.linalg.inv(prev_demo_to_exp_grip_transform_lin_rigid)
             # translation from gripper pose in world frame to special point pose in world frame
             special_point_translation = jut.translation_matrix(np.array(prev_stage_info.special_point))
 
@@ -195,8 +193,10 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
     cur_demo_gripper_traj_xyzs = verb_stage_data["r_gripper_tool_frame"]["position"]
     cur_demo_gripper_traj_oriens = verb_stage_data["r_gripper_tool_frame"]["orientation"]
     cur_demo_gripper_traj_mats = [juc.trans_rot_to_hmat(trans, orien) for (trans, orien) in zip(cur_demo_gripper_traj_xyzs, cur_demo_gripper_traj_oriens)]
-    cur_mid_spec_pt_traj_mats = [np.dot(np.dot(gripper_mat, prev_exp_to_demo_grip_transform_lin_rigid), special_point_translation) for gripper_mat in cur_demo_gripper_traj_mats]
-    cur_exp_inv_special_point_transformation = np.linalg.inv(np.dot(np.linalg.inv(prev_exp_to_demo_grip_transform_lin_rigid), special_point_translation))
+    cur_mid_spec_pt_traj_mats = [np.dot(gripper_mat, special_point_translation) for gripper_mat in cur_demo_gripper_traj_mats]
+
+    # find the transformation from the new special point to the gripper frame
+    cur_exp_inv_special_point_transformation = np.linalg.inv(np.dot(prev_demo_to_exp_grip_transform_lin_rigid, special_point_translation))
 
     # save the demo special point traj for plotting
     plot_spec_pt_traj = []
@@ -205,7 +205,7 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
         plot_spec_pt_traj.append(spec_pt_xyz)
 
     print 'grip transform:'
-    print np.linalg.inv(prev_exp_to_demo_grip_transform_lin_rigid)
+    print prev_demo_to_exp_grip_transform_lin_rigid
     print 'special point translation:'
     print special_point_translation
     print 'inverse special point translation:'
@@ -222,12 +222,12 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
     cur_demo_to_exp_transform = get_tps_transform(x_nd, y_md)
 
     # apply the target warping transformation to the special point trajectory
-    cur_demo_spec_pt_traj_xyzs, cur_demo_spec_pt_traj_oriens = [], []
-    for cur_demo_spec_pt_traj_mat in cur_mid_spec_pt_traj_mats:
-        cur_demo_spec_pt_traj_xyz, cur_demo_spec_pt_traj_orien = juc.hmat_to_trans_rot(cur_demo_spec_pt_traj_mat)
-        cur_demo_spec_pt_traj_xyzs.append(cur_demo_spec_pt_traj_xyz)
-        cur_demo_spec_pt_traj_oriens.append(juc.quat2mat(cur_demo_spec_pt_traj_orien))
-    cur_exp_spec_pt_traj_xyzs, cur_exp_spec_pt_traj_oriens = cur_demo_to_exp_transform.transform_frames(np.array(cur_demo_spec_pt_traj_xyzs), np.array(cur_demo_spec_pt_traj_oriens))
+    cur_mid_spec_pt_traj_xyzs, cur_mid_spec_pt_traj_oriens = [], []
+    for cur_mid_spec_pt_traj_mat in cur_mid_spec_pt_traj_mats:
+        cur_mid_spec_pt_traj_xyz, cur_mid_spec_pt_traj_orien = juc.hmat_to_trans_rot(cur_mid_spec_pt_traj_mat)
+        cur_mid_spec_pt_traj_xyzs.append(cur_mid_spec_pt_traj_xyz)
+        cur_mid_spec_pt_traj_oriens.append(juc.quat2mat(cur_mid_spec_pt_traj_orien))
+    cur_exp_spec_pt_traj_xyzs, cur_exp_spec_pt_traj_oriens = cur_demo_to_exp_transform.transform_frames(np.array(cur_mid_spec_pt_traj_xyzs), np.array(cur_mid_spec_pt_traj_oriens))
     plot_warped_spec_pt_traj = cur_exp_spec_pt_traj_xyzs #save the special point traj for plotting
     cur_exp_spec_pt_traj_mats = [juc.trans_rot_to_hmat(cur_exp_spec_pt_traj_xyz, mat2quat(cur_exp_spec_pt_traj_orien)) for cur_exp_spec_pt_traj_xyz, cur_exp_spec_pt_traj_orien in zip(cur_exp_spec_pt_traj_xyzs, cur_exp_spec_pt_traj_oriens)]
 

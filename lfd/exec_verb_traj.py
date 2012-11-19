@@ -60,6 +60,33 @@ def draw_table():
     Globals.handles.append(Globals.rviz.draw_marker(ps, type=Marker.CUBE, scale = aabb.extents()*2, id = 24019,rgba = (1,0,0,.25)))
                               
     
+# if the difference between two gripper angles is greater than this, then the gripper angle is "changing"
+GRIPPER_ANGLE_TOLERANCE = 0.0005
+
+def get_change_index(angles):
+    if len(angles) == 0:
+        return 0
+    start = angles[0]
+    last_start_index = 0
+    while last_start_index < len(angles):
+        if (start - angles[last_start_index]) > GRIPPER_ANGLE_TOLERANCE:
+            break;
+        last_start_index += 1
+    return last_start_index
+
+# change the starting angle of the gripper to new_angle
+def replace_start_gripper_angle(new_angle, old_angles):
+    last_start_index = get_change_index(old_angles)
+    return np.concatenate((np.array([new_angle for i in xrange(last_start_index)]), old_angles[last_start_index:]))
+    
+# once the gripper starts to close, then force it to close all the way
+# fixes the problem of objects being dropped because they are too small
+# this is a hack; this can be done a better way
+def full_gripper_close(angles):
+    if len(angles) == 0:
+        return angles
+    last_start_index = get_change_index(angles)
+    return np.concatenate((angles[:last_start_index], np.zeros(len(angles)-last_start_index)))
 
 def exec_traj(req):    
     assert isinstance(req, ExecTrajectoryRequest)
@@ -71,9 +98,13 @@ def exec_traj(req):
     for (lr,gripper_poses, gripper_angles) in zip("lr",[traj.l_gripper_poses.poses,traj.r_gripper_poses.poses], [traj.l_gripper_angles,traj.r_gripper_angles]):
         if len(gripper_poses) == 0: continue
         gripper_angles = np.array(gripper_angles)
-        rospy.logwarn("warning! gripper angle hack")
+        rospy.logwarn("warning! gripper angle hacks")
         gripper_angles[gripper_angles < .04] = gripper_angles[gripper_angles < .04] - .02
-        
+
+        current_gripper_angle = Globals.pr2.rgrip.get_angle()
+        gripper_angles = replace_start_gripper_angle(current_gripper_angle, gripper_angles)
+        gripper_angles = full_gripper_close(gripper_angles)
+
         manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
         manip = Globals.pr2.robot.GetManipulator(manip_name)
         gripper_xyzs, gripper_quats = [],[]
