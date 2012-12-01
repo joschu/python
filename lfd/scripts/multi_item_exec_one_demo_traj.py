@@ -46,28 +46,29 @@ def do_single(demo_base_name, demo_index, stage_num, prev_demo_index):
 
         do_stage(demo_base_name, demo_index, stage_num, prev_stage_info, np.array([prev_exp_pc]))
 
-def do_stage(demo_base_name, demo_index, stage_num, prev_stage_info, prev_new_clouds):
+def do_stage(demo_base_name, demo_index, stage_num, prev_stage_info, prev_exp_clouds):
     demo_name = demo_base_name + str(demo_index)
     stage_info = multi_item_verbs.get_stage_info(demo_name, stage_num)
     pc_sel = do_segmentation(stage_info.item)
     make_req = get_trajectory_request(stage_info.verb, pc_sel)
 
-    make_resp = make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_new_clouds)
+    make_resp = make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_clouds)
     
     yn = yes_or_no("continue?")
     if yn:
         exec_req = ExecTrajectoryRequest()
         exec_req.traj = make_resp.traj
-        exec_verb_traj.exec_traj(exec_req)
+        #exec_verb_traj.exec_traj(exec_req)
+        exec_verb_traj.exec_traj_new_IK(req)
 
     # return stage info and object clouds so they can be saved for use in the next stage if necessary
     return (stage_info, make_req.object_clouds)
 
 # get the trajectory for each stage and execute the trajectory
 def do_multiple_stages(demo_base_name, stages):
-    prev_stage_info, prev_new_clouds = None, None
+    prev_stage_info, prev_exp_clouds = None, None
     for stage_num, demo_num in enumerate(stages):
-        prev_stage_info, prev_new_clouds = do_stage(demo_base_name, demo_num, stage_num, prev_stage_info, prev_new_clouds)
+        prev_stage_info, prev_exp_clouds = do_stage(demo_base_name, demo_num, stage_num, prev_stage_info, prev_exp_clouds)
 
 # START SCRIPT #
 
