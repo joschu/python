@@ -58,8 +58,8 @@ def do_stage(demo_base_name, demo_index, stage_num, prev_stage_info, prev_exp_cl
     if yn:
         exec_req = ExecTrajectoryRequest()
         exec_req.traj = make_resp.traj
-        #exec_verb_traj.exec_traj(exec_req)
-        exec_verb_traj.exec_traj_new_IK(req)
+        exec_verb_traj.exec_traj(exec_req)
+        #exec_verb_traj.exec_traj_new_IK(exec_req)
 
     # return stage info and object clouds so they can be saved for use in the next stage if necessary
     return (stage_info, make_req.object_clouds)

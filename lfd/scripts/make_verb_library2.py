@@ -48,7 +48,7 @@ def make_verb_library_multi():
 
             bag = rosbag.Bag(osp.join(data_dir, bag_file_name))
             
-            segs = bag_proc.create_segment_without_look(bag, link_names)    
+            segs = bag_proc.create_segment_without_look(bag, link_names)
             if len(segs) > 1: print "warning: more than one segment found"
             kinematics_data = segs[0]
             

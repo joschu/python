@@ -24,7 +24,8 @@ from jds_utils.yes_or_no import yes_or_no
 import kinematics.kinematics_utils as ku
 
 from lfd import make_verb_traj
-from bulletsim_msgs import PlanTraj, PlanTrajRequest, PlanTrajResponse
+roslib.load_manifest("bulletsim_msgs")
+from bulletsim_msgs.srv import PlanTraj, PlanTrajRequest, PlanTrajResponse
 
 class Globals:
     handles = []
@@ -59,7 +60,6 @@ def draw_table():
     ps.pose.position = gm.Point(*aabb.pos())
     ps.pose.orientation = gm.Quaternion(0,0,0,1)
     Globals.handles.append(Globals.rviz.draw_marker(ps, type=Marker.CUBE, scale = aabb.extents()*2, id = 24019,rgba = (1,0,0,.25)))
-                              
     
 # if the difference between two gripper angles is greater than this, then the gripper angle is "changing"
 GRIPPER_ANGLE_TOLERANCE = 0.0005
@@ -92,12 +92,13 @@ def full_gripper_close(angles):
 def do_traj_ik(arm, gripper_poses):
     plan_traj_req = PlanTrajRequest()
     plan_traj_req.manip = arm
+    plan_traj_req.link = "r_gripper_tool_frame"
     plan_traj_req.task = "follow_cart"
 
     #set table bounds
     table_bounds = map(float, rospy.get_param("table_bounds").split())
-    xmin, xmax, ymin, ymax, zmin, zmax = bounds
-    plan_traj_req.xmlstring =
+    xmin, xmax, ymin, ymax, zmin, zmax = table_bounds
+    plan_traj_req.xmlstring = \
     """
     <Environment>
         <KinBody name="%s">
@@ -109,7 +110,7 @@ def do_traj_ik(arm, gripper_poses):
             </Body>
         </KinBody>
     </Environment>
-    """
+    """ \
     % ("table", 
       (xmin+xmax)/2, (ymin+ymax)/2, (zmin+zmax)/2,
       (xmax-xmin)/2, (ymax-ymin)/2, (zmax-zmin)/2)
@@ -120,10 +121,10 @@ def do_traj_ik(arm, gripper_poses):
     for pose in gripper_poses:
         xyz, quat = conversions.pose_to_trans_rot(pose)
         pose_vals.append(np.concatenate((quat, xyz)))
-    plan_traj_req.goal = np.array(pose_vals).flatten()
+    plan_traj_req.goal = np.array(pose_vals)[::5].flatten()
 
-    plan_traj_service_name = "fill in name"
-    rospy.wait_for_server(plan_traj_service_name)
+    plan_traj_service_name = "plan_traj"
+    rospy.wait_for_service(plan_traj_service_name)
     plan_traj_service_proxy = rospy.ServiceProxy(plan_traj_service_name, PlanTraj)
     try:
         plan_traj_resp = plan_traj_service_proxy(plan_traj_req)
@@ -131,7 +132,7 @@ def do_traj_ik(arm, gripper_poses):
         print "Service did not process request: %s"%str(e)
         return np.array([])
 
-    joint_positions = plan_traj_resp.trajectory.reshape((None, 7))
+    joint_positions = np.array(plan_traj_resp.trajectory).reshape((-1, 7))
     return joint_positions
 
 def exec_traj_new_IK(req):
@@ -147,7 +148,10 @@ def exec_traj_new_IK(req):
         rospy.logwarn("warning! gripper angle hacks")
         gripper_angles[gripper_angles < .04] = gripper_angles[gripper_angles < .04] - .02
 
-        current_gripper_angle = Globals.pr2.rgrip.get_angle()
+        if lr == 'r':
+            current_gripper_angle = Globals.pr2.rgrip.get_angle()
+        elif lr == 'l':
+            current_gripper_angle = Globals.pr2.lgrip.get_angle()
         gripper_angles = replace_start_gripper_angle(current_gripper_angle, gripper_angles)
         gripper_angles = full_gripper_close(gripper_angles)
 
@@ -162,7 +166,7 @@ def exec_traj_new_IK(req):
         make_verb_traj.plot_curve(gripper_xyzs, (1, 1, 0, 1))
 
         #do ik
-        joint_positions = do_traj_ik(gripper_poses)
+        joint_positions = do_traj_ik("rightarm", gripper_poses)
         if len(joint_positions) == 0:
             return ExecTrajectoryResponse(success=False)                         
         joint_positions = ku.smooth_positions(joint_positions, .15)
@@ -199,7 +203,10 @@ def exec_traj(req):
         rospy.logwarn("warning! gripper angle hacks")
         gripper_angles[gripper_angles < .04] = gripper_angles[gripper_angles < .04] - .02
 
-        current_gripper_angle = Globals.pr2.rgrip.get_angle()
+        if lr == 'r':
+            current_gripper_angle = Globals.pr2.rgrip.get_angle()
+        elif lr == 'l':
+            current_gripper_angle = Globals.pr2.lgrip.get_angle()
         gripper_angles = replace_start_gripper_angle(current_gripper_angle, gripper_angles)
         gripper_angles = full_gripper_close(gripper_angles)
 
