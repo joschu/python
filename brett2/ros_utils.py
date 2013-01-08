@@ -168,8 +168,9 @@ class MarkerHandle(object):
     disable_delete = False
     def __init__(self, marker, pub):
         self.pub = pub
-        self.marker = marker     
+        self.marker = marker
         HANDLES[np.random.randint(0,2147483647)] = self
+
     def __del__(self):
         try:
             if not self.disable_delete:
@@ -178,7 +179,14 @@ class MarkerHandle(object):
         except Exception:
             pass
 
+class MarkerListHandle(MarkerHandle):
+    def __init__(self, marker_handles):
+        self.marker_handles = marker_handles
+        HANDLES[np.random.randint(0,2147483647)] = self
 
+    def __del__(self):
+        for marker_handle in self.marker_handles:
+            marker_handle.__del__()
 
 HANDLES = weakref.WeakValueDictionary()    
 def delete_all_handles():
@@ -193,18 +201,32 @@ def register_deletion():
 
 class RvizWrapper:
 
-
-    
     @once
     def create():
         return RvizWrapper()
-    
     
     def __init__(self):
         self.pub = rospy.Publisher('visualization_marker', Marker)
         self.array_pub = rospy.Publisher("visualization_marker_array", MarkerArray)        
         self.ids = set([])
         register_deletion()
+
+    def draw_traj_points(self, pose_array, rgba = (0,1,0,1), width = .05, ns = "default_ns", duration=0):
+        marker_array = MarkerArray()
+        for pose in pose_array.poses:
+            marker = Marker(type=Marker.ARROW,action=Marker.ADD)
+            marker.header = pose_array.header
+            marker.pose = pose
+            marker.lifetime = rospy.Duration(0)
+            marker.color = stdm.ColorRGBA(*rgba)
+            marker.scale = gm.Vector3(width,width,width)
+            marker.id = self.get_unused_id()
+            marker.ns = ns
+            marker_array.markers.append(marker)
+            self.ids.add(marker.id)
+        self.array_pub.publish(marker_array)
+        return MarkerListHandle([MarkerHandle(marker, self.pub) for marker in marker_array.markers])
+
     def draw_curve(self, pose_array, id=None, rgba = (0,1,0,1), width = .01, ns = "default_ns", duration=0, type=Marker.LINE_STRIP):
         if id is None: id = self.get_unused_id()
         marker = Marker(type=type,action=Marker.ADD)
@@ -216,7 +238,7 @@ class RvizWrapper:
         marker.id = id
         marker.ns = ns
         self.pub.publish(marker)
-        self.ids.add(id)        
+        self.ids.add(id)
         return MarkerHandle(marker, self.pub)
                         
     def draw_marker(self, ps, id=None, type=Marker.CUBE, ns='default_ns',rgba=(0,1,0,1), scale=(.03,.03,.03),text='',duration=0):

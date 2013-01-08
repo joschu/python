@@ -12,6 +12,8 @@ from jds_utils.yes_or_no import yes_or_no
 from jds_utils.colorize import colorize
 import subprocess
 
+verb_data_accessor = multi_item_verbs.VerbDataAccessor(test=False)
+
 def call_and_print(cmd,color='green'):
     print colorize(cmd, color, bold=True)
     subprocess.check_call(cmd, shell=True)
@@ -36,7 +38,7 @@ def do_single(demo_base_name, demo_index, stage_num, prev_demo_index):
     else:
         prev_stage_num = stage_num - 1
         prev_demo_name = demo_base_name + str(prev_demo_index)
-        prev_stage_info = multi_item_verbs.get_stage_info(prev_demo_name, prev_stage_num)
+        prev_stage_info = verb_data_accessor.get_stage_info(prev_demo_name, prev_stage_num)
         prev_exp_pc = do_segmentation(prev_stage_info.item)
 
         call_and_print("rosrun pr2_controller_manager pr2_controller_manager stop r_arm_controller l_arm_controller")
@@ -48,18 +50,17 @@ def do_single(demo_base_name, demo_index, stage_num, prev_demo_index):
 
 def do_stage(demo_base_name, demo_index, stage_num, prev_stage_info, prev_exp_clouds):
     demo_name = demo_base_name + str(demo_index)
-    stage_info = multi_item_verbs.get_stage_info(demo_name, stage_num)
+    stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
     pc_sel = do_segmentation(stage_info.item)
     make_req = get_trajectory_request(stage_info.verb, pc_sel)
 
-    make_resp = make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_clouds)
+    make_resp = make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor)
     
     yn = yes_or_no("continue?")
     if yn:
         exec_req = ExecTrajectoryRequest()
         exec_req.traj = make_resp.traj
-        exec_verb_traj.exec_traj(exec_req)
-        #exec_verb_traj.exec_traj_new_IK(exec_req)
+        exec_verb_traj.exec_traj(exec_req, traj_ik_func=exec_verb_traj.do_traj_ik_graph_search)
 
     # return stage info and object clouds so they can be saved for use in the next stage if necessary
     return (stage_info, make_req.object_clouds)
@@ -114,7 +115,7 @@ if args.demo is not None:
         do_single(demo_base_name, demo_index, stage_num, prev_demo_index)
     elif args.stages is not None:
         if args.stages[0] == 'a':
-            stages = [int(args.stages[1:]) for i in range(multi_item_verbs.get_num_stages(demo_base_name))]
+            stages = [int(args.stages[1:]) for i in range(verb_data_accessor.get_num_stages(demo_base_name))]
         else:
             stages = args.stages
         do_multiple_stages(demo_base_name, stages)

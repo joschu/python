@@ -93,7 +93,8 @@ def record_demonstration_for_motion(name_for_motion, item_name):
 ### START DEMONSTRATION ###
 
 # get the demo name to use
-all_demo_info = multi_item_verbs.get_all_demo_info()
+verb_data_accessor = multi_item_verbs.VerbDataAccessor(test=False)
+all_demo_info = verb_data_accessor.get_all_demo_info()
 for i in xrange(1000):
     demo_name = "%s-%s%i"%(verb, "-".join(items), i)
     if demo_name not in all_demo_info:

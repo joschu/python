@@ -460,9 +460,9 @@ class Gripper(object):
     def get_angle(self):
         return self.pr2.joint_listener.last_msg.position[self.ros_joint_inds[0]]
     def get_velocity(self):
-        return self.pr2.joint_listener.last_msg.position[self.ros_joint_inds[0]]
+        return self.pr2.joint_listener.last_msg.velocity[self.ros_joint_inds[0]]
     def get_effort(self):
-        return self.pr2.joint_listener.last_msg.position[self.ros_joint_inds[0]]
+        return self.pr2.joint_listener.last_msg.effort[self.ros_joint_inds[0]]
 
 
 class Base(object):

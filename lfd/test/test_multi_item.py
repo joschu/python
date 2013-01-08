@@ -50,24 +50,28 @@ def similar_trajectories(traj1, traj2):
 def test_cup_pour_init():
     make_verb_traj.Globals.setup()
 
+# MAKE SURE THAT ROSCORE IS RUNNING FOR THIS TEST, BECAUSE MAKE_VERB_TRAJ DOES PLOTTING FOR RVIZ
+
 # tests that if the target object is the same, then the difference between the demo and experiment special point trajectories are the translation between the the demo and experiment target objects
 def test_cup_pour(demo_name, exp_name):
     test_cup_pour_init()
+
+    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test=True)
 
     current_stage = 1
     gripper_data_key = "r_gripper_tool_frame"
 
     # info and data for previous stage
-    prev_demo_info = multi_item_verbs.get_stage_info(demo_name, current_stage-1)
-    prev_demo_data = multi_item_verbs.get_demo_data(prev_demo_info.stage_name)
-    prev_exp_info = multi_item_verbs.get_stage_info(exp_name, current_stage-1)
-    prev_exp_data = multi_item_verbs.get_demo_data(prev_exp_info.stage_name)
+    prev_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage-1)
+    prev_demo_data = verb_data_accessor.get_demo_data(prev_demo_info.stage_name)
+    prev_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage-1)
+    prev_exp_data = verb_data_accessor.get_demo_data(prev_exp_info.stage_name)
 
     # info and data for current stage
-    cur_demo_info = multi_item_verbs.get_stage_info(demo_name, current_stage)
-    cur_demo_data = multi_item_verbs.get_demo_data(cur_demo_info.stage_name)
-    cur_exp_info = multi_item_verbs.get_stage_info(exp_name, current_stage)
-    cur_exp_data = multi_item_verbs.get_demo_data(cur_exp_info.stage_name)
+    cur_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage)
+    cur_demo_data = verb_data_accessor.get_demo_data(cur_demo_info.stage_name)
+    cur_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage)
+    cur_exp_data = verb_data_accessor.get_demo_data(cur_exp_info.stage_name)
     
     # point clouds of tool for demo and experiment
     prev_exp_pc = prev_exp_data["object_clouds"][prev_exp_info.item]["xyz"]
@@ -79,7 +83,7 @@ def test_cup_pour(demo_name, exp_name):
     prev_world_to_gripper_trans = np.linalg.inv(juc.trans_rot_to_hmat(prev_exp_gripper_pos, prev_exp_gripper_orien))
     gripper_frame_trans = make_verb_traj.make_to_gripper_frame_hmat(prev_world_to_gripper_trans)
 
-    warped_traj_resp = make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc], None, current_stage, prev_demo_info, [prev_exp_pc], gripper_frame_trans)
+    warped_traj_resp = make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc], None, current_stage, prev_demo_info, [prev_exp_pc], verb_data_accessor, gripper_frame_trans)
 
     # get the actual transformation between the old and new target objects (just a translation for this test)
     params = get_test_params()
