@@ -95,6 +95,7 @@ class PR2(object):
 
         # set up openrave
         self.env = rave.Environment()
+        self.env.StopSimulation()
         self.env.Load("robots/pr2-beta-static.zae") # todo: use up-to-date urdf
         self.robot = self.env.GetRobots()[0]  
 

@@ -236,7 +236,6 @@ def exec_traj(req, traj_ik_func=do_traj_ik_default):
             return ExecTrajectoryResponse(success=False)
         joint_positions = ku.smooth_positions(joint_positions, .15)
         new_joint_positions = fix_end_joint_positions(lr, gripper_angles, joint_positions)
-        print new_joint_positions
         
         body_traj["%s_arm"%lr] = new_joint_positions
         body_traj["%s_gripper"%lr] = new_gripper_angles
