@@ -88,8 +88,6 @@ def rod2mat(rod):
         + np.sin(theta)*np.array([[0,-rz,ry],[rz,0,-rx],[-ry,rx,0]]))
     return mat
     
-
-
 def point_stamed_to_pose_stamped(pts,orientation=[0,0,0,1]):
     """convert pointstamped to posestamped"""
     ps = gm.PoseStamped()
@@ -98,18 +96,17 @@ def point_stamed_to_pose_stamped(pts,orientation=[0,0,0,1]):
     ps.header.frame_id = pts.header.frame_id
     return ps
 
-def array_to_pose_array(arr, frame_id):
+def array_to_pose_array(xyz_arr, frame_id, quat_arr=None):
+    assert quat_arr is None or len(xyz_arr) == len(quat_arr)
     pose_array = gm.PoseArray()
-
-    for (x,y,z) in arr:
+    for index, xyz in enumerate(xyz_arr):
         pose = gm.Pose()
-        pose.position = gm.Point(x,y,z)
-        pose.orientation = gm.Quaternion(0,0,0,1)
-        pose_array.poses.append(pose)                        
+        pose.position = gm.Point(*xyz)
+        pose.orientation = gm.Quaternion(0,0,0,1) if quat_arr is None else gm.Quaternion(*(quat_arr[index]))
+        pose_array.poses.append(pose)
     pose_array.header.frame_id = frame_id
     pose_array.header.stamp = rospy.Time.now()
     return pose_array
-    
 
 def trans_rot_to_pose(trans, rot):
     pose = gm.Pose()
