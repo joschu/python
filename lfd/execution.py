@@ -144,21 +144,24 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
 # candidate_demo_names = Globals.demos.keys()
 
   # HACK: never choose the done step on the first step
-# print 'curr step', curr_step
-# if curr_step == 0:
-#   filtered_demo_names = []
-#   for n in candidate_demo_names:
-#     if not Globals.demos[n]['done']:
-#       filtered_demo_names.append(n)
-#   candidate_demo_names = filtered_demo_names
+  print 'curr step', curr_step
+  if curr_step == 0:
+    filtered_demo_names = []
+    for n in candidate_demo_names:
+      if not Globals.demos[n]['done']:
+        filtered_demo_names.append(n)
+    candidate_demo_names = filtered_demo_names
 
-# from joblib import parallel
-# costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
-# #costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
-# _, best_name = min(costs_names)
-# rospy.loginfo('costs_names %s', costs_names)
-  matcher = recognition.CombinedNNMatcher(recognition.DataSet.LoadFromDict(Globals.demos), [recognition.GeodesicDistMatcher, recognition.ShapeContextMatcher], [1, 0.1])
-  best_name, best_cost = matcher.match(xyz_new)
+  from joblib import parallel
+  #costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
+  costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in sorted(candidate_demo_names)]
+  _, best_name = min(costs_names)
+  print "choices: ", candidate_demo_names
+  best_name = raw_input("type name of trajectory you want to use\n")
+  rospy.loginfo('costs_names %s', costs_names)
+
+  #matcher = recognition.CombinedNNMatcher(recognition.DataSet.LoadFromDict(Globals.demos), [recognition.GeodesicDistMatcher, recognition.ShapeContextMatcher], [1, 0.1])
+  #best_name, best_cost = matcher.match(xyz_new)
 
   best_demo = Globals.demos[best_name]
   if best_demo["done"]:
@@ -181,7 +184,28 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
 #  rviz_draw_points(grabbing_pts,rgba=(.5,.5,.5,1),type=Marker.CUBE_LIST)
   n_iter = 101
   #warping_map = registration.tps_rpm_with_overlap_control(xyz_demo_ds, xyz_new_ds, overlap_ctl_pts, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False, plotting=20)
-  warping_map = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False, plotting=20)
+  warping_map,info = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False, plotting=20,return_full=True)  
+
+  from lfd import tps
+  import scipy.spatial.distance as ssd
+  f = warping_map
+  pts_grip = []
+  for lr in "lr":
+    if best_demo["arms_used"] in ["b", lr]:
+      pts_grip.extend(best_demo["%s_gripper_tool_frame"%lr]["position"])
+  pts_grip = np.array(pts_grip)
+  dist_to_rope = ssd.cdist(pts_grip, xyz_demo_ds).min(axis=1)
+  pts_grip_near_rope = pts_grip[dist_to_rope < .04,:]
+  pts_rigid = voxel_downsample(pts_grip_near_rope, .01)
+
+  registration.Globals.handles = []
+  f.lin_ag, f.trans_g, f.w_ng, f.x_na = tps.tps_nr_fit_enhanced(info["x_Nd"], info["targ_Nd"], 0.01, pts_rigid, 0.001, method="newton", plotting=5)
+  
+  #if plotting:
+    #plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)   
+    #targ_pose_array = conversions.array_to_pose_array(targ_Nd, 'base_footprint')
+    #Globals.handles.append(Globals.rviz.draw_curve(targ_pose_array,rgba=(1,1,0,1),type=Marker.CUBE_LIST))
+
   #raw_input('Press enter to continue:')
   #################### Generate new trajectory ##################
 
@@ -198,7 +222,7 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
   #maxes[2] += .1
   #grid_handle = warping.draw_grid(Globals.rviz, warping_map.transform_points, mins, maxes, 'base_footprint')
   #Globals.handles.append(grid_handle)
-  
+
   #### Actually generate the trajectory ###########
   warped_demo = warping.transform_demo_with_fingertips(warping_map, best_demo)
 
