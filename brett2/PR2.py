@@ -1,6 +1,6 @@
 
 import numpy as np
-__builtins__["__openravepy_version__"] = '0.6'
+__builtins__["__openravepy_version__"] = '0.7'
 import openravepy as rave
 from numpy import inf, zeros, dot, r_
 from numpy.linalg import norm, inv
@@ -103,7 +103,7 @@ class PR2(object):
             self.joint_listener = TopicListener("/joint_states", sm.JointState)
             self.tf_listener = ros_utils.get_tf_listener()
 
-            self.planner = rospy.ServiceProxy("/plan_traj", PlanTraj)     
+            #self.planner = rospy.ServiceProxy("/plan_traj", PlanTraj)     
 
             # rave to ros conversions
             joint_msg = self.get_last_joint_message()        
@@ -460,9 +460,9 @@ class Gripper(object):
     def get_angle(self):
         return self.pr2.joint_listener.last_msg.position[self.ros_joint_inds[0]]
     def get_velocity(self):
-        return self.pr2.joint_listener.last_msg.position[self.ros_joint_inds[0]]
+        return self.pr2.joint_listener.last_msg.velocity[self.ros_joint_inds[0]]
     def get_effort(self):
-        return self.pr2.joint_listener.last_msg.position[self.ros_joint_inds[0]]
+        return self.pr2.joint_listener.last_msg.effort[self.ros_joint_inds[0]]
 
 
 class Base(object):

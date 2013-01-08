@@ -126,7 +126,7 @@ def follow_trajectory(pr2, bodypart2traj):
     vel_limits = np.array(vel_limits)
     acc_limits = np.array(acc_limits)
 
-    times = retiming.retime_with_vel_limits(trajectories, vel_limits)
+    times = retiming.retime_with_vel_limits(trajectories, vel_limits/2)
     times_up = np.arange(0,times[-1],.1)
     traj_up = interp2d(times_up, times, trajectories)
     
