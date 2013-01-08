@@ -52,6 +52,11 @@ def load_pcd(f):
     else:
         raise TypeError
         
+def load_xyz(f):
+    arr = load_pcd(f)
+    xyz = np.concatenate([arr['x'][:,:,None],arr['y'][:,:,None],arr['z'][:,:,None]],2)
+    return xyz[0]
+    
 def load_xyzrgb(f):
     "it's actually xyzbgr"
     arr = load_pcd(f)

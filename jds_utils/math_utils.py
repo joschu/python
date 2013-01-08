@@ -1,9 +1,8 @@
 """
-Common numpy imports and useful functions
+Simple functions on numpy arrays
 """
 from __future__ import division
 import numpy as np
-np.set_printoptions(precision=3)
 
 def interp2d(x,xp,yp):
     "Same as np.interp, but yp is 2d"
