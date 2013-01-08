@@ -76,52 +76,39 @@ def get_close_index(angles):
     if len(angles) == 0:
         return 0
     start = angles[0]
-    last_start_index = 0
-    while last_start_index < len(angles):
-        if (start - angles[last_start_index]) > GRIPPER_ANGLE_TOLERANCE:
+    index = 0
+    while index < len(angles):
+        if (start - angles[index]) > GRIPPER_ANGLE_TOLERANCE:
             break;
-        last_start_index += 1
-    return last_start_index
+        index += 1
+    return index
 
 # find where the gripper started to open
 def get_open_index(angles):
     if len(angles) == 0:
         return 0
     start = angles[0]
-    last_start_index = 0
-    while last_start_index < len(angles):
-        if (angles[last_start_index] - start) > GRIPPER_ANGLE_TOLERANCE:
+    index = 0
+    while index < len(angles):
+        if (angles[index] - start) > GRIPPER_ANGLE_TOLERANCE:
             break;
-        last_start_index += 1
-    return last_start_index
+        index += 1
+    return index
 
-# change the starting angle of the gripper to new_angle
-def replace_start_gripper_angle(new_angle, old_angles):
-    last_start_index = get_close_index(old_angles)
-    return np.concatenate((np.array([new_angle for i in xrange(last_start_index)]), old_angles[last_start_index:]))
-    
-# once the gripper starts to close, then force it to close all the way
-# fixes the problem of objects being dropped because they are too small
-# this is a hack; this can be done a better way
-def full_gripper_close(angles):
-    if len(angles) == 0:
-        return angles
-    last_start_index = get_close_index(angles)
-    return np.concatenate((angles[:last_start_index], np.zeros(len(angles)-last_start_index)))
+def replace_gripper_angles(new_angle, old_angles, start=0, end=-1):
+    end = len(old_angles) if end == -1 else end
+    return np.concatenate((old_angles[:start], np.array([new_angle for i in xrange(end-start)]), old_angles[end:]))
 
 GRIPPER_EFFORT_GRAB_THRESHHOLD = -10
-
-# if a gripper should be grabbing an object, make sure it is grabbing the object
+# if a gripper is to close, make sure it closes; if a gripper is already closed, make sure it stays closed
 def get_proper_gripper_angles(lr, gripper_angles):
-    #gripper_effort = Globals.pr2.rgrip.get_effort() if lr == 'r' else Globals.pr2.lgrip.get_effort()
-    #if gripper_effort < GRIPPER_EFFORT_GRAB_THRESHHOLD:
-
-    if lr == 'r':
-        current_gripper_angle = Globals.pr2.rgrip.get_angle()
-    elif lr == 'l':
-        current_gripper_angle = Globals.pr2.lgrip.get_angle()
-    new_gripper_angles = replace_start_gripper_angle(current_gripper_angle, gripper_angles)
-    new_gripper_angles = full_gripper_close(new_gripper_angles)
+    gripper_effort = Globals.pr2.rgrip.get_effort() if lr == 'r' else Globals.pr2.lgrip.get_effort()
+    if gripper_effort < GRIPPER_EFFORT_GRAB_THRESHHOLD: #grabbing something
+        start_open_index = get_open_index(gripper_angles)
+        new_gripper_angles = replace_gripper_angles(0, gripper_angles, end=start_open_index)
+    else: #not grabbing item
+        start_close_index = get_close_index(gripper_angles)
+        new_gripper_angles = replace_gripper_angles(0, gripper_angles, start=start_close_index)
     return new_gripper_angles
 
 # do ik using the graph search algorithm

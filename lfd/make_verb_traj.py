@@ -153,6 +153,10 @@ def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, p
     clouds_frame_id = req.object_clouds[0].header.frame_id
     return make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func)
 
+def print_trans_rot_from_hmat(hmat):
+    trans, rot = juc.hmat_to_trans_rot(hmat)
+    print trans, jut.euler_from_quaternion(rot)
+
 # make trajectory for a certain stage of a task
 # current_stage_info is the demo information to use
 # stage_num is the current task stage number; previous information is unused if this is zero
@@ -243,10 +247,13 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
 
         print 'grip transform:'
         print prev_demo_to_exp_grip_transform_lin_rigid
+        print_trans_rot_from_hmat(prev_demo_to_exp_grip_transform_lin_rigid)
         print 'special point translation:'
         print special_point_translation
+        print_trans_rot_from_hmat(special_point_translation)
         print 'inverse special point translation:'
         print cur_exp_inv_special_point_transformation
+        print_trans_rot_from_hmat(cur_exp_inv_special_point_transformation)
 
         # find the target transformation for the experiment scene
         demo_object_clouds = [verb_stage_data["object_clouds"][obj_name]["xyz"] for obj_name in verb_stage_data["object_clouds"].keys()]
@@ -266,6 +273,11 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
         cur_exp_spec_pt_traj_xyzs, cur_exp_spec_pt_traj_oriens = cur_demo_to_exp_transform.transform_frames(np.array(cur_mid_spec_pt_traj_xyzs), np.array(cur_mid_spec_pt_traj_oriens))
         plot_warped_spec_pt_traj = cur_exp_spec_pt_traj_xyzs #save the special point traj for plotting
         cur_exp_spec_pt_traj_mats = [juc.trans_rot_to_hmat(cur_exp_spec_pt_traj_xyz, mat2quat(cur_exp_spec_pt_traj_orien)) for cur_exp_spec_pt_traj_xyz, cur_exp_spec_pt_traj_orien in zip(cur_exp_spec_pt_traj_xyzs, cur_exp_spec_pt_traj_oriens)]
+
+        cur_demo_to_exp_transform_lin_rigid = lin_rigid_tps_transform(cur_demo_to_exp_transform, y_md[0]) #linearize at some point on target
+        print 'current target transform:'
+        print cur_demo_to_exp_transform_lin_rigid
+        print_trans_rot_from_hmat(cur_demo_to_exp_transform_lin_rigid)
 
         # transform the warped special point trajectory back to a gripper trajectory in the experiment
         cur_exp_gripper_traj_mats = [np.dot(spec_pt_mat, cur_exp_inv_special_point_transformation) for spec_pt_mat in cur_exp_spec_pt_traj_mats]

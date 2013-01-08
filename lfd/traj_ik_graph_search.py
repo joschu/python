@@ -85,8 +85,6 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     paths, path_costs = shortest_paths(ncost_nk, ecost_nkk)
     return [np.array([iksolns[t][i] for (t,i) in enumerate(path)]) for path in paths], path_costs, timesteps
     
-    
-
 def ik_for_link(T_w_link, manip, link_name, filter_options = 18, return_all_solns = False):
     """
     Perform IK for an arbitrary link attached to the manipulator
@@ -105,11 +103,7 @@ def ik_for_link(T_w_link, manip, link_name, filter_options = 18, return_all_soln
 
     link = robot.GetLink(link_name)
 
-<<<<<<< HEAD
-    if not robot.DoesAffect(manip.GetArmJoints()[-1], link.GetIndex()):
-=======
     if not robot.DoesAffect(manip.GetArmIndices()[-1], link.GetIndex()):
->>>>>>> b956d4c1ae6d194d8c7828d4d1151885e0a822b5
         raise Exception("link %s is not attached to end effector of manipulator %s"%(link_name, manip.GetName()))
 
     Tcur_w_link = link.GetTransform()
