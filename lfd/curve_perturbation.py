@@ -2,7 +2,7 @@ import scipy.interpolate as interp
 import numpy as np
 
 def _to_spline(curve):
-  return interp.splprep(curve.transpose(), k=5, s=0.05)
+  return interp.splprep(curve.transpose(), k=3, s=0.001)
 
 def _eval_spline(spline):
   return np.asarray(interp.splev(spline[1], spline[0])).transpose()
@@ -90,5 +90,9 @@ if __name__ == '__main__':
   for _ in range(args.n):
     new_curve = perturb_curve(curve, args.s)
     plt.plot(new_curve[:,0], new_curve[:,1], 'm.-')
+
+  orig = _eval_spline(_to_spline(curve))
+  plt.plot(orig[:,0], orig[:,1], 'g.-')
+
   plt.axis('equal')
   plt.show()
