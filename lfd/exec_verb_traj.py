@@ -95,9 +95,9 @@ def get_open_index(angles):
         index += 1
     return index
 
-def replace_gripper_angles(new_angle, old_angles, start=0, end=-1):
-    end = len(old_angles) if end == -1 else end
-    return np.concatenate((old_angles[:start], np.array([new_angle for i in xrange(end-start)]), old_angles[end:]))
+def replace_range(new_value, old_array, start=0, end=-1):
+    end = len(old_array) if end == -1 else end
+    return np.concatenate((old_array[:start], np.array([new_value for i in xrange(end-start)]), old_array[end:]))
 
 GRIPPER_EFFORT_GRAB_THRESHHOLD = -10
 # if a gripper is to close, make sure it closes; if a gripper is already closed, make sure it stays closed
@@ -105,11 +105,24 @@ def get_proper_gripper_angles(lr, gripper_angles):
     gripper_effort = Globals.pr2.rgrip.get_effort() if lr == 'r' else Globals.pr2.lgrip.get_effort()
     if gripper_effort < GRIPPER_EFFORT_GRAB_THRESHHOLD: #grabbing something
         start_open_index = get_open_index(gripper_angles)
-        new_gripper_angles = replace_gripper_angles(0, gripper_angles, end=start_open_index)
+        new_gripper_angles = replace_range(0, gripper_angles, end=start_open_index)
     else: #not grabbing item
         start_close_index = get_close_index(gripper_angles)
-        new_gripper_angles = replace_gripper_angles(0, gripper_angles, start=start_close_index)
+        new_gripper_angles = replace_range(0, gripper_angles, start=start_close_index)
     return new_gripper_angles
+
+def fix_end_joint_positions(lr, gripper_angles, joint_positions):
+    gripper_effort = Globals.pr2.rgrip.get_effort() if lr == 'r' else Globals.pr2.lgrip.get_effort()
+    new_joint_positions = None
+    if gripper_effort < GRIPPER_EFFORT_GRAB_THRESHHOLD: #grabbing something
+        start_open_index = get_open_index(gripper_angles)
+        if 0 < start_open_index < len(joint_positions):
+            new_joint_positions = replace_range(joint_positions[start_open_index-1], joint_positions, start=start_open_index)
+    else: #not grabbing item
+        start_close_index = get_close_index(gripper_angles)
+        if 0 < start_close_index < len(joint_positions):
+            new_joint_positions = replace_range(joint_positions[start_close_index-1], joint_positions, start=start_close_index)
+    return new_joint_positions if new_joint_positions is not None else joint_positions
 
 # do ik using the graph search algorithm
 def do_traj_ik_graph_search(lr, gripper_poses):
@@ -207,13 +220,13 @@ def exec_traj(req, traj_ik_func=do_traj_ik_default):
     traj = req.traj
 
     body_traj = {}
-    for (lr,gripper_poses, gripper_angles) in zip("lr",[traj.l_gripper_poses.poses,traj.r_gripper_poses.poses], [traj.l_gripper_angles,traj.r_gripper_angles]):
+    for (lr, gripper_poses, gripper_angles) in zip("lr",[traj.l_gripper_poses.poses,traj.r_gripper_poses.poses], [traj.l_gripper_angles,traj.r_gripper_angles]):
         if len(gripper_poses) == 0: continue
         gripper_angles = np.array(gripper_angles)
         rospy.logwarn("warning! gripper angle hacks")
         gripper_angles[gripper_angles < .04] = gripper_angles[gripper_angles < .04] - .02
 
-        gripper_angles = get_proper_gripper_angles(lr, gripper_angles)
+        new_gripper_angles = get_proper_gripper_angles(lr, gripper_angles)
 
         plot_gripper_xyzs_from_poses(lr, gripper_poses)
 
@@ -222,14 +235,16 @@ def exec_traj(req, traj_ik_func=do_traj_ik_default):
         if len(joint_positions) == 0:
             return ExecTrajectoryResponse(success=False)
         joint_positions = ku.smooth_positions(joint_positions, .15)
+        new_joint_positions = fix_end_joint_positions(lr, gripper_angles, joint_positions)
+        print new_joint_positions
         
-        body_traj["%s_arm"%lr] = joint_positions
-        body_traj["%s_gripper"%lr] = gripper_angles
+        body_traj["%s_arm"%lr] = new_joint_positions
+        body_traj["%s_gripper"%lr] = new_gripper_angles
 
         pose_array = gm.PoseArray()
         pose_array.header.frame_id = "base_footprint"
         pose_array.header.stamp = rospy.Time.now()
-        pose_array.poses = traj.l_gripper_poses.poses if lr == 'l' else traj.r_gripper_poses.poses
+        pose_array.poses = traj.r_gripper_poses.poses if lr == 'r' else traj.r_gripper_poses.poses
         Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1)))
 
     yn = yes_or_no("continue?")
