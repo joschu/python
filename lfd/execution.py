@@ -140,17 +140,17 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
   #if args.obj == "cloth": xyz_new = voxel_downsample(xyz_new, .025)
   xyz_new_ds, ds_inds = downsample(xyz_new)
 #  xyz_new_ds, ds_inds = xyz_new.reshape(-1,3), np.arange(0, len(xyz_new)).reshape(-1, 1)
-# dists_new = recognition.calc_geodesic_distances_downsampled_old(xyz_new,xyz_new_ds, ds_inds)
-# candidate_demo_names = Globals.demos.keys()
+  dists_new = recognition.calc_geodesic_distances_downsampled_old(xyz_new,xyz_new_ds, ds_inds)
+  candidate_demo_names = Globals.demos.keys()
 
   # HACK: never choose the done step on the first step
-  print 'curr step', curr_step
-  if curr_step == 0:
-    filtered_demo_names = []
-    for n in candidate_demo_names:
-      if not Globals.demos[n]['done']:
-        filtered_demo_names.append(n)
-    candidate_demo_names = filtered_demo_names
+# print 'curr step', curr_step
+# if curr_step == 0:
+#   filtered_demo_names = []
+#   for n in candidate_demo_names:
+#     if not Globals.demos[n]['done']:
+#       filtered_demo_names.append(n)
+#   candidate_demo_names = filtered_demo_names
 
   from joblib import parallel
   #costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
@@ -240,7 +240,21 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
       #if args.hard_table:
       #    clipinplace(warped_demo["l_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
       #    clipinplace(warped_demo["r_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
-      arm_traj, feas_inds = lfd_traj.make_joint_traj(warped_demo["%s_gripper_tool_frame"%lr]["position"], warped_demo["%s_gripper_tool_frame"%lr]["orientation"], best_demo["%sarm"%leftright], Globals.pr2.robot.GetManipulator("%sarm"%leftright),"base_footprint","%s_gripper_tool_frame"%lr,1+2+16)
+
+      #arm_traj, feas_inds = lfd_traj.make_joint_traj(
+      #  warped_demo["%s_gripper_tool_frame"%lr]["position"],
+      #  warped_demo["%s_gripper_tool_frame"%lr]["orientation"],
+      #  best_demo["%sarm"%leftright],
+      #  Globals.pr2.robot.GetManipulator("%sarm"%leftright),
+      #  "base_footprint","%s_gripper_tool_frame"%lr,
+      #  1+2+16
+      #)
+      arm_traj, feas_inds = lfd_traj.make_joint_traj_by_graph_search(
+        warped_demo["%s_gripper_tool_frame"%lr]["position"],
+        warped_demo["%s_gripper_tool_frame"%lr]["orientation"],
+        Globals.pr2.robot.GetManipulator("%sarm"%leftright),
+        "%s_gripper_tool_frame"%lr
+      )
       if len(feas_inds) == 0: return {'status': "failure"}
       trajectory["%s_arm"%lr] = arm_traj
       trajectory['steps'] = len(arm_traj)

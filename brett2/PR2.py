@@ -1,6 +1,5 @@
 
 import numpy as np
-__builtins__["__openravepy_version__"] = '0.6'
 import openravepy as rave
 from numpy import inf, zeros, dot, r_
 from numpy.linalg import norm, inv

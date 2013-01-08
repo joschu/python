@@ -24,7 +24,7 @@ def make_joint_traj(xyzs, quats, manip, ref_frame, targ_frame, filter_options = 
     assert len(quats) == n
     
     robot = manip.GetRobot()
-    joint_inds = manip.GetArmJoints()
+    joint_inds = manip.GetArmIndices()
     robot.SetActiveDOFs(joint_inds)
     orig_joint = robot.GetActiveDOFValues()
     
