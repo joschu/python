@@ -310,7 +310,10 @@ class Arm(TrajectoryControllerWrapper):
         self.tool_frame = "%s_gripper_tool_frame"%lr
         
         self.manip = pr2.robot.GetManipulator("%sarm"%self.lrlong)
-        
+        ikmodel = rave.databases.inversekinematics.InverseKinematicsModel(pr2.robot,iktype=IkParameterization.Type.Transform6D) 
+        if not ikmodel.load(): 
+            ikmodel.autogenerate() 
+
         self.cart_command = rospy.Publisher('%s_cart/command_pose'%lr, gm.PoseStamped)
         
 

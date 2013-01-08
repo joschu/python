@@ -138,7 +138,7 @@ def transform_demo(reg, demo, left=True, right=True, cloud_xyz=False, object_clo
 def sorted_values(d):
     return [d[key] for key in sorted(d.keys())]
 
-def transform_tracked_states(f, demo):
+def transform_tracked_states(f, demo, g=None):
     assert 'tracked_states' in demo
 
     # f takes demo -> test
@@ -150,10 +150,12 @@ def transform_tracked_states(f, demo):
     import registration
     xyz_tracked_ds = np.reshape(demo['tracked_states'][0], (-1, 3))
     xyz_demo_ds = demo['cloud_xyz_ds']
-    #g = registration.tps_rpm(xyz_tracked_ds, xyz_demo_ds, reg_init=1,reg_final=1,n_iter=100,verbose=False, plotting=False)
-    #g = registration.ScaledRigid3d(); g.fit(xyz_tracked_ds, xyz_demo_ds)
-    #S, g_A, g_b = registration.fit_affine_by_tpsrpm(xyz_tracked_ds, xyz_demo_ds); print 'got affine transformation', g_A, g_b
-    g = registration.Rigid3d(); g.fit(xyz_tracked_ds, xyz_demo_ds)
+    if g is None:
+      #g = registration.tps_rpm(xyz_tracked_ds, xyz_demo_ds, reg_init=1,reg_final=1,n_iter=100,verbose=False, plotting=False)
+      #g = registration.ScaledRigid3d(); g.fit(xyz_tracked_ds, xyz_demo_ds)
+      #S, g_A, g_b = registration.fit_affine_by_tpsrpm(xyz_tracked_ds, xyz_demo_ds); print 'got affine transformation', g_A, g_b
+      print 'WARNING: CALCULATING NEW RIGID TRANSFORMATION'
+      g = registration.Rigid3d(); g.fit(xyz_tracked_ds, xyz_demo_ds)
 
     #TODO: this is rope-specific
     warped_tracked_states = []
@@ -164,10 +166,7 @@ def transform_tracked_states(f, demo):
 #        pts = np.dot(pts, g_A.T) + g_b
         warped_pts = f.transform_points(pts)
         warped_tracked_states.append(warped_pts.reshape((1,-1))[0])
-    print demo['tracked_states'][-1], warped_tracked_states[-1]
-    #warped_demo['tracked_states'] = wts
-    #warped_demo['tracked_states'] = demo['tracked_states']
-    return warped_tracked_states
+    return warped_tracked_states, g
 
 def transform_demo_with_fingertips(f, demo):
     """

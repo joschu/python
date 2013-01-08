@@ -173,24 +173,30 @@ def make_joint_traj(xyzs, quats, joint_seeds,manip, ref_frame, targ_frame,filter
     assert len(quats) == n
     
     robot = manip.GetRobot()
-    joint_inds = manip.GetArmJoints()
-    robot.SetActiveDOFs(joint_inds)
-    orig_joint = robot.GetActiveDOFValues()
+    robot.SetActiveManipulator(manip.GetName())
+    #joint_inds = manip.GetArmJoints()
+    joint_inds = manip.GetArmIndices()
+    #robot.SetActiveDOFs(joint_inds)
+    #orig_joint = robot.GetActiveDOFValues()
+    orig_joint = robot.GetDOFValues(joint_inds)
 
     joints = []
     inds = []
 
     for i in xrange(0,n):
         mat4 = conv.trans_rot_to_hmat(xyzs[i], quats[i])
-        robot.SetActiveDOFValues(joint_seeds[i])
+        #robot.SetActiveDOFValues(joint_seeds[i])
+        robot.SetDOFValues(joint_seeds[i], joint_inds)
         joint = PR2.cart_to_joint(manip, mat4, ref_frame, targ_frame, filter_options)
         if joint is not None: 
             joints.append(joint)
             inds.append(i)
-            robot.SetActiveDOFValues(joint)
+            #robot.SetActiveDOFValues(joint)
+            robot.SetDOFValues(joint, joint_inds)
 
 
-    robot.SetActiveDOFValues(orig_joint)
+    #robot.SetActiveDOFValues(orig_joint)
+    robot.SetDOFValues(orig_joint, joint_inds)
     
     
     rospy.loginfo("found ik soln for %i of %i points",len(inds), n)

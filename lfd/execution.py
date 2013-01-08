@@ -47,6 +47,7 @@ class Globals:
   pr2 = None
   rviz = None
   demos = None
+  offset_trans = None # offset from tracked states to point clouds. used for transforming tracked states
   handles = []
   isinstance(pr2, PR2.PR2)
   isinstance(rviz, ros_utils.RvizWrapper)
@@ -207,7 +208,7 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
   trajectory['demo'] = best_demo
   if 'tracked_states' in best_demo:
     trajectory['orig_tracked_states'] = best_demo['tracked_states']
-    trajectory['tracked_states'] = warping.transform_tracked_states(warping_map, best_demo)
+    trajectory['tracked_states'], Globals.offset_trans = warping.transform_tracked_states(warping_map, best_demo, Globals.offset_trans)
 
   for lr in "lr":
     leftright = {"l":"left","r":"right"}[lr]
@@ -215,7 +216,7 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
       #if args.hard_table:
       #    clipinplace(warped_demo["l_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
       #    clipinplace(warped_demo["r_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
-      arm_traj, feas_inds = lfd_traj.make_joint_traj(warped_demo["%s_gripper_tool_frame"%lr]["position"], warped_demo["%s_gripper_tool_frame"%lr]["orientation"], best_demo["%sarm"%leftright], Globals.pr2.robot.GetManipulator("%sarm"%leftright),"base_footprint","%s_gripper_tool_frame"%lr,2+16)
+      arm_traj, feas_inds = lfd_traj.make_joint_traj(warped_demo["%s_gripper_tool_frame"%lr]["position"], warped_demo["%s_gripper_tool_frame"%lr]["orientation"], best_demo["%sarm"%leftright], Globals.pr2.robot.GetManipulator("%sarm"%leftright),"base_footprint","%s_gripper_tool_frame"%lr,1+2+16)
       if len(feas_inds) == 0: return {'status': "failure"}
       trajectory["%s_arm"%lr] = arm_traj
       trajectory['steps'] = len(arm_traj)
