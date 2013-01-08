@@ -13,6 +13,7 @@ from brett2 import PR2
 import jds_utils.conversions as conv
 import jds_utils.math_utils as mu
 from jds_utils.math_utils import interp2d
+import traj_ik_graph_search
 
 ALWAYS_FAKE_SUCESS = False
 USE_PLANNING = False
@@ -160,7 +161,34 @@ def close_gripper(pr2, side):
             rospy.logwarn("%s gripper grabbed air", side)
             success = False
     return success or ALWAYS_FAKE_SUCESS    
-        
+
+def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame):
+    #hmats = [conv.pose_to_hmat(pose) for pose in gripper_poses]
+    assert(len(xyzs) == len(quats))
+    hmats = [conv.trans_rot_to_hmat(xyz, quat) for xyz, quat in zip(xyzs, quats)]
+
+    def ikfunc(hmat):
+        return traj_ik_graph_search.ik_for_link(hmat, manip, targ_frame, return_all_solns=True)
+
+    #manip = get_manipulator(lr)
+    start_joints = manip.GetRobot().GetDOFValues(manip.GetArmIndices())
+    #start_joints = Globals.pr2.robot.GetDOFValues(manip.GetArmIndices())
+
+    def nodecost(joints):
+        robot = manip.GetRobot()
+        cost = 0
+        with robot:
+            robot.SetDOFValues(joints, manip.GetArmIndices())
+            cost = 100*robot.GetEnv().CheckCollision(robot)
+        return cost
+
+    paths, costs, timesteps = traj_ik_graph_search.traj_cart2joint(hmats, ikfunc, start_joints=start_joints, nodecost=nodecost)
+
+    i_best = np.argmin(costs)
+    print "lowest cost of initial trajs:", costs[i_best]
+    path_init = paths[i_best]
+    return path_init, timesteps
+
 def make_joint_traj(xyzs, quats, joint_seeds,manip, ref_frame, targ_frame,filter_options):
     """
     do ik to make a joint trajectory
@@ -173,24 +201,29 @@ def make_joint_traj(xyzs, quats, joint_seeds,manip, ref_frame, targ_frame,filter
     assert len(quats) == n
     
     robot = manip.GetRobot()
-    joint_inds = manip.GetArmJoints()
-    robot.SetActiveDOFs(joint_inds)
-    orig_joint = robot.GetActiveDOFValues()
+    robot.SetActiveManipulator(manip.GetName())
+    joint_inds = manip.GetArmIndices()
+    #robot.SetActiveDOFs(joint_inds)
+    #orig_joint = robot.GetActiveDOFValues()
+    orig_joint = robot.GetDOFValues(joint_inds)
 
     joints = []
     inds = []
 
     for i in xrange(0,n):
         mat4 = conv.trans_rot_to_hmat(xyzs[i], quats[i])
-        robot.SetActiveDOFValues(joint_seeds[i])
+        #robot.SetActiveDOFValues(joint_seeds[i])
+        robot.SetDOFValues(joint_seeds[i], joint_inds)
         joint = PR2.cart_to_joint(manip, mat4, ref_frame, targ_frame, filter_options)
         if joint is not None: 
             joints.append(joint)
             inds.append(i)
-            robot.SetActiveDOFValues(joint)
+            #robot.SetActiveDOFValues(joint)
+            robot.SetDOFValues(joint, joint_inds)
 
 
-    robot.SetActiveDOFValues(orig_joint)
+    #robot.SetActiveDOFValues(orig_joint)
+    robot.SetDOFValues(orig_joint, joint_inds)
     
     
     rospy.loginfo("found ik soln for %i of %i points",len(inds), n)

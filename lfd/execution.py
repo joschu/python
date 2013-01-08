@@ -47,6 +47,7 @@ class Globals:
   pr2 = None
   rviz = None
   demos = None
+  offset_trans = None # offset from tracked states to point clouds. used for transforming tracked states
   handles = []
   isinstance(pr2, PR2.PR2)
   isinstance(rviz, ros_utils.RvizWrapper)
@@ -125,6 +126,9 @@ def rviz_draw_points(pts, **kwargs):
   pose_array = conversions.array_to_pose_array(np.squeeze(pts), "base_footprint")
   Globals.handles.append(Globals.rviz.draw_curve(pose_array, **kwargs))
 
+def get_demos():
+  return Globals.demos
+
 def select_trajectory(points, curr_robot_joint_vals, curr_step):
   """
   - lookup closest trajectory from database
@@ -140,13 +144,13 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
   candidate_demo_names = Globals.demos.keys()
 
   # HACK: never choose the done step on the first step
-  print 'curr step', curr_step
-  if curr_step == 0:
-    filtered_demo_names = []
-    for n in candidate_demo_names:
-      if not Globals.demos[n]['done']:
-        filtered_demo_names.append(n)
-    candidate_demo_names = filtered_demo_names
+# print 'curr step', curr_step
+# if curr_step == 0:
+#   filtered_demo_names = []
+#   for n in candidate_demo_names:
+#     if not Globals.demos[n]['done']:
+#       filtered_demo_names.append(n)
+#   candidate_demo_names = filtered_demo_names
 
   from joblib import parallel
   #costs_names = parallel.Parallel(n_jobs = 4)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
@@ -155,6 +159,9 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
   print "choices: ", candidate_demo_names
   best_name = raw_input("type name of trajectory you want to use\n")
   rospy.loginfo('costs_names %s', costs_names)
+
+  #matcher = recognition.CombinedNNMatcher(recognition.DataSet.LoadFromDict(Globals.demos), [recognition.GeodesicDistMatcher, recognition.ShapeContextMatcher], [1, 0.1])
+  #best_name, best_cost = matcher.match(xyz_new)
 
   best_demo = Globals.demos[best_name]
   if best_demo["done"]:
@@ -221,6 +228,11 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
 
   Globals.pr2.update_rave_without_ros(curr_robot_joint_vals)
   trajectory = {}
+  trajectory['seg_name'] = best_name
+  trajectory['demo'] = best_demo
+  if 'tracked_states' in best_demo:
+    trajectory['orig_tracked_states'] = best_demo['tracked_states']
+    trajectory['tracked_states'], Globals.offset_trans = warping.transform_tracked_states(warping_map, best_demo, Globals.offset_trans)
 
   for lr in "lr":
     leftright = {"l":"left","r":"right"}[lr]
@@ -228,7 +240,21 @@ def select_trajectory(points, curr_robot_joint_vals, curr_step):
       #if args.hard_table:
       #    clipinplace(warped_demo["l_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
       #    clipinplace(warped_demo["r_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
-      arm_traj, feas_inds = lfd_traj.make_joint_traj(warped_demo["%s_gripper_tool_frame"%lr]["position"], warped_demo["%s_gripper_tool_frame"%lr]["orientation"], best_demo["%sarm"%leftright], Globals.pr2.robot.GetManipulator("%sarm"%leftright),"base_footprint","%s_gripper_tool_frame"%lr,2+16)
+
+      #arm_traj, feas_inds = lfd_traj.make_joint_traj(
+      #  warped_demo["%s_gripper_tool_frame"%lr]["position"],
+      #  warped_demo["%s_gripper_tool_frame"%lr]["orientation"],
+      #  best_demo["%sarm"%leftright],
+      #  Globals.pr2.robot.GetManipulator("%sarm"%leftright),
+      #  "base_footprint","%s_gripper_tool_frame"%lr,
+      #  1+2+16
+      #)
+      arm_traj, feas_inds = lfd_traj.make_joint_traj_by_graph_search(
+        warped_demo["%s_gripper_tool_frame"%lr]["position"],
+        warped_demo["%s_gripper_tool_frame"%lr]["orientation"],
+        Globals.pr2.robot.GetManipulator("%sarm"%leftright),
+        "%s_gripper_tool_frame"%lr
+      )
       if len(feas_inds) == 0: return {'status': "failure"}
       trajectory["%s_arm"%lr] = arm_traj
       trajectory['steps'] = len(arm_traj)

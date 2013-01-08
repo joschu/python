@@ -294,7 +294,7 @@ class SelectTrajectory(smach.State):
                 if args.hard_table:
                     clipinplace(warped_demo["l_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
                     clipinplace(warped_demo["r_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
-                arm_traj, feas_inds = lfd_traj.make_joint_traj(warped_demo["%s_gripper_tool_frame"%lr]["position"], warped_demo["%s_gripper_tool_frame"%lr]["orientation"], best_demo["%sarm"%leftright], Globals.pr2.robot.GetManipulator("%sarm"%leftright),"base_footprint","%s_gripper_tool_frame"%lr,2+16)
+                arm_traj, feas_inds = lfd_traj.make_joint_traj(warped_demo["%s_gripper_tool_frame"%lr]["position"], warped_demo["%s_gripper_tool_frame"%lr]["orientation"], best_demo["%sarm"%leftright], Globals.pr2.robot.GetManipulator("%sarm"%leftright),"base_footprint","%s_gripper_tool_frame"%lr,1+2+16)
                 if len(feas_inds) == 0: return "failure"
                 trajectory["%s_arm"%lr] = arm_traj
                 rospy.loginfo("left arm: %i of %i points feasible", len(feas_inds), len(arm_traj))

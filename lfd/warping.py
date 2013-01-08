@@ -138,6 +138,36 @@ def transform_demo(reg, demo, left=True, right=True, cloud_xyz=False, object_clo
 def sorted_values(d):
     return [d[key] for key in sorted(d.keys())]
 
+def transform_tracked_states(f, demo, g=None):
+    assert 'tracked_states' in demo
+
+    # f takes demo -> test
+    # in practice, the initial tracked state might be slightly different from
+    # the initial demo cloud, so we should fit g : tracked -> demo
+    # (based on the initial demo cloud)
+    # and then warp all tracked states with h = f . g
+
+    import registration
+    xyz_tracked_ds = np.reshape(demo['tracked_states'][0], (-1, 3))
+    xyz_demo_ds = demo['cloud_xyz_ds']
+    if g is None:
+      #g = registration.tps_rpm(xyz_tracked_ds, xyz_demo_ds, reg_init=1,reg_final=1,n_iter=100,verbose=False, plotting=False)
+      #g = registration.ScaledRigid3d(); g.fit(xyz_tracked_ds, xyz_demo_ds)
+      #S, g_A, g_b = registration.fit_affine_by_tpsrpm(xyz_tracked_ds, xyz_demo_ds); print 'got affine transformation', g_A, g_b
+      print 'WARNING: CALCULATING NEW RIGID TRANSFORMATION'
+      g = registration.Rigid3d(); g.fit(xyz_tracked_ds, xyz_demo_ds)
+
+    #TODO: this is rope-specific
+    warped_tracked_states = []
+    for s in demo['tracked_states']:
+        # s is an array of control points [..., x_i, y_i, z_i, ...]
+        pts = np.reshape(s, (-1, 3))
+        pts = g.transform_points(pts)
+#        pts = np.dot(pts, g_A.T) + g_b
+        warped_pts = f.transform_points(pts)
+        warped_tracked_states.append(warped_pts.reshape((1,-1))[0])
+    return warped_tracked_states, g
+
 def transform_demo_with_fingertips(f, demo):
     """
     demo has a bunch of fields with arrays
@@ -145,7 +175,7 @@ def transform_demo_with_fingertips(f, demo):
     """    
     
     warped_demo = {}
-    
+
     for lr in "lr":
         if "%s_gripper_tool_frame"%lr in demo:    
             _, ori = f.transform_frames(demo["%s_gripper_tool_frame"%lr]["position"], quats2mats(demo["l_gripper_tool_frame"]["orientation"]))

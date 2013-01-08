@@ -1,6 +1,5 @@
 
 import numpy as np
-__builtins__["__openravepy_version__"] = '0.7'
 import openravepy as rave
 from numpy import inf, zeros, dot, r_
 from numpy.linalg import norm, inv
@@ -311,7 +310,6 @@ class Arm(TrajectoryControllerWrapper):
         self.tool_frame = "%s_gripper_tool_frame"%lr
 
         self.manip = pr2.robot.GetManipulator("%sarm"%self.lrlong)
-
         self.cart_command = rospy.Publisher('%s_cart/command_pose'%lr, gm.PoseStamped)
 
 

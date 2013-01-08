@@ -204,7 +204,7 @@ class RvizWrapper:
     @once
     def create():
         return RvizWrapper()
-    
+
     def __init__(self):
         self.pub = rospy.Publisher('visualization_marker', Marker)
         self.array_pub = rospy.Publisher("visualization_marker_array", MarkerArray)        
@@ -233,7 +233,11 @@ class RvizWrapper:
         marker.header = pose_array.header
         marker.points = [pose.position for pose in pose_array.poses]
         marker.lifetime = rospy.Duration(0)
-        marker.color = stdm.ColorRGBA(*rgba)
+        if isinstance(rgba, list):
+            assert len(rgba) == len(pose_array.poses)
+            marker.colors = [stdm.ColorRGBA(*c) for c in rgba]
+        else:
+            marker.color = stdm.ColorRGBA(*rgba)
         marker.scale = gm.Vector3(width,width,width)
         marker.id = id
         marker.ns = ns
