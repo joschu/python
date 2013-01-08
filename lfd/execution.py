@@ -35,6 +35,7 @@ from jds_image_proc.clouds import voxel_downsample
 import h5py
 from collections import defaultdict
 import yaml
+import openravepy
 
 DS_LENGTH = .025
 DS_METHOD = "voxel"
