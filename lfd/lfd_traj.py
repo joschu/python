@@ -163,16 +163,11 @@ def close_gripper(pr2, side):
     return success or ALWAYS_FAKE_SUCESS    
 
 def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame):
-    #hmats = [conv.pose_to_hmat(pose) for pose in gripper_poses]
     assert(len(xyzs) == len(quats))
     hmats = [conv.trans_rot_to_hmat(xyz, quat) for xyz, quat in zip(xyzs, quats)]
 
     def ikfunc(hmat):
         return traj_ik_graph_search.ik_for_link(hmat, manip, targ_frame, return_all_solns=True)
-
-    #manip = get_manipulator(lr)
-    start_joints = manip.GetRobot().GetDOFValues(manip.GetArmIndices())
-    #start_joints = Globals.pr2.robot.GetDOFValues(manip.GetArmIndices())
 
     def nodecost(joints):
         robot = manip.GetRobot()
@@ -182,6 +177,7 @@ def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame):
             cost = 100*robot.GetEnv().CheckCollision(robot)
         return cost
 
+    start_joints = manip.GetRobot().GetDOFValues(manip.GetArmIndices())
     paths, costs, timesteps = traj_ik_graph_search.traj_cart2joint(hmats, ikfunc, start_joints=start_joints, nodecost=nodecost)
 
     i_best = np.argmin(costs)
