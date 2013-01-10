@@ -215,17 +215,6 @@ def create_segments(bag, link_names):
     """extract a bunch of dictionaries from bag file, each one corresponding to one segment of trajectory. 
     each segment corresponds to 'look', 'start', and 'stop' button presses"""
     button_presses = get_button_presses(bag)
-    
-    # start_times, stop_times, look_times, l_close_times, l_open_times, r_close_times, r_open_times, done_times = [],[],[],[],[],[],[],[]
-    # for (time, button) in button_presses:
-    #     if button == 12: look_times.append(time)
-    #     elif button == 0: start_times.append(time)
-    #     elif button == 3: stop_times.append(time)
-    #     elif button == 7: l_open_times.append(time)
-    #     elif button == 5: l_close_times.append(time)
-    #     elif button == 15: r_open_times.append(time)
-    #     elif button == 13: r_close_times.append(time)
-    #     elif button == 14: done_times.append(time)
 
     def actions_to_str(all_times):
         CHARS = {
@@ -256,12 +245,6 @@ def create_segments(bag, link_names):
 
     # Try to correct errors in start/stop/look
     corrected_all_times = []
-    # ACTION_SUCCESSORS = {
-    #     'look':  ['start', 'l_open', 'l_close', 'r_open', 'r_close'],
-    #     'start': ['stop', 'l_open', 'l_close', 'r_open', 'r_close'],
-    #     'stop':  ['look', 'done', 'l_open', 'l_close', 'r_open', 'r_close'],
-    #     'done': [],
-    # }
 
     # First find the segment start/stops. They should come in pairs.
     start_times = [p[0] for p in all_times if p[1] == 'start']
@@ -313,17 +296,6 @@ def create_segments(bag, link_names):
     all_times = corrected_all_times; corrected_all_times = []
     print 'After ignoring extra look events:'; pprint(all_times)
     print actions_to_str(all_times)
-
-    # then ignore all events that deviate from the start-stop-look pattern
-    # expected_actions = ['look']
-    # for i in range(len(all_times)):
-    #   t, action = all_times[i]
-    #   if action in expected_actions:
-    #     corrected_all_times.append((t, action))
-    #     expected_actions = ACTION_SUCCESSORS[action]
-    #   else:
-    #     print "WARNING: ignoring button press '%s' at time %s (was expecting '%s')" % (action, str(t), str(expected_actions))
-    # print 'Final corrected events:'; pprint(corrected_all_times)
 
     start_times = [t for t, action in all_times if action == 'start']
     stop_times = [t for t, action in all_times if action == 'stop']
