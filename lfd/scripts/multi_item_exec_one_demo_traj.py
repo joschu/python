@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import argparse
-from lfd import multi_item_verbs, make_verb_traj, exec_verb_traj
+from lfd import multi_item_verbs, make_verb_traj, exec_verb_traj, ik_functions
 from verb_msgs.srv import *
 import rospy
 import numpy as np
@@ -60,7 +60,7 @@ def do_stage(demo_base_name, demo_index, stage_num, prev_stage_info, prev_exp_cl
     if yn:
         exec_req = ExecTrajectoryRequest()
         exec_req.traj = make_resp.traj
-        exec_verb_traj.exec_traj(exec_req, traj_ik_func=exec_verb_traj.do_traj_ik_graph_search)
+        exec_verb_traj.exec_traj(exec_req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=pc_sel, obj_name=stage_info.item)
 
     # return stage info and object clouds so they can be saved for use in the next stage if necessary
     return (stage_info, make_req.object_clouds)
