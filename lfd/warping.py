@@ -10,7 +10,7 @@ from jds_utils.math_utils import normalize
 from copy import deepcopy
 from utils_lfd import group_to_dict
 
-def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):
+def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04, ns='default_ns'):
     grid_handles = []
     
     xmin, ymin, zmin = mins
@@ -53,7 +53,7 @@ def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):
             lines.append(f(xyz))
 
     for line in lines:
-        grid_handles.append(rviz.draw_curve(conversions.array_to_pose_array(line, frame_id),width=.0005,rgba=(1,1,0,1)))
+        grid_handles.append(rviz.draw_curve(conversions.array_to_pose_array(line, frame_id),width=.0005,rgba=(1,1,0,1), ns=ns))
                                 
     return grid_handles
 

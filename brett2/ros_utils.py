@@ -206,10 +206,39 @@ class RvizWrapper:
         return RvizWrapper()
 
     def __init__(self):
-        self.pub = rospy.Publisher('visualization_marker', Marker)
+        self.pub = rospy.Publisher('visualization_marker', Marker, latch=True)
         self.array_pub = rospy.Publisher("visualization_marker_array", MarkerArray)        
         self.ids = set([])
+        # self.publisher_thread = None
+        # self.publisher_thread_exit = False
         register_deletion()
+
+    # def start_publisher_thread(self, handles, interval=1.0):
+    #     import threading
+    #     if self.publisher_thread is not None:
+    #         rospy.loginfo('publisher thread already running')
+    #         return
+    #     rospy.loginfo('starting marker publisher thread')
+    #     self.publisher_thread_exit = False
+    #     self.publisher_thread = threading.Thread(target=lambda: self._publisher_thread_main(handles, interval))
+    #     self.publisher_thread.start()
+
+    # def close_publisher_thread(self):
+    #     self.publisher_thread_exit = True
+
+    # def _publisher_thread_main(self, handles, interval):
+    #     while not rospy.is_shutdown() and not self.publisher_thread_exit:
+    #         rospy.loginfo('wtf %s', str(handles))
+    #         for h in handles:
+    #             if isinstance(h, Marker):
+    #                 self.pub.publish(h)
+    #                 rospy.loginfo('PUBLISH')
+    #             elif isinstance(h, MarkerArray):
+    #                 self.array_pub.publish(h)
+    #                 rospy.loginfo('PUBLISH2')
+    #             else:
+    #                 rospy.loginfo('warning: unknown marker type %s', str(type(h)))
+    #         rospy.sleep(interval)
 
     def draw_traj_points(self, pose_array, rgba = (0,1,0,1), width = .05, ns = "default_ns", duration=0):
         marker_array = MarkerArray()

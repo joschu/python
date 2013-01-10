@@ -8,7 +8,6 @@ But these functions are slightly adapted for lfd stuff
 import numpy as np
 from kinematics import retiming, kinematics_utils
 import rospy
-from time import time
 from brett2 import PR2
 import jds_utils.conversions as conv
 import jds_utils.math_utils as mu
@@ -162,12 +161,19 @@ def close_gripper(pr2, side):
             success = False
     return success or ALWAYS_FAKE_SUCESS    
 
-def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame):
+def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame, check_collisions=False):
     assert(len(xyzs) == len(quats))
     hmats = [conv.trans_rot_to_hmat(xyz, quat) for xyz, quat in zip(xyzs, quats)]
 
+    link = manip.GetRobot().GetLink(targ_frame)
+    Tcur_w_link = link.GetTransform()
+    Tcur_w_ee = manip.GetEndEffectorTransform()
+    Tf_link_ee = np.linalg.solve(Tcur_w_link, Tcur_w_ee)
+
     def ikfunc(hmat):
-        return traj_ik_graph_search.ik_for_link(hmat, manip, targ_frame, return_all_solns=True)
+        #return traj_ik_graph_search.ik_for_link(hmat, manip, targ_frame, return_all_solns=True)
+        params = 1+2+16 if check_collisions else 2+16
+        return manip.FindIKSolutions(hmat.dot(Tf_link_ee), params)
 
     def nodecost(joints):
         robot = manip.GetRobot()
@@ -178,7 +184,11 @@ def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame):
         return cost
 
     start_joints = manip.GetRobot().GetDOFValues(manip.GetArmIndices())
-    paths, costs, timesteps = traj_ik_graph_search.traj_cart2joint(hmats, ikfunc, start_joints=start_joints, nodecost=nodecost)
+    paths, costs, timesteps = traj_ik_graph_search.traj_cart2joint(
+        hmats, ikfunc,
+        start_joints=start_joints,
+        nodecost=nodecost if check_collisions else None
+    )
 
     i_best = np.argmin(costs)
     print "lowest cost of initial trajs:", costs[i_best]

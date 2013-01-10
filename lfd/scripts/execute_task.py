@@ -269,10 +269,10 @@ class SelectTrajectory(smach.State):
         #################### Generate new trajectory ##################
         
         #### Plot original and warped point clouds #######
-        orig_pose_array = conversions.array_to_pose_array(np.squeeze(best_demo["cloud_xyz_ds"]), "base_footprint")
-        warped_pose_array = conversions.array_to_pose_array(self.f.transform_points(np.squeeze(best_demo["cloud_xyz_ds"])), "base_footprint")
-        Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),id=19024,type=Marker.CUBE_LIST))
-        Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),id=2983,type=Marker.CUBE_LIST))
+        # orig_pose_array = conversions.array_to_pose_array(np.squeeze(best_demo["cloud_xyz_ds"]), "base_footprint")
+        # warped_pose_array = conversions.array_to_pose_array(self.f.transform_points(np.squeeze(best_demo["cloud_xyz_ds"])), "base_footprint")
+        # Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),id=19024,type=Marker.CUBE_LIST))
+        # Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),id=2983,type=Marker.CUBE_LIST))
 
         #### Plot grid ########
         mins = np.squeeze(best_demo["cloud_xyz"]).min(axis=0)
@@ -294,14 +294,38 @@ class SelectTrajectory(smach.State):
                 if args.hard_table:
                     clipinplace(warped_demo["l_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
                     clipinplace(warped_demo["r_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
-                arm_traj, feas_inds = lfd_traj.make_joint_traj(warped_demo["%s_gripper_tool_frame"%lr]["position"], warped_demo["%s_gripper_tool_frame"%lr]["orientation"], best_demo["%sarm"%leftright], Globals.pr2.robot.GetManipulator("%sarm"%leftright),"base_footprint","%s_gripper_tool_frame"%lr,1+2+16)
+                arm_traj, feas_inds = lfd_traj.make_joint_traj_by_graph_search(
+                    warped_demo["%s_gripper_tool_frame"%lr]["position"],
+                    warped_demo["%s_gripper_tool_frame"%lr]["orientation"],
+                    Globals.pr2.robot.GetManipulator("%sarm"%leftright),
+                    "%s_gripper_tool_frame"%lr,
+                    check_collisions=True
+                )
+                #arm_traj, feas_inds = lfd_traj.make_joint_traj(warped_demo["%s_gripper_tool_frame"%lr]["position"], warped_demo["%s_gripper_tool_frame"%lr]["orientation"], best_demo["%sarm"%leftright], Globals.pr2.robot.GetManipulator("%sarm"%leftright),"base_footprint","%s_gripper_tool_frame"%lr,1+2+16)
                 if len(feas_inds) == 0: return "failure"
                 trajectory["%s_arm"%lr] = arm_traj
-                rospy.loginfo("left arm: %i of %i points feasible", len(feas_inds), len(arm_traj))
+                rospy.loginfo("%s arm: %i of %i points feasible", leftright, len(feas_inds), len(arm_traj))
                 trajectory["%s_grab"%lr] = best_demo["%s_gripper_joint"%lr] < .07
                 trajectory["%s_gripper"%lr] = warped_demo["%s_gripper_joint"%lr]
                 trajectory["%s_gripper"%lr][trajectory["%s_grab"%lr]] = 0
-                Globals.handles.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(alternate(warped_demo["%s_gripper_l_finger_tip_link"%lr]["position"],warped_demo["%s_gripper_r_finger_tip_link"%lr]["position"]), "base_footprint"), width=.001, rgba = (1,0,1,.4),type=Marker.LINE_LIST))
+                # plot warped trajectory
+                Globals.handles.append(Globals.rviz.draw_curve(
+                  conversions.array_to_pose_array(
+                    alternate(warped_demo["%s_gripper_l_finger_tip_link"%lr]["position"], warped_demo["%s_gripper_r_finger_tip_link"%lr]["position"]),
+                    "base_footprint"
+                  ),
+                  width=.001, rgba = (1,0,1,.4), type=Marker.LINE_LIST,
+                  ns='warped_finger_traj'
+                ))
+                # plot original trajectory
+                Globals.handles.append(Globals.rviz.draw_curve(
+                  conversions.array_to_pose_array(
+                    alternate(best_demo["%s_gripper_l_finger_tip_link"%lr]["position"], best_demo["%s_gripper_r_finger_tip_link"%lr]["position"]),
+                    "base_footprint"
+                  ),
+                  width=.001, rgba = (0,1,1,.4), type=Marker.LINE_LIST,
+                  ns='demo_finger_traj'
+                ))
 
         userdata.trajectory = trajectory
 

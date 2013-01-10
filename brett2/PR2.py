@@ -96,7 +96,7 @@ class PR2(object):
         # set up openrave
         self.env = rave.Environment()
         self.env.Load("robots/pr2-beta-static.zae") # todo: use up-to-date urdf
-        self.robot = self.env.GetRobots()[0]  
+        self.robot = self.env.GetRobots()[0]
 
         # set up arm ik solvers (discretization level, etc.)
         for manip in [self.robot.GetManipulator("leftarm"), self.robot.GetManipulator("rightarm")]:
@@ -447,7 +447,7 @@ class Gripper(object):
     def close(self,max_effort=default_max_effort):
         self.set_angle(-.01, max_effort = max_effort)        
     def is_closed(self): # (and empty)
-        return self.get_angle() <= self.closed_angle + .0025
+        return self.get_angle() <= self.closed_angle# + 0.001 #.0025
     def set_angle_target(self, position, max_effort = default_max_effort):
         self.controller_pub.publish(pcm.Pr2GripperCommand(position=position,max_effort=max_effort))
     def follow_timed_trajectory(self, times, angs):

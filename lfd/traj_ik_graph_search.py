@@ -59,17 +59,27 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     
     
     """
+    import rospy
     iksolns = []
     timesteps = []
+    init_solns = np.atleast_2d(start_joints)
     for (i,hmat) in enumerate(hmats):
+        last_working_solns = init_solns
         if i==0 and start_joints is not None:
-            solns = np.atleast_2d(start_joints)
+            solns = init_solns
+            last_working_solns = solns
         else:
             solns = ikfunc(hmat)
+            if len(solns) > 0:
+                last_working_solns = solns
+
         if len(solns) > 0:
             iksolns.append(solns)
             timesteps.append(i)
+        else:
+            iksolns.append(last_working_solns)
 
+    rospy.loginfo('done enumerating all ik solns')
             
     ncost_nk = []
     ecost_nkk = []
@@ -81,11 +91,9 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
         if i>0:
             solnsprev = iksolns[i-1]
             ecost_nkk.append(pairwise_squared_dist(solnsprev, solns0))
-    
+    rospy.loginfo('calculating shortest paths')
     paths, path_costs = shortest_paths(ncost_nk, ecost_nkk)
     return [np.array([iksolns[t][i] for (t,i) in enumerate(path)]) for path in paths], path_costs, timesteps
-    
-    
 
 def ik_for_link(T_w_link, manip, link_name, filter_options = 18, return_all_solns = False):
     """

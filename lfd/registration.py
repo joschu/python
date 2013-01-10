@@ -12,6 +12,7 @@ from copy import deepcopy
 from lfd import warping
 from brett2.ros_utils import Marker
 from jds_utils import conversions
+import matplotlib
 import matplotlib.pyplot as plt
 import tps
 from svds import svds
@@ -222,13 +223,20 @@ def plot_warped_grid_2d(f, mins, maxes, grid_res=None, flipax = True):
     
 def plot_correspondence(x_nd, y_nd):
     lines = np.array(zip(x_nd, y_nd))
-    import matplotlib.pyplot as plt
-    import matplotlib
     lc = matplotlib.collections.LineCollection(lines)
     ax = plt.gca()
     ax.add_collection(lc)
     plt.draw()
-    
+
+def plot_correspondence_3d(x_nd, y_nd):
+    lines = np.array(zip(x_nd, y_nd))
+    from mpl_toolkits import mplot3d
+    from mpl_toolkits.mplot3d import art3d
+    fig = plt.figure()
+    ax = mplot3d.Axes3D(fig)
+    ax.add_collection3d(art3d.Line3DCollection(lines))
+    plt.show()
+
 def loglinspace(a,b,n):
     "n numbers between a to b (inclusive) with constant ratio between consecutive numbers"
     return np.exp(np.linspace(np.log(a),np.log(b),n))    
@@ -244,7 +252,7 @@ class Globals:
             import time
             time.sleep(.2)
     
-def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None, return_full = False):
+def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None, return_full = False, ns_prefix='tpsrpm'):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
     reg_init/reg_final: regularization on curvature
@@ -272,20 +280,20 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
         wt_n = corr_nm.sum(axis=1)
         
         goodn = wt_n > .1
-        
-        
+
         targ_Nd = np.dot(corr_nm[goodn, :]/wt_n[goodn][:,None], y_md)
 
-        # if plotting:
-        #     plot_correspondence(x_nd, targ_nd)
         #print "warning: changed angular spring!"        
         f.fit(x_nd[goodn], targ_Nd, bend_coef = regs[i], wt_n = wt_n[goodn], rot_coef = 10*regs[i], verbose=verbose)
 
         if plotting and i%plotting==0:
-            plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)   
+            plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md, ns_prefix=ns_prefix)
             targ_pose_array = conversions.array_to_pose_array(targ_Nd, 'base_footprint')
-            Globals.handles.append(Globals.rviz.draw_curve(targ_pose_array,rgba=(1,1,0,1),type=Marker.CUBE_LIST))
-            
+            Globals.handles.append(Globals.rviz.draw_curve(targ_pose_array,rgba=(1,1,0,1),type=Marker.CUBE_LIST, ns=ns_prefix+'_targ_Nd'))
+
+    if plotting:
+        plot_correspondence_3d(x_nd[goodn], targ_Nd)
+
     if return_full:
         info = {}
         info["corr_nm"] = corr_nm
@@ -385,7 +393,7 @@ class FuncPlotter(object):
         plt.plot(self.xs, self.ys,'x')
         plt.draw()
  
-def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1, d=3): 
+def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1, d=3, ns_prefix='tpsrpm'):
     if d==2:
         import matplotlib.pyplot as plt
         plt.plot(x_nd[:,1], x_nd[:,0],'r.')
@@ -404,13 +412,13 @@ def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1, d=3):
         maxes = x_nd.max(axis=0)
         mins -= np.array([.1, .1, .01])
         maxes += np.array([.1, .1, .01])
-        Globals.handles = warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res, zres=-1)
+        Globals.handles = warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res, zres=-1, ns=ns_prefix+'_grid')
         orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
         target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
         warped_pose_array = conversions.array_to_pose_array(f(x_nd), 'base_footprint')
-        Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,.4),type=Marker.CUBE_LIST))
-        Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,.4),type=Marker.CUBE_LIST))
-        Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,.4),type=Marker.CUBE_LIST))
+        Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,.4),type=Marker.CUBE_LIST, ns=ns_prefix+'_demo_cloud'))
+        Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,.4),type=Marker.CUBE_LIST, ns=ns_prefix+'_target_cloud'))
+        Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,.4),type=Marker.CUBE_LIST, ns=ns_prefix+'_warped_cloud'))
 
         
 def find_targets(x_md, y_nd, corr_opts):
