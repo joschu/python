@@ -19,7 +19,7 @@ def get_test_params():
     f.close()
     return params
 
-def xyz_distance(pt1, pt2):
+def euclidean_dist(pt1, pt2):
     return (sum([(pt1[i]-pt2[i])**2 for i in range(len(pt1))]))**0.5
 
 def rot_distance(quat1, quat2):
@@ -27,7 +27,8 @@ def rot_distance(quat1, quat2):
     quat2_mat = jut.quaternion_matrix(quat2) 
     diff_mat = np.dot(quat2_mat, np.linalg.inv(quat1_mat))
     diff_xyz, diff_quat = juc.hmat_to_trans_rot(diff_mat)
-    return (sum([x**2 for x in jut.euler_from_quaternion(diff_quat)]))**0.5
+    print diff_quat
+    return euclidean_dist(diff_quat, [0, 0, 0, 1])
 
 # What should these values be?
 XYZ_TOLERANCE = 0.1
@@ -40,7 +41,7 @@ def similar_trajectories(traj1, traj2):
     for index, (traj1_pt, traj2_pt) in enumerate(zip(traj1, traj2)):
         traj1_pt_xyz, traj1_pt_rot = juc.hmat_to_trans_rot(traj1_pt)
         traj2_pt_xyz, traj2_pt_rot = juc.hmat_to_trans_rot(traj2_pt)
-        xyz_dist = xyz_distance(traj1_pt_xyz, traj2_pt_xyz)
+        xyz_dist = euclidean_dist(traj1_pt_xyz, traj2_pt_xyz)
         rot_dist = rot_distance(traj1_pt_rot, traj2_pt_rot)
         if xyz_dist > XYZ_TOLERANCE or rot_dist > ROT_TOLERANCE:
             error_msg = "Incorrect point (index %s): { traj1: %s %s, traj2: %s %s }, { xyz_dist: %s, rot_dist: %s" % (str(index), str(traj1_pt_xyz), str(traj1_pt_rot), str(traj2_pt_xyz), str(traj2_pt_rot), str(xyz_dist), str(rot_dist))
@@ -59,7 +60,6 @@ def test_cup_pour(demo_name, exp_name):
     verb_data_accessor = multi_item_verbs.VerbDataAccessor(test=True)
 
     current_stage = 1
-    gripper_data_key = "r_gripper_tool_frame"
 
     # info and data for previous stage
     prev_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage-1)
@@ -73,6 +73,8 @@ def test_cup_pour(demo_name, exp_name):
     cur_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage)
     cur_exp_data = verb_data_accessor.get_demo_data(cur_exp_info.stage_name)
     
+    gripper_data_key = "%s_gripper_tool_frame" % cur_demo_info.arms_used
+
     # point clouds of tool for demo and experiment
     prev_exp_pc = prev_exp_data["object_clouds"][prev_exp_info.item]["xyz"]
     cur_exp_pc = cur_exp_data["object_clouds"][cur_exp_info.item]["xyz"]
@@ -83,7 +85,7 @@ def test_cup_pour(demo_name, exp_name):
     prev_world_to_gripper_trans = np.linalg.inv(juc.trans_rot_to_hmat(prev_exp_gripper_pos, prev_exp_gripper_orien))
     gripper_frame_trans = make_verb_traj.make_to_gripper_frame_hmat(prev_world_to_gripper_trans)
 
-    warped_traj_resp = make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc], None, current_stage, prev_demo_info, [prev_exp_pc], verb_data_accessor, gripper_frame_trans)
+    warped_traj_resp = make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc], None, current_stage, prev_demo_info, [prev_exp_pc], verb_data_accessor, to_gripper_frame_func=gripper_frame_trans)
 
     # get the actual transformation between the old and new target objects (just a translation for this test)
     params = get_test_params()
@@ -113,5 +115,5 @@ def test_cup_pour(demo_name, exp_name):
 
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
-        rospy.init_node('test_multi_item',disable_signals=True)
+        rospy.init_node("test_multi_item_translation",disable_signals=True)
     test_cup_pour("pour-green0-blue0", "pour-green1-blue0")

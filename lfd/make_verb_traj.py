@@ -1,4 +1,3 @@
-
 from brett2.ros_utils import RvizWrapper,Marker,pc2xyzrgb,xyz2pc
 import brett2.ros_utils as ru
 import h5py, rospy
@@ -140,7 +139,7 @@ def apply_transform(transform, point):
 def to_gripper_frame_tf_listener(pc, gripper_frame_name):
     return ru.transform_points(pc, ru.get_tf_listener(), gripper_frame_name, "base_footprint")
 
-# transforms point cloud in base frame to point cloud in gripper frame using supplied rigid transformation
+# makes a function that transforms point cloud in base frame to point cloud in gripper frame using supplied rigid transformation
 def make_to_gripper_frame_hmat(transformation):
     def to_gripper_frame_hmat(pc, gripper_frame_name):
         return np.array([apply_transform(transformation, point) for point in pc])
@@ -163,6 +162,7 @@ def print_hmat_info(hmat):
 # stage_num is the current task stage number; previous information is unused if this is zero
 # prev_exp_clouds has the point cloud of the object from the previous stage in the gripper frame
 # 'prev' and 'cur' is for the previous and current stages; 'demo' and 'exp' are for demonstration and new experiment situations, respectively
+# to_gripper_frame_func transforms a point cloud in base frame to point cloud in gripper frame
 def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None):
 
     arms_used = current_stage_info.arms_used
@@ -175,7 +175,6 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
         # no special point translation for first stage since no tool yet
         special_point_translation = np.identity(4)
     elif stage_num > 0:
-
         # make sure that the tool stage only uses one arm (the one with the tool)
         assert arms_used in ['r', 'l']
 
@@ -188,7 +187,6 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
         gripper_data_key = "%s_gripper_tool_frame" % (arms_used)
 
         # transform point cloud in base frame to gripper frame
-        # assume right hand has the tool for now
         # use the last pose of the gripper in the stage to figure out the point cloud of the tool in the gripper frame when the tool was grabbed
         prev_demo_gripper_pos = prev_stage_data[gripper_data_key]["position"][-1]
         prev_demo_gripper_orien = prev_stage_data[gripper_data_key]["orientation"][-1]
@@ -197,7 +195,6 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
         prev_demo_pc_in_gripper_frame = np.array([apply_transform(prev_demo_base_to_gripper_transform, point) for point in prev_demo_pc_down])
 
         # get the new point cloud in the new gripper frame
-        # prev_exp_pc_in_gripper_frame = [apply_transform(prev_exp_base_to_gripper_transform, point) for point in prev_exp_pc_down]
         if to_gripper_frame_func is None:
             prev_exp_pc_in_gripper_frame = to_gripper_frame_tf_listener(prev_exp_pc_down, gripper_data_key)
         else:
@@ -217,19 +214,14 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
             # translation from gripper pose in world frame to special point pose in world frame
             special_point_translation = jut.translation_matrix(np.array(prev_stage_info.special_point))
 
-    if arms_used != 'b':
-        arms_used_list = [arms_used]
-    else:
-        arms_used_list = ['r', 'l']
-
     warped_stage_data = group_to_dict(verb_stage_data) # deep copy it
 
     resp = MakeTrajectoryResponse()
     traj = resp.traj
     traj.arms_used = arms_used
 
+    arms_used_list = ['r', 'l'] if arms_used == 'b' else [arms_used]
     for arm in arms_used_list:
-
         gripper_data_key = "%s_gripper_tool_frame" % (arm)
         
         # find the special point trajectory before the target transformation

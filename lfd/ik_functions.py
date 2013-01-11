@@ -3,6 +3,8 @@ from lfd import traj_ik_graph_search
 import numpy as np
 from jds_utils import conversions as juc
 from brett2 import trajectories
+import openravepy as rave
+import IPython
 
 def get_manipulator(pr2, lr):
     manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
@@ -20,13 +22,18 @@ def do_traj_ik_graph_search(pr2, lr, gripper_poses):
     pr2.update_rave()
     start_joints = pr2.robot.GetDOFValues(manip.GetArmJoints())
 
+    robot = manip.GetRobot()
+    env = robot.GetEnv()
+
+    report = rave.CollisionReport()
+    link_info = []
+
     def nodecost(joints):
-        robot = manip.GetRobot()
         robot.SetDOFValues(joints, manip.GetArmJoints())
-        return 100*robot.GetEnv().CheckCollision(robot)
-
+        return 100*env.CheckCollision(robot)
+        
     paths, costs, timesteps = traj_ik_graph_search.traj_cart2joint(hmats, ikfunc, start_joints=start_joints, nodecost=nodecost)
-
+    
     i_best = np.argmin(costs)
     print "lowest cost of initial trajs:", costs[i_best]
     best_path = paths[i_best]
