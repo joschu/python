@@ -62,12 +62,10 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     import rospy
     iksolns = []
     timesteps = []
-    init_solns = np.atleast_2d(start_joints)
+    last_working_solns = init_solns = np.atleast_2d(start_joints)
     for (i,hmat) in enumerate(hmats):
-        last_working_solns = init_solns
         if i==0 and start_joints is not None:
             solns = init_solns
-            last_working_solns = solns
         else:
             solns = ikfunc(hmat)
             if len(solns) > 0:
@@ -83,15 +81,17 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
             
     ncost_nk = []
     ecost_nkk = []
-   
+    num_nodes = 0
+
     for i in xrange(0,len(iksolns)):
         solns0 = iksolns[i]
+        num_nodes += len(solns0)
         if nodecost is None: ncost_nk.append(np.zeros(len(solns0)))
         else: ncost_nk.append(np.array([nodecost(soln) for soln in solns0]))
         if i>0:
             solnsprev = iksolns[i-1]
             ecost_nkk.append(pairwise_squared_dist(solnsprev, solns0))
-    rospy.loginfo('calculating shortest paths')
+    rospy.loginfo('calculating shortest paths on %d nodes', num_nodes)
     paths, path_costs = shortest_paths(ncost_nk, ecost_nkk)
     return [np.array([iksolns[t][i] for (t,i) in enumerate(path)]) for path in paths], path_costs, timesteps
 

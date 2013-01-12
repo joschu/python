@@ -103,8 +103,8 @@ class PR2(object):
             self.robot.SetActiveManipulator(manip)
             ikmodel = rave.databases.inversekinematics.InverseKinematicsModel(
                 self.robot,
-                iktype=rave.IkParameterization.Type.Transform6D,
-                freeindices=[manip.GetArmIndices()[0]]
+                iktype=rave.IkParameterization.Type.Transform6D#,
+                #freeindices=[manip.GetArmIndices()[0]]
             )
             if not ikmodel.load():
                 ikmodel.autogenerate()
@@ -410,7 +410,7 @@ class Torso(TrajectoryControllerWrapper):
 
 
 class Gripper(object):
-    default_max_effort = 20
+    default_max_effort = 40
     def __init__(self,pr2,lr):
         assert isinstance(pr2, PR2)
         self.pr2 = pr2

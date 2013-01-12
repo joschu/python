@@ -235,6 +235,8 @@ def plot_correspondence_3d(x_nd, y_nd):
     fig = plt.figure()
     ax = mplot3d.Axes3D(fig)
     ax.add_collection3d(art3d.Line3DCollection(lines))
+    ax.scatter(x_nd[:,0], x_nd[:,1], x_nd[:,2], c='g')
+    ax.scatter(y_nd[:,0], y_nd[:,1], y_nd[:,2], c='r')
     plt.show()
 
 def loglinspace(a,b,n):
@@ -252,7 +254,7 @@ class Globals:
             import time
             time.sleep(.2)
     
-def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None, return_full = False, ns_prefix='tpsrpm'):
+def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None, return_full = False, ns_prefix='tpsrpm', p=.2, interactive=False):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
     reg_init/reg_final: regularization on curvature
@@ -274,14 +276,20 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
             print xwarped_nd.max(axis=0)
         else:
             xwarped_nd = f.transform_points(x_nd)
+
+        if plotting and i%plotting == 0 and interactive:
+            raw_input('press enter to continue')
+
         # targ_nd = find_targets(x_nd, y_md, corr_opts = dict(r = rads[i], p = .1))
-        corr_nm = calc_correspondence_matrix(xwarped_nd, y_md, r=rads[i], p=.2)
+        corr_nm = calc_correspondence_matrix(xwarped_nd, y_md, r=rads[i], p=p)        
 
         wt_n = corr_nm.sum(axis=1)
         
         goodn = wt_n > .1
 
         targ_Nd = np.dot(corr_nm[goodn, :]/wt_n[goodn][:,None], y_md)
+
+        assert (corr_nm[goodn,:].sum(axis=1) == wt_n[goodn]).all()
 
         #print "warning: changed angular spring!"        
         f.fit(x_nd[goodn], targ_Nd, bend_coef = regs[i], wt_n = wt_n[goodn], rot_coef = 10*regs[i], verbose=verbose)
@@ -431,19 +439,33 @@ def find_targets(x_md, y_nd, corr_opts):
     return np.dot(corr_mn, y_nd)        
     
 def calc_correspondence_matrix(x_nd, y_md, r, p, n_iter=20):
-    "sinkhorn procedure. see tps-rpm paper"
+    "sinkhorn procedure. see tps-rpm paper"    
     n = x_nd.shape[0]
     m = y_md.shape[0]
     dist_nm = ssd.cdist(x_nd, y_md,'euclidean')
     prob_nm = np.exp(-dist_nm / r)
+
+
+    A = np.empty((n+1,m+1))
+    A[:n, :m] = prob_nm
+    A[n,:] = p
+    A[:,m] = p
+
+    before = A.copy()
+
+
     for _ in xrange(n_iter):
-        prob_nm /= (p*(n/m) + prob_nm.sum(axis=0))[None,:]  # cols sum to n/m
-        prob_nm /= (p + prob_nm.sum(axis=1))[:,None] # rows sum to 1
+        A /= A.sum(axis=0)[None,:]  # cols sum to n/m
+        A /= A.sum(axis=1)[:,None]
         
-    #print "row sums:", prob_nm.sum(axis=1)
-    #print "col sums/ratio:", prob_nm.sum(axis=0)/(n/m)
-    
-    return prob_nm
+    #print "row sums:", A.sum(axis=1)
+    #print "col sums/ratio:", A.sum(axis=0)/(n/m)
+
+    #print "after/before max", (A/before).max()
+
+    A = np.sqrt(A*before)
+
+    return A[:n, :m]
 
 def nan2zero(x):
     np.putmask(x, np.isnan(x), 0)

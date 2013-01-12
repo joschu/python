@@ -168,20 +168,18 @@ def transform_tracked_states(f, demo, g=None):
         warped_tracked_states.append(warped_pts.reshape((1,-1))[0])
     return warped_tracked_states, g
 
+SPECIAL_GRIPPER_CLOSE = False
+
 def get_gripper_closing_only_times(demo, lr):
     gripper_joint = demo['%s_gripper_joint'%lr]
-    print 'gripper joint', gripper_joint
+    #print 'gripper joint', gripper_joint
     fingers_closing = (gripper_joint[1:] - gripper_joint[:-1]) < -0.001
-    print 'fingers closing:', fingers_closing
-
+    #print 'fingers closing:', fingers_closing
     leftright = 'left' if lr == 'l' else 'right'
     joints = demo['%sarm'%leftright]
     arm_moving = np.apply_along_axis(np.linalg.norm, 1, joints[1:,:] - joints[:-1,:]) > 0.01
-    print 'arm moving', arm_moving
-
+    #print 'arm moving', arm_moving
     return np.r_[False, np.logical_and(fingers_closing, np.logical_not(arm_moving))]
-
-
 
 def transform_demo_with_fingertips(f, demo):
     """
@@ -196,6 +194,7 @@ def transform_demo_with_fingertips(f, demo):
             _, ori = f.transform_frames(demo["%s_gripper_tool_frame"%lr]["position"], quats2mats(demo["l_gripper_tool_frame"]["orientation"]))
             xyz_fingertip0 = f.transform_points(demo["%s_gripper_l_finger_tip_link"%lr]["position"])
             xyz_fingertip1 = f.transform_points(demo["%s_gripper_r_finger_tip_link"%lr]["position"])
+
             closing_only = get_gripper_closing_only_times(demo, lr)
             assert len(closing_only) == len(ori)
 
@@ -207,7 +206,9 @@ def transform_demo_with_fingertips(f, demo):
             first, last_xyz, last_quat = True, None, None
             for (pos0, pos1, o, cl) in zip(xyz_fingertip0, xyz_fingertip1, ori, closing_only):
                 hmat, ang = calc_hand_pose(pos0, pos1, o)
-                if cl and not first:
+                # if the gripper is closing and nothing else is moving,
+                # don't change anything but the gripper angle
+                if SPECIAL_GRIPPER_CLOSE and cl and not first:
                     xyz, quat = last_xyz, last_quat
                 else:
                     xyz, quat = conversions.hmat_to_trans_rot(hmat)

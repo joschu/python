@@ -134,6 +134,9 @@ class LookAtObject(smach.State):
         """
         Globals.handles = []
         
+        Globals.pr2.rgrip.set_angle(.08)
+        Globals.pr2.lgrip.set_angle(.08)
+        Globals.pr2.join_all()
         if not args.use_tracking:
             Globals.pr2.larm.goto_posture('side')
             Globals.pr2.rarm.goto_posture('side')
@@ -262,7 +265,9 @@ class SelectTrajectory(smach.State):
             self.f = registration.Translation2d()
             self.f.fit(xyz_demo_ds, xyz_new_ds)
         else:
-            self.f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting = 20, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False)                
+            self.f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting = 20, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False)#, interactive=True)
+            np.savez('registration_data', xyz_demo_ds=xyz_demo_ds, xyz_new_ds=xyz_new_ds)
+            # print 'correspondences', self.f.corr_nm
 
 
 
@@ -284,7 +289,13 @@ class SelectTrajectory(smach.State):
         
         #### Actually generate the trajectory ###########
         warped_demo = warping.transform_demo_with_fingertips(self.f, best_demo)
-        
+        if yes_or_no('dump warped demo?'):
+            import pickle
+            fname = '/tmp/warped_demo_' + str(np.random.randint(9999999999)) + '.pkl'
+            with open(fname, 'w') as f:
+                pickle.dump(warped_demo, f)
+            print 'saved to', fname
+
         Globals.pr2.update_rave() 
         trajectory = {}
         
@@ -356,7 +367,14 @@ class ExecuteTrajectory(smach.State):
     def execute(self, userdata):
         #if not args.test: draw_table()        
         Globals.pr2.update_rave()
+        if yes_or_no('about to execute trajectory. save?'):
+            import pickle
+            fname = '/tmp/trajectory_' + str(np.random.randint(9999999999)) + '.pkl'
+            with open(fname, 'w') as f:
+                pickle.dump(userdata.trajectory, f)
+            print 'saved to', fname
         success = lfd_traj.follow_trajectory_with_grabs(Globals.pr2, userdata.trajectory)
+        raw_input('done executing segment. press enter to continue')
         if success: 
             if args.count_steps: Globals.stage += 1
             return "success"
