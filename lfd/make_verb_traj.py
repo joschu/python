@@ -240,13 +240,10 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
             plot_spec_pt_traj.append(spec_pt_xyz)
 
         print 'grip transform:'
-        print prev_demo_to_exp_grip_transform_lin_rigid
         print_hmat_info(prev_demo_to_exp_grip_transform_lin_rigid)
         print 'special point translation:'
-        print special_point_translation
         print_hmat_info(special_point_translation)
         print 'inverse special point translation:'
-        print cur_exp_inv_special_point_transformation
         print_hmat_info(cur_exp_inv_special_point_transformation)
 
         # find the target transformation for the experiment scene
@@ -268,9 +265,8 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
         plot_warped_spec_pt_traj = cur_exp_spec_pt_traj_xyzs #save the special point traj for plotting
         cur_exp_spec_pt_traj_mats = [juc.trans_rot_to_hmat(cur_exp_spec_pt_traj_xyz, mat2quat(cur_exp_spec_pt_traj_orien)) for cur_exp_spec_pt_traj_xyz, cur_exp_spec_pt_traj_orien in zip(cur_exp_spec_pt_traj_xyzs, cur_exp_spec_pt_traj_oriens)]
 
-        cur_demo_to_exp_transform_lin_rigid = lin_rigid_tps_transform(cur_demo_to_exp_transform, y_md[0]) #linearize at some point on target
+        cur_demo_to_exp_transform_lin_rigid = lin_rigid_tps_transform(cur_demo_to_exp_transform, x_nd[0]) #linearize at some point on target
         print 'current target transform:'
-        print cur_demo_to_exp_transform_lin_rigid
         print_hmat_info(cur_demo_to_exp_transform_lin_rigid)
 
         # transform the warped special point trajectory back to a gripper trajectory in the experiment
@@ -282,6 +278,9 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
             warped_pos, warped_orien = juc.hmat_to_trans_rot(exp_traj_mat)
             warped_stage_data[gripper_data_key]["position"].append(warped_pos)
             warped_stage_data[gripper_data_key]["orientation"].append(warped_orien)
+
+        #warped_stage_data[gripper_data_key]["position"] = verb_stage_data[gripper_data_key]["position"]
+        #warped_stage_data[gripper_data_key]["orientation"] = verb_stage_data[gripper_data_key]["orientation"]
 
         if arm == 'r':
             traj.r_gripper_poses.poses = xyzs_quats_to_poses(warped_stage_data[gripper_data_key]["position"], warped_stage_data[gripper_data_key]["orientation"])

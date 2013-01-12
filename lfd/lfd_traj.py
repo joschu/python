@@ -49,7 +49,6 @@ def follow_trajectory_with_grabs(pr2, bodypart2traj):
     
     num_grabs = len(inds_sides)
     print "breaking trajectory into %i segments"%(num_grabs+1)
-    go_to_start(pr2, bodypart2traj)
     i_begin = 0
     for (i_grab, side) in inds_sides:
         t_start = rospy.Time.now().to_sec()
@@ -121,7 +120,7 @@ def follow_trajectory(pr2, bodypart2traj):
             acc_limits.extend(part.acc_limits)
             bodypart2inds[name] = range(n_dof, n_dof+part.n_joints)
             n_dof += part.n_joints
-                        
+           
     trajectories = np.concatenate(trajectories, 1)
     
     vel_limits = np.array(vel_limits)

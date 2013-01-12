@@ -7,6 +7,8 @@ from verb_msgs.srv import MakeTrajectoryRequest
 import rospy
 import numpy as np
 
+TRANSLATION_PARAM_FILE = "multi_item/multi_item_params/translation_params.yaml"
+
 def report((x, msg)):
     if x:
         print colorize("Pass", "green")
@@ -14,7 +16,7 @@ def report((x, msg)):
         print colorize("Fail: %s" % (msg), "red")
 
 def get_test_params():
-    f = open("multi_item_data/multi_item_params.yaml", 'r')
+    f = open(TRANSLATION_PARAM_FILE, 'r')
     params = yaml.load(f)
     f.close()
     return params
@@ -57,7 +59,7 @@ def test_cup_pour_init():
 def test_cup_pour(demo_name, exp_name):
     test_cup_pour_init()
 
-    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test=True)
+    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir="test/multi_item/multi_item_data")
 
     current_stage = 1
 

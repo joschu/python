@@ -58,10 +58,9 @@ def load_table():
     table_bounds = map(float, rospy.get_param("table_bounds").split())
     kinbodies.create_box_from_bounds(Globals.pr2.env,table_bounds, name="table")
     
-    
 def draw_table():
     aabb = Globals.pr2.robot.GetEnv().GetKinBody("table").GetLinks()[0].ComputeAABB()
-    ps =gm.PoseStamped()
+    ps = gm.PoseStamped()
     ps.header.frame_id = "base_footprint"
     ps.pose.position = gm.Point(*aabb.pos())
     ps.pose.orientation = gm.Quaternion(0,0,0,1)
@@ -142,9 +141,9 @@ def plot_gripper_xyzs_from_poses(lr, gripper_poses):
     make_verb_traj.plot_curve(gripper_xyzs, (1, 1, 0, 1))
 
 # adds the point cloud to the openrave environment
-def setup_obj_rave(obj_pc, obj_name):
+def setup_obj_rave(obj_cloud_xyz, obj_name):
     rave_env = Globals.pr2.env
-    pc_down = voxel_downsample(ros_utils.pc2xyzrgb(obj_pc)[0], .02)
+    pc_down = voxel_downsample(obj_cloud_xyz, .02)
     body = rave.RaveCreateKinBody(rave_env, '')
     body.SetName(obj_name) #might want to change this name later
     delaunay = scipy.spatial.Delaunay(pc_down)
@@ -162,16 +161,16 @@ def release_objs_single_grip_rave(lr):
     rave_robot.ReleaseAllGrabbed()
 
 # grab or release the grab_obj_kinbody depending on if the gripper is opening or closing in the stage
-def handle_grab_or_release_obj(grab_obj_kinbody, req_traj):
-    if len(req_traj.l_gripper_angles) > 0:
-        if is_closing(req_traj.l_gripper_angles):
+def handle_grab_or_release_obj(grab_obj_kinbody, l_gripper_poses, l_gripper_angles, r_gripper_poses, r_gripper_angles):
+    if len(l_gripper_angles) > 0:
+        if is_closing(l_gripper_angles):
             grab_obj_single_grip_rave('l', grab_obj_kinbody)
-        elif is_opening(req_traj.l_gripper_angles):
+        elif is_opening(l_gripper_angles):
             release_objs_single_grip_rave('l')
-    if len(req_traj.r_gripper_angles) > 0:
-        if is_closing(req_traj.r_gripper_angles):
+    if len(r_gripper_angles) > 0:
+        if is_closing(r_gripper_angles):
             grab_obj_single_grip_rave('r', grab_obj_kinbody)
-        elif is_opening(req_traj.r_gripper_angles):
+        elif is_opening(r_gripper_angles):
             release_objs_single_grip_rave('r')
 
 # linearly interpolates between the start and the end positions
@@ -187,16 +186,17 @@ def get_lin_interp_poses(start_pos, end_pos, n_steps):
 
 def exec_traj(req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=None, obj_name=""):
     assert isinstance(req, ExecTrajectoryRequest)
-    del Globals.handles[1:]
-    
-    grab_obj_kinbody = setup_obj_rave(obj_pc, obj_name) if obj_pc is not None else None
-
     traj = req.traj
+    return exec_traj_do_work(traj.l_gripper_poses.poses, traj.l_gripper_angles,
+                             traj.r_gripper_poses.poses, traj.r_gripper_angles,
+                             traj_ik_func, ros_utils.pc2xyzrgb(obj_pc)[0], obj_name)
 
+def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_gripper_angles, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_cloud_xyz=None, obj_name=""):
+    del Globals.handles[1:]
+    grab_obj_kinbody = setup_obj_rave(obj_cloud_xyz, obj_name) if obj_cloud_xyz is not None else None
     n_steps = 15
-
     body_traj = {}
-    for (lr, gripper_poses, gripper_angles) in zip("lr", [traj.l_gripper_poses.poses, traj.r_gripper_poses.poses], [traj.l_gripper_angles, traj.r_gripper_angles]):
+    for (lr, gripper_poses, gripper_angles) in zip("lr", [l_gripper_poses, r_gripper_poses], [l_gripper_angles, r_gripper_angles]):
         if len(gripper_poses) == 0: continue
 
         unprocessed_gripper_angles = np.array(gripper_angles)
@@ -210,6 +210,7 @@ def exec_traj(req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=Non
         # add poses to traj to get from current position to start of next traj
         Globals.pr2.update_rave()
         current_pos = Globals.pr2.robot.GetLink("%s_gripper_tool_frame"%lr).GetTransform()
+
         before_traj = get_lin_interp_poses(current_pos, juc.pose_to_hmat(gripper_poses[0]), n_steps)
         final_gripper_poses = np.concatenate((np.array(before_traj), gripper_poses))
         final_gripper_angles = np.concatenate((np.ones(n_steps)*gripper_angles_grabbing[0], gripper_angles_grabbing))
@@ -228,7 +229,7 @@ def exec_traj(req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=Non
         pose_array = gm.PoseArray()
         pose_array.header.frame_id = "base_footprint"
         pose_array.header.stamp = rospy.Time.now()
-        pose_array.poses = traj.r_gripper_poses.poses if lr == 'r' else traj.r_gripper_poses.poses
+        pose_array.poses = r_gripper_poses if lr == 'r' else l_gripper_poses
         Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1)))
 
     yn = yes_or_no("continue?")
@@ -236,7 +237,7 @@ def exec_traj(req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=Non
         lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
         
         if grab_obj_kinbody is not None:
-            handle_grab_or_release_obj(grab_obj_kinbody, traj)
+            handle_grab_or_release_obj(grab_obj_kinbody, l_gripper_poses, l_gripper_angles, r_gripper_poses, r_gripper_angles)
 
         Globals.pr2.join_all()
         return ExecTrajectoryResponse(success=True)
