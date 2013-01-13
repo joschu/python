@@ -141,6 +141,7 @@ class PR2(object):
 
     def get_last_joint_message(self):
         return self.joint_listener.last_msg
+
     def update_rave(self, use_map = False):
         ros_values = self.get_last_joint_message().position        
         rave_values = [ros_values[i_ros] for i_ros in self.good_ros_inds]        

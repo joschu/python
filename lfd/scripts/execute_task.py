@@ -133,6 +133,7 @@ class LookAtObject(smach.State):
         returns: success, failure
         """
         Globals.handles = []
+        draw_table()
         
         Globals.pr2.rgrip.set_angle(.08)
         Globals.pr2.lgrip.set_angle(.08)
