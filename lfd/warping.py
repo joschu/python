@@ -10,7 +10,7 @@ from jds_utils.math_utils import normalize
 from copy import deepcopy
 from utils_lfd import group_to_dict
 
-def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):
+def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04, ns='default_ns'):
     grid_handles = []
     
     xmin, ymin, zmin = mins
@@ -53,7 +53,7 @@ def draw_grid(rviz, f, mins, maxes, frame_id, xres = .1, yres = .1, zres = .04):
             lines.append(f(xyz))
 
     for line in lines:
-        grid_handles.append(rviz.draw_curve(conversions.array_to_pose_array(line, frame_id),width=.0005,rgba=(1,1,0,1)))
+        grid_handles.append(rviz.draw_curve(conversions.array_to_pose_array(line, frame_id),width=.0005,rgba=(1,1,0,1), ns=ns))
                                 
     return grid_handles
 
@@ -168,6 +168,19 @@ def transform_tracked_states(f, demo, g=None):
         warped_tracked_states.append(warped_pts.reshape((1,-1))[0])
     return warped_tracked_states, g
 
+SPECIAL_GRIPPER_CLOSE = False
+
+def get_gripper_closing_only_times(demo, lr):
+    gripper_joint = demo['%s_gripper_joint'%lr]
+    #print 'gripper joint', gripper_joint
+    fingers_closing = (gripper_joint[1:] - gripper_joint[:-1]) < -0.001
+    #print 'fingers closing:', fingers_closing
+    leftright = 'left' if lr == 'l' else 'right'
+    joints = demo['%sarm'%leftright]
+    arm_moving = np.apply_along_axis(np.linalg.norm, 1, joints[1:,:] - joints[:-1,:]) > 0.01
+    #print 'arm moving', arm_moving
+    return np.r_[False, np.logical_and(fingers_closing, np.logical_not(arm_moving))]
+
 def transform_demo_with_fingertips(f, demo):
     """
     demo has a bunch of fields with arrays
@@ -181,19 +194,30 @@ def transform_demo_with_fingertips(f, demo):
             _, ori = f.transform_frames(demo["%s_gripper_tool_frame"%lr]["position"], quats2mats(demo["l_gripper_tool_frame"]["orientation"]))
             xyz_fingertip0 = f.transform_points(demo["%s_gripper_l_finger_tip_link"%lr]["position"])
             xyz_fingertip1 = f.transform_points(demo["%s_gripper_r_finger_tip_link"%lr]["position"])
-        
+
+            closing_only = get_gripper_closing_only_times(demo, lr)
+            assert len(closing_only) == len(ori)
+
             tool_xyzs = []
             tool_quats = []
             tool_angles = []
         
             print calc_hand_pose(xyz_fingertip0[0], xyz_fingertip1[0], ori[0])[0][:3,:3]
-            for (pos0, pos1, o) in zip(xyz_fingertip0, xyz_fingertip1, ori):
+            first, last_xyz, last_quat = True, None, None
+            for (pos0, pos1, o, cl) in zip(xyz_fingertip0, xyz_fingertip1, ori, closing_only):
                 hmat, ang = calc_hand_pose(pos0, pos1, o)
-                xyz, quat = conversions.hmat_to_trans_rot(hmat)
+                # if the gripper is closing and nothing else is moving,
+                # don't change anything but the gripper angle
+                if SPECIAL_GRIPPER_CLOSE and cl and not first:
+                    xyz, quat = last_xyz, last_quat
+                else:
+                    xyz, quat = conversions.hmat_to_trans_rot(hmat)
                 tool_xyzs.append(xyz)
                 tool_quats.append(quat)
                 tool_angles.append(ang)
-        
+                last_xyz, last_quat = xyz, quat
+                first = False
+
             warped_demo["%s_gripper_tool_frame"%lr]={}        
             warped_demo["%s_gripper_l_finger_tip_link"%lr]={}        
             warped_demo["%s_gripper_l_finger_tip_link"%lr]["position"]=xyz_fingertip1

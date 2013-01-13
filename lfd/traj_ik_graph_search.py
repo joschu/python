@@ -4,6 +4,8 @@ Kinematics helpers for openrave
 
 import numpy as np
 
+PARALLEL_JOBS = 4
+
 def shortest_paths(ncost_nk,ecost_nkk):
     """       
     Find minimum cost paths through graph (one path for each end point)
@@ -41,6 +43,17 @@ def pairwise_squared_dist(x,y):
     "pairwise squared distance between rows of matrices x and y"
     return (x**2).sum(axis=1)[:,None]+(y**2).sum(axis=1)[None,:]-2*x.dot(y.T)    
 
+nodecost_func = None # hack because joblib can't take function args to build_graph_part
+def build_graph_part(i, solns0, solnsprev):
+    num_nodes = len(solns0)
+    if nodecost_func is None: ncost_nk_i = np.zeros(len(solns0))
+    else: ncost_nk_i = np.array([nodecost_func(soln) for soln in solns0])
+    if i>0:
+        ecost_nkk_i = pairwise_squared_dist(solnsprev, solns0)
+    else:
+        ecost_nkk_i = None
+    return ncost_nk_i, ecost_nkk_i, num_nodes
+
 def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     """
     hmats: poses at times t = 0,1,2,...T-1
@@ -59,32 +72,50 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     
     
     """
+    import rospy
     iksolns = []
     timesteps = []
+    last_working_solns = init_solns = np.atleast_2d(start_joints)
     for (i,hmat) in enumerate(hmats):
         if i==0 and start_joints is not None:
-            solns = np.atleast_2d(start_joints)
+            solns = init_solns
         else:
             solns = ikfunc(hmat)
+            if len(solns) > 0:
+                last_working_solns = solns
+
         if len(solns) > 0:
             iksolns.append(solns)
             timesteps.append(i)
+        else:
+            iksolns.append(last_working_solns)
 
+    rospy.loginfo('done enumerating all ik solns')
             
-    ncost_nk = []
-    ecost_nkk = []
-   
-    for i in xrange(0,len(iksolns)):
-        solns0 = iksolns[i]
-        if nodecost is None: ncost_nk.append(np.zeros(len(solns0)))
-        else: ncost_nk.append(np.array([nodecost(soln) for soln in solns0]))
-        if i>0:
-            solnsprev = iksolns[i-1]
-            ecost_nkk.append(pairwise_squared_dist(solnsprev, solns0))
-    
+    ncost_nk = [None]*len(iksolns)
+    ecost_nkk = [None]*(len(iksolns)-1)
+    num_nodes = 0
+
+    graph_parts = []
+    global nodecost_func
+    nodecost_func = nodecost
+    if PARALLEL_JOBS > 1:
+        from joblib import Parallel, delayed
+        graph_parts = Parallel(n_jobs=PARALLEL_JOBS, verbose=1)(
+            delayed(build_graph_part)(i, iksolns[i], iksolns[i-1] if i > 0 else None) for i in range(len(iksolns))
+        )
+    else:
+        graph_parts = [build_graph_part(i, iksolns[i], iksolns[i-1] if i > 0 else None) for i in range(len(iksolns))]
+
+    for i in range(len(iksolns)):
+        ncost_nk[i] = graph_parts[i][0]
+        if i > 0: ecost_nkk[i-1] = graph_parts[i][1]
+        num_nodes += graph_parts[i][2]
+
+    rospy.loginfo('calculating shortest paths on %d nodes', num_nodes)
     paths, path_costs = shortest_paths(ncost_nk, ecost_nkk)
     return [np.array([iksolns[t][i] for (t,i) in enumerate(path)]) for path in paths], path_costs, timesteps
-    
+
 def ik_for_link(T_w_link, manip, link_name, filter_options = 18, return_all_solns = False):
     """
     Perform IK for an arbitrary link attached to the manipulator

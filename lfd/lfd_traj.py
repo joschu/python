@@ -8,7 +8,6 @@ But these functions are slightly adapted for lfd stuff
 import numpy as np
 from kinematics import retiming, kinematics_utils
 import rospy
-from time import time
 from brett2 import PR2
 import jds_utils.conversions as conv
 import jds_utils.math_utils as mu
@@ -33,7 +32,7 @@ def merge_nearby_grabs(inds_sides):
     else:
         raise NotImplementedError
 
-def follow_trajectory_with_grabs(pr2, bodypart2traj):
+def follow_trajectory_with_grabs(pr2, bodypart2traj, ignore_failure=False):
     """
     bodypart2traj is a dictionary with zero or more of the following fields: {l/r}_grab, {l/r}_gripper, {l/r_arm}
     We'll follow all of these bodypart trajectories simultaneously
@@ -54,16 +53,16 @@ def follow_trajectory_with_grabs(pr2, bodypart2traj):
         t_start = rospy.Time.now().to_sec()
         success = follow_trajectory(pr2, slice_traj(bodypart2traj, i_begin, i_grab))
         rospy.loginfo("follow traj result: %s, duration: %.2f", success, rospy.Time.now().to_sec() - t_start)
-        if not success: return False
+        if not success and not ignore_failure: return False
         t_start = rospy.Time.now().to_sec()
         success = close_gripper(pr2, side)
         rospy.loginfo("close gripper result: %s, duration: %.2f", success, rospy.Time.now().to_sec() - t_start)        
-        if not success: return False        
+        if not success and not ignore_failure: return False        
         i_begin = i_grab
     t_start = rospy.Time.now().to_sec()
     success = follow_trajectory(pr2, slice_traj(bodypart2traj, i_begin, -1))
     rospy.loginfo("follow traj result: %s, duration: %.2f", success, rospy.Time.now().to_sec() - t_start)
-    if not success: return False
+    if not success and not ignore_failure: return False
     return True
 
 def slice_traj(bodypart2traj, start, stop):
@@ -85,14 +84,17 @@ def go_to_start(pr2, bodypart2traj):
             if name == "l_gripper" or name == "r_gripper":
                 part.set_angle_target(bodypart2traj[name][0])
             elif name == "l_arm" or name == "r_arm":
+                traj0 = np.vstack([part.get_joint_positions(), bodypart2traj[name][0,:]])
+                traj0[:,4] = np.unwrap(traj0[:,4])
+                traj0[:,6] = np.unwrap(traj0[:,6])
                 if USE_PLANNING:
-                    part.goto_joint_positions_planned(bodypart2traj[name][0])
+                    part.goto_joint_positions_planned(traj0[1,:])
                 else:
-                    part.goto_joint_positions(bodypart2traj[name][0])
+                    part.goto_joint_positions(traj0[1,:])
 
     pr2.join_all()
-    
-    
+
+
 def follow_trajectory(pr2, bodypart2traj):    
     """
     bodypart2traj is a dictionary with zero or more of the following fields: {l/r}_grab, {l/r}_gripper, {l/r_arm}
@@ -122,6 +124,15 @@ def follow_trajectory(pr2, bodypart2traj):
             n_dof += part.n_joints
            
     trajectories = np.concatenate(trajectories, 1)
+    #print 'traj orig:'; print trajectories
+    #trajectories = np.r_[np.atleast_2d(pr2.get_joint_positions()), trajectories]
+    #print 'traj with first:'; print trajectories
+    for arm in ['l_arm', 'r_arm']:
+        if arm in bodypart2traj:
+            part_traj = trajectories[:,bodypart2inds[arm]]
+            part_traj[:,4] = np.unwrap(part_traj[:,4])
+            part_traj[:,6] = np.unwrap(part_traj[:,6])
+    #print 'traj after unwrap:'; print trajectories
     
     vel_limits = np.array(vel_limits)
     acc_limits = np.array(acc_limits)
@@ -129,14 +140,18 @@ def follow_trajectory(pr2, bodypart2traj):
     times = retiming.retime_with_vel_limits(trajectories, vel_limits/2)
     times_up = np.arange(0,times[-1],.1)
     traj_up = interp2d(times_up, times, trajectories)
-    
+
+    np.set_printoptions(linewidth=1000, threshold='nan')
     for (name, part) in name2part.items():
         if name in bodypart2traj:
             part_traj = traj_up[:,bodypart2inds[name]]
             if name == "l_gripper" or name == "r_gripper":
                 part.follow_timed_trajectory(times_up, part_traj.flatten())
             elif name == "l_arm" or name == "r_arm":
+                #print 'following traj for', name, part_traj
+                #print '   with velocities'
                 vels = kinematics_utils.get_velocities(part_traj, times_up, .001)
+                #print vels
                 part.follow_timed_joint_trajectory(part_traj, vels, times_up)
     pr2.join_all()    
     return True
@@ -161,12 +176,19 @@ def close_gripper(pr2, side):
             success = False
     return success or ALWAYS_FAKE_SUCESS    
 
-def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame):
+def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame, check_collisions=False):
     assert(len(xyzs) == len(quats))
     hmats = [conv.trans_rot_to_hmat(xyz, quat) for xyz, quat in zip(xyzs, quats)]
 
+    link = manip.GetRobot().GetLink(targ_frame)
+    Tcur_w_link = link.GetTransform()
+    Tcur_w_ee = manip.GetEndEffectorTransform()
+    Tf_link_ee = np.linalg.solve(Tcur_w_link, Tcur_w_ee)
+
     def ikfunc(hmat):
-        return traj_ik_graph_search.ik_for_link(hmat, manip, targ_frame, return_all_solns=True)
+        #return traj_ik_graph_search.ik_for_link(hmat, manip, targ_frame, return_all_solns=True)
+        params = 1+2+16 if check_collisions else 2+16
+        return manip.FindIKSolutions(hmat.dot(Tf_link_ee), params)
 
     def nodecost(joints):
         robot = manip.GetRobot()
@@ -177,7 +199,11 @@ def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame):
         return cost
 
     start_joints = manip.GetRobot().GetDOFValues(manip.GetArmIndices())
-    paths, costs, timesteps = traj_ik_graph_search.traj_cart2joint(hmats, ikfunc, start_joints=start_joints, nodecost=nodecost)
+    paths, costs, timesteps = traj_ik_graph_search.traj_cart2joint(
+        hmats, ikfunc,
+        start_joints=start_joints,
+        nodecost=nodecost if check_collisions else None
+    )
 
     i_best = np.argmin(costs)
     print "lowest cost of initial trajs:", costs[i_best]

@@ -206,7 +206,7 @@ class RvizWrapper:
         return RvizWrapper()
 
     def __init__(self):
-        self.pub = rospy.Publisher('visualization_marker', Marker)
+        self.pub = rospy.Publisher('visualization_marker', Marker, latch=True)
         self.array_pub = rospy.Publisher("visualization_marker_array", MarkerArray)        
         self.ids = set([])
         register_deletion()
