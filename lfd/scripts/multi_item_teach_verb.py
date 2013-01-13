@@ -116,14 +116,14 @@ def get_new_demo_entry_text(demo_name, items, arms_used, data_dir):
         special_pts.append("None" if special_pt is None else special_pt)
             
     new_entry_text = """
-    # AUTOMATICALLY ADDED BY two_item_teach_verb.py ON %(datestr)s
-    %(demo_name)s:
+# AUTOMATICALLY ADDED BY two_item_teach_verb.py ON %(datestr)s
+%(demo_name)s:
     stages: %(stages)s
     verb: %(verb)s
     args: %(items)s
     arms_used: %(arms_used)s
     special_pts : %(special_pts)s
-    
+
     """ % dict(
             demo_name = demo_name,
             datestr = datetime.date.today(),
