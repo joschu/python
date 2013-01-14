@@ -103,6 +103,8 @@ def tps_nr_eval_general(lin_ag, trans_g, w_eg, x_ea, y_ng, nr_ma, bend_coef, nr_
     else:
         return res_cost + bend_cost + nr_cost    
 
+    
+
 def tps_fit(x_na, y_ng, bend_coef, rot_coef, wt_n=None):
     N,D = x_na.shape
         
