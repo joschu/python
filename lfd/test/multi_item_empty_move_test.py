@@ -3,8 +3,9 @@ from lfd import exec_verb_traj, make_verb_traj, multi_item_verbs, ik_functions
 from verb_msgs.srv import ExecTrajectoryRequest
 from jds_utils.yes_or_no import yes_or_no
 import yaml
+import os.path as osp
 
-EMPTY_MOVE_PARAM_FILE = "multi_item/multi_item_params/empty_move_params.yaml"
+EMPTY_MOVE_PARAM_FILE = osp.join(osp.dirname(__file__), "multi_item/multi_item_params/empty_move_params.yaml")
 
 def get_test_params():
     f = open(EMPTY_MOVE_PARAM_FILE, 'r')
@@ -33,10 +34,10 @@ def pour_empty_move_init():
     move_to_start_pos(exec_verb_traj.Globals.pr2)
 
 # makes the PR2 go through motions using fake data
-def do_pour_empty_move(demo_name, exp_name):
+def do_pour_empty_move(demo_name, exp_name, test_dir_name):
     pour_empty_move_init()
 
-    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir="test/multi_item/multi_item_data")
+    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir="test/multi_item/multi_item_data/%s"%test_dir_name)
 
     for current_stage in xrange(verb_data_accessor.get_num_stages(demo_name)):
         # info and data for previous stage
@@ -71,4 +72,5 @@ def do_pour_empty_move(demo_name, exp_name):
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
         rospy.init_node("test_multi_item_empty_move",disable_signals=True)
-    do_pour_empty_move("pour-green0-blue0", "pour-green1-blue0")
+    #do_pour_empty_move("pour-green0-blue0", "pour-green1-blue0", "pour_green_blue_r_r")
+    do_pour_empty_move("place-marker-cup0", "place-markerLong-cupBlue0", "place_marker_cup_l_l_2")
