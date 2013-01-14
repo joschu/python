@@ -300,8 +300,8 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
             targ_pose_array = conversions.array_to_pose_array(targ_Nd, 'base_footprint')
             Globals.handles.append(Globals.rviz.draw_curve(targ_pose_array,rgba=(1,1,0,1),type=Marker.CUBE_LIST, ns=ns_prefix+'_targ_Nd'))
 
-    if plotting:
-        plot_correspondence_3d(x_nd[goodn], targ_Nd)
+    #if plotting:
+    #    plot_correspondence_3d(x_nd[goodn], targ_Nd)
 
     if return_full:
         info = {}

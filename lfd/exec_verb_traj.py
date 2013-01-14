@@ -191,6 +191,11 @@ def exec_traj(req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=Non
                              traj.r_gripper_poses.poses, traj.r_gripper_angles,
                              traj_ik_func, ros_utils.pc2xyzrgb(obj_pc)[0], obj_name)
 
+def unwrap_angles(angles):
+    for i in xrange(angles.shape[1]):
+        angles[:, i] = np.unwrap(angles[:, i])
+    return angles
+
 def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_gripper_angles, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_cloud_xyz=None, obj_name=""):
     del Globals.handles[1:]
     grab_obj_kinbody = setup_obj_rave(obj_cloud_xyz, obj_name) if obj_cloud_xyz is not None else None
@@ -217,12 +222,13 @@ def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_grip
 
         #do ik
         joint_positions = traj_ik_func(Globals.pr2, lr, final_gripper_poses)
-
         if len(joint_positions) == 0:
             return ExecTrajectoryResponse(success=False)
-        joint_positions = ku.smooth_positions(joint_positions, .15)
-        final_joint_positions = fix_end_joint_positions(lr, unprocessed_gripper_angles, joint_positions)
-        
+
+        unwrapped_joint_positions = unwrap_angles(joint_positions)
+        smoothed_joint_positions = ku.smooth_positions(unwrapped_joint_positions, .15)
+        final_joint_positions = fix_end_joint_positions(lr, unprocessed_gripper_angles, smoothed_joint_positions)
+
         body_traj["%s_arm"%lr] = final_joint_positions
         body_traj["%s_gripper"%lr] = final_gripper_angles
 

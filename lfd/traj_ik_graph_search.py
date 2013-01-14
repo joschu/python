@@ -40,10 +40,14 @@ def shortest_paths(ncost_nk,ecost_nkk):
 
     return np.array(paths).T, path_costs
 
+def angular_dist_func(x, y):
+    return ((np.arctan2(np.sin(x-y), np.cos(x-y)))**2).sum()
+
 def pairwise_squared_dist(x,y):
     "pairwise squared distance between rows of matrices x and y"
     #return ssd.cdist(x, y, 'sqeuclidean')
-    return ssd.cdist(x, y, lambda u, v: (np.mod(np.abs(u - v), 2.*np.pi)**2).sum())
+    #return ssd.cdist(x, y, lambda u, v: (np.mod(np.abs(u - v), 2.*np.pi)**2).sum())
+    return ssd.cdist(x, y, angular_dist_func)
 
 nodecost_func = None # hack because joblib can't take function args to build_graph_part
 def build_graph_part(solns0, solnsprev):
