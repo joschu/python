@@ -285,7 +285,8 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
 
         wt_n = corr_nm.sum(axis=1)
         
-        goodn = wt_n > .1
+        #goodn = wt_n > .1
+        goodn = wt_n > -.1
 
         targ_Nd = np.dot(corr_nm[goodn, :]/wt_n[goodn][:,None], y_md)
 

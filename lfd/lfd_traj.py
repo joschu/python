@@ -141,7 +141,6 @@ def follow_trajectory(pr2, bodypart2traj):
     times_up = np.arange(0,times[-1],.1)
     traj_up = interp2d(times_up, times, trajectories)
 
-    np.set_printoptions(linewidth=1000, threshold='nan')
     for (name, part) in name2part.items():
         if name in bodypart2traj:
             part_traj = traj_up[:,bodypart2inds[name]]
@@ -176,6 +175,13 @@ def close_gripper(pr2, side):
             success = False
     return success or ALWAYS_FAKE_SUCESS    
 
+def unwrap_arm_traj(arm_traj):
+    UNWRAP_INDICES = [2, 4, 6]
+    out = arm_traj.copy()
+    for i in UNWRAP_INDICES:
+        out[:,i] = np.unwrap(arm_traj[:,i])
+    return out
+
 def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame, check_collisions=False):
     assert(len(xyzs) == len(quats))
     hmats = [conv.trans_rot_to_hmat(xyz, quat) for xyz, quat in zip(xyzs, quats)]
@@ -207,7 +213,7 @@ def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame, check_collis
 
     i_best = np.argmin(costs)
     print "lowest cost of initial trajs:", costs[i_best]
-    path_init = paths[i_best]
+    path_init = unwrap_arm_traj(paths[i_best])
     return path_init, timesteps
 
 def make_joint_traj(xyzs, quats, joint_seeds,manip, ref_frame, targ_frame,filter_options):
