@@ -103,8 +103,8 @@ class PR2(object):
             self.robot.SetActiveManipulator(manip)
             ikmodel = rave.databases.inversekinematics.InverseKinematicsModel(
                 self.robot,
-                iktype=rave.IkParameterization.Type.Transform6D#,
-                #freeindices=[manip.GetArmIndices()[0]]
+                iktype=rave.IkParameterization.Type.Transform6D,
+                freeindices=[manip.GetArmIndices()[2]]
             )
             if not ikmodel.load():
                 ikmodel.autogenerate()
