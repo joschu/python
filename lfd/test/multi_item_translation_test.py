@@ -59,7 +59,7 @@ def test_cup_pour_init():
 def test_cup_pour(demo_name, exp_name):
     test_cup_pour_init()
 
-    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir="test/multi_item/multi_item_data")
+    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir="test/multi_item/multi_item_data/pour_green_blue_r_r")
 
     current_stage = 1
 
