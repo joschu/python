@@ -275,11 +275,12 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
         info["x_Nd"] = x_nd[goodn,:]
         info["targ_Nd"] = targ_Nd
         info["wt_N"] = wt_n[goodn]
+        info["cost"] = f.cost
         return f, info
     else:
         return f
 
-def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True):
+def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, cost_per_radian = 10):
     """
     Do tps_rpm algorithm for each z angle rotation
     Then don't reestimate affine part in tps optimization
@@ -302,16 +303,21 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
         ypred_ng = f.transform_points(x_nd)
         dists_nm = ssd.cdist(ypred_ng, y_md)
         # how many radians rotation is one mm average error reduction worth?
-        radians_per_mm = .5
-        cost = abs(a) + radians_per_mm * 1000 * (dists_nm.min(axis=0).mean() + dists_nm.min(axis=1).mean())
+
+
         # seems like a reasonable goodness-of-fit measure
+        print "tps cost", f.cost
+        cost = f.cost + abs(a)*cost_per_radian
         costs.append(cost)
         fs.append(f)
 
-        print "linear:", f.lin_ag, "translation: ", f.trans_g             
+
+
+
         
     i_best = np.argmin(costs)
     print "best index", i_best
+    print "best angle", zrots[i_best]
 
     return fs[i_best]
 
