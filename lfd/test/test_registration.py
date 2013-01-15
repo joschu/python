@@ -149,7 +149,7 @@ def test_cups():
     f = registration.tps_rpm(3*xyz1, 3*xyz2, plotting=4,reg_init=1,reg_final=.05,n_iter=200, verbose=False)
 
 
-if __name__ == "__main__":
+def test_zrot1():
 #def test_plate():
     import rospy, itertools, glob
     from jds_utils.colorize import colorize
@@ -161,6 +161,24 @@ if __name__ == "__main__":
     xyz1, rgb1 = np.asarray(f["plate"]["xyz"]), np.asarray(f["plate"]["rgb"])
     xyz1 = voxel_downsample(xyz1, .02)
     from numpy import sin, cos, pi
+    print "true angle", pi/3
     xyz_target = xyz1.mean(axis=0)[None,:] + 1.5*np.dot(xyz1 - xyz1.mean(axis=0)[None,:], np.array([[cos(pi/3), sin(pi/3), 0], [-sin(pi/3), cos(pi/3), 0], [0, 0, 1]]))
     
-    f = registration.tps_rpm_zrot(xyz1, xyz_target, plotting=1,reg_init=2,reg_final=.5,n_iter=8, verbose=False)
+    f = registration.tps_rpm_zrot(xyz1, xyz_target, plotting=1,reg_init=2,reg_final=.5,n_iter=8, verbose=False, cost_per_radian=2)
+
+def test_zrot2():
+#def test_plate():
+    import rospy, itertools, glob
+    from jds_utils.colorize import colorize
+    from jds_utils.math_utils import normr, norms
+    if rospy.get_name() == "/unnamed": rospy.init_node('test_registration_3d',disable_signals=True)
+    xyz1 = np.random.randn(300,3)*.2
+    xyz2 = np.random.randn(300,3)*.2
+    xyz1 = xyz1[norms(xyz1,1) < 1]*.2
+    xyz2 = xyz2[norms(xyz1,1) < 1]*.2
+    from numpy import sin, cos, pi
+    
+    f = registration.tps_rpm_zrot(xyz1, xyz2, plotting=1,reg_init=2,reg_final=.5,n_iter=8, verbose=False, cost_per_radian = 2)
+
+if __name__ == "__main__":
+    test_zrot2()
