@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import argparse
-from lfd import multi_item_verbs, make_verb_traj, exec_verb_traj, ik_functions
+from lfd import multi_item_verbs, multi_item_make_verb_traj, exec_verb_traj, ik_functions
 from verb_msgs.srv import *
 import rospy
 import numpy as np
@@ -52,7 +52,7 @@ def do_stage(demo_base_name, demo_index, stage_num, prev_stage_info, prev_exp_cl
     pc_sel = do_segmentation(stage_info.item)
     make_req = get_trajectory_request(stage_info.verb, pc_sel)
 
-    make_resp = make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, use_tps_zrot=False)
+    make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, use_tps_zrot=False)
     
     yn = yes_or_no("continue?")
     if yn:
@@ -70,7 +70,7 @@ def do_multiple_stages(demo_base_name, stages, verb_data_accessor):
         prev_stage_info, prev_exp_clouds = do_stage(demo_base_name, demo_num, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor)
 
 def do_globals_setup():
-    make_verb_traj.Globals.setup()
+    multi_item_make_verb_traj.Globals.setup()
     exec_verb_traj.Globals.setup()
 
 def move_pr2_to_start_pos(pr2):

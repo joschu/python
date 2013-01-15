@@ -29,7 +29,6 @@ from jds_image_proc.clouds import voxel_downsample
 
 from lfd import ik_functions, math_utils
 
-from lfd import make_verb_traj
 roslib.load_manifest("bulletsim_msgs")
 from bulletsim_msgs.srv import PlanTraj, PlanTrajRequest, PlanTrajResponse
 
@@ -132,14 +131,6 @@ def fix_end_joint_positions(lr, gripper_angles, joint_positions):
             return replace_range(joint_positions[start_close_index-1], joint_positions, start=start_close_index)
     return joint_positions
 
-def plot_gripper_xyzs_from_poses(lr, gripper_poses):
-    gripper_xyzs, gripper_quats = [],[]
-    for pose in gripper_poses:
-        xyz, quat = juc.pose_to_trans_rot(pose)
-        gripper_xyzs.append(xyz)
-        gripper_quats.append(quat)
-    make_verb_traj.plot_curve(gripper_xyzs, (1, 1, 0, 1))
-
 # adds the point cloud to the openrave environment
 def setup_obj_rave(obj_cloud_xyz, obj_name):
     rave_env = Globals.pr2.env
@@ -210,8 +201,6 @@ def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_grip
 
         gripper_angles_grabbing = process_gripper_angles_for_grabbing(lr, unprocessed_gripper_angles)
 
-        plot_gripper_xyzs_from_poses(lr, gripper_poses)
-
         # add poses to traj to get from current position to start of next traj
         Globals.pr2.update_rave()
         current_pos = Globals.pr2.robot.GetLink("%s_gripper_tool_frame"%lr).GetTransform()
@@ -236,7 +225,6 @@ def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_grip
         pose_array.header.frame_id = "base_footprint"
         pose_array.header.stamp = rospy.Time.now()
         pose_array.poses = r_gripper_poses if lr == 'r' else l_gripper_poses
-        Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,0,0,1)))
 
     yn = yes_or_no("continue?")
     if yn:

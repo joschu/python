@@ -1,13 +1,13 @@
-from lfd import make_verb_traj, multi_item_verbs
+import rospy
+from lfd import multi_item_make_verb_traj, multi_item_verbs
 import jds_utils.conversions as juc
 import jds_utils.transformations as jut
 from jds_utils.colorize import colorize
 import yaml
-from verb_msgs.srv import MakeTrajectoryRequest
-import rospy
 import numpy as np
+import os.path as osp
 
-TRANSLATION_PARAM_FILE = "multi_item/multi_item_params/translation_params.yaml"
+TRANSLATION_PARAM_FILE = osp.join(osp.dirname(__file__), "multi_item/multi_item_params/translation_params.yaml")
 
 def report((x, msg)):
     if x:
@@ -29,11 +29,10 @@ def rot_distance(quat1, quat2):
     quat2_mat = jut.quaternion_matrix(quat2) 
     diff_mat = np.dot(quat2_mat, np.linalg.inv(quat1_mat))
     diff_xyz, diff_quat = juc.hmat_to_trans_rot(diff_mat)
-    print diff_quat
     return euclidean_dist(diff_quat, [0, 0, 0, 1])
 
 # What should these values be?
-XYZ_TOLERANCE = 0.1
+XYZ_TOLERANCE = 0.02
 ROT_TOLERANCE = 0.1
         
 # returns if the trajectories are approximately the same
@@ -46,17 +45,17 @@ def similar_trajectories(traj1, traj2):
         xyz_dist = euclidean_dist(traj1_pt_xyz, traj2_pt_xyz)
         rot_dist = rot_distance(traj1_pt_rot, traj2_pt_rot)
         if xyz_dist > XYZ_TOLERANCE or rot_dist > ROT_TOLERANCE:
-            error_msg = "Incorrect point (index %s): { traj1: %s %s, traj2: %s %s }, { xyz_dist: %s, rot_dist: %s" % (str(index), str(traj1_pt_xyz), str(traj1_pt_rot), str(traj2_pt_xyz), str(traj2_pt_rot), str(xyz_dist), str(rot_dist))
+            error_msg = "Incorrect point (index %i): { traj1: %s %s, traj2: %s %s }, { xyz_dist: %f, rot_dist: %f }" % (index, str(traj1_pt_xyz), str(traj1_pt_rot), str(traj2_pt_xyz), str(traj2_pt_rot), xyz_dist, rot_dist)
             return False, error_msg
     return True, "matching"
 
 def test_cup_pour_init():
-    make_verb_traj.Globals.setup()
+    multi_item_make_verb_traj.Globals.setup()
 
-# MAKE SURE THAT ROSCORE IS RUNNING FOR THIS TEST, BECAUSE MAKE_VERB_TRAJ DOES PLOTTING FOR RVIZ
+# MAKE SURE THAT ROSCORE IS RUNNING FOR THIS TEST, BECAUSE MULTI_ITEM_MAKE_VERB_TRAJ DOES PLOTTING FOR RVIZ
 
 # tests that if the target object is the same, then the difference between the demo and experiment special point trajectories are the translation between the the demo and experiment target objects
-def test_cup_pour(demo_name, exp_name):
+def test_translation(demo_name, exp_name):
     test_cup_pour_init()
 
     verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir="test/multi_item/multi_item_data/pour_green_blue_r_r")
@@ -85,9 +84,10 @@ def test_cup_pour(demo_name, exp_name):
     prev_exp_gripper_pos = prev_exp_data[gripper_data_key]["position"][-1]
     prev_exp_gripper_orien = prev_exp_data[gripper_data_key]["orientation"][-1]
     prev_world_to_gripper_trans = np.linalg.inv(juc.trans_rot_to_hmat(prev_exp_gripper_pos, prev_exp_gripper_orien))
-    gripper_frame_trans = make_verb_traj.make_to_gripper_frame_hmat(prev_world_to_gripper_trans)
 
-    warped_traj_resp = make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc], None, current_stage, prev_demo_info, [prev_exp_pc], verb_data_accessor, to_gripper_frame_func=gripper_frame_trans)
+    gripper_frame_trans = multi_item_make_verb_traj.make_to_gripper_frame_hmat(prev_world_to_gripper_trans)
+
+    warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc], None, current_stage, prev_demo_info, [prev_exp_pc], verb_data_accessor, to_gripper_frame_func=gripper_frame_trans)
 
     # get the actual transformation between the old and new target objects (just a translation for this test)
     params = get_test_params()
@@ -118,4 +118,4 @@ def test_cup_pour(demo_name, exp_name):
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
         rospy.init_node("test_multi_item_translation",disable_signals=True)
-    test_cup_pour("pour-green0-blue0", "pour-green1-blue0")
+    test_translation("pour-green0-blue0", "pour-green1-blue0")

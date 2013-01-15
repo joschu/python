@@ -1,5 +1,5 @@
 import rospy
-from lfd import exec_verb_traj, make_verb_traj, multi_item_verbs, ik_functions
+from lfd import exec_verb_traj, multi_item_make_verb_traj, multi_item_verbs, ik_functions
 from verb_msgs.srv import ExecTrajectoryRequest
 from jds_utils.yes_or_no import yes_or_no
 import yaml
@@ -30,7 +30,7 @@ def move_to_start_pos(pr2):
 def pour_empty_move_init():
     set_table_params()
     exec_verb_traj.Globals.setup()
-    make_verb_traj.Globals.setup()
+    multi_item_make_verb_traj.Globals.setup()
     move_to_start_pos(exec_verb_traj.Globals.pr2)
 
 # makes the PR2 go through motions using fake data
@@ -54,7 +54,7 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
         prev_exp_pc = prev_exp_data["object_clouds"][prev_exp_info.item]["xyz"]
         cur_exp_pc = cur_exp_data["object_clouds"][cur_exp_info.item]["xyz"]
 
-        warped_traj_resp = make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc],
+        warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc],
                                                                         "base_footprint", current_stage,
                                                                         prev_demo_info, [prev_exp_pc],
                                                                         verb_data_accessor, use_tps_zrot=True)
@@ -75,6 +75,6 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
         rospy.init_node("test_multi_item_empty_move",disable_signals=True)
-    #do_empty_move("pour-green0-blue0", "pour-green1-blue0", "pour_green_blue_r_r")
+    do_empty_move("pour-green0-blue0", "pour-green1-blue0", "pour_green_blue_r_r")
     #do_empty_move("place-marker-cup0", "place-markerLong-cupBlue0", "place_marker_cup_l_l_2")
-    do_empty_move("grab-marker0", "grab-markerRotated0", "grab_marker_l")
+    #do_empty_move("grab-marker0", "grab-markerRotated0", "grab_marker_l")

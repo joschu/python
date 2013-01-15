@@ -6,18 +6,20 @@ try:
 except Exception:
     print "couldn't import ros stuff"
 
-
 def pose_to_trans_rot(pose):
     return (pose.position.x, pose.position.y, pose.position.z),\
            (pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w)
+
 def trans_rot_to_pose(trans,rot):
     pose = gm.Pose()
     pose.position.x, pose.position.y, pose.position.z = trans
     pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.z = rot
     return pose
+
 def hmat_to_pose(hmat):
     trans,rot = hmat_to_trans_rot(hmat)
     return trans_rot_to_pose(trans,rot)
+
 def pose_to_hmat(pose):
     trans,rot = pose_to_trans_rot(pose)
     hmat = trans_rot_to_hmat(trans,rot)
@@ -31,6 +33,15 @@ def hmat_to_trans_rot(hmat):
     scale, shear, angles, trans, persp = transformations.decompose_matrix(hmat) 
     rot = transformations.quaternion_from_euler(*angles) 
     return trans, rot 
+
+# converts a list of hmats separate lists of translations and orientations
+def hmats_to_transs_rots(hmats):
+    transs, rots = [], []
+    for hmat in hmats:
+        trans, rot = hmat_to_trans_rot(hmat)
+        transs.append(trans)
+        rots.append(rot)
+    return transs, rots
 
 def trans_rot_to_hmat(trans, rot): 
     ''' 
@@ -49,10 +60,10 @@ def trans_rot_to_hmat(trans, rot):
     H[0:3, 3] = trans 
     return H
 
-
 def xya_to_trans_rot(xya):
     x,y,a = xya
     return np.r_[x, y, 0], yaw_to_quat(a)
+
 def trans_rot_to_xya(trans, rot):
     x = trans[0]
     y = trans[1]
@@ -67,14 +78,23 @@ def yaw_to_quat(yaw):
 
 def quat2mat(quat):
     return transformations.quaternion_matrix(quat)[:3, :3]
+
 def mat2quat(mat33):
     mat44 = np.eye(4)
     mat44[:3,:3] = mat33
     return transformations.quaternion_from_matrix(mat44)
+
 def mats2quats(mats):
     return np.array([mat2quat(mat) for mat in mats])
+
 def quats2mats(quats):
     return np.array([quat2mat(quat) for quat in quats])
+
+def xyzs_quats_to_poses(xyzs, quats):
+    poses = []
+    for (xyz, quat) in zip(xyzs, quats):
+        poses.append(gm.Pose(gm.Point(*xyz), gm.Quaternion(*quat)))
+    return poses
 
 def rod2mat(rod):
     theta = np.linalg.norm(rod)
@@ -181,7 +201,6 @@ def euler_matrix(ai, aj, ak, axes='sxyz'):
         M[k, j] = cj*si
         M[k, k] = cj*ci
     return M
-
 
 def euler2matrix(ai, aj, ak, axes='sxyz'):
     """Return homogeneous rotation matrix from Euler angles and axis sequence.
