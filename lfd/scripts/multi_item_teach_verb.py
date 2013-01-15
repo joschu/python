@@ -11,19 +11,8 @@ import argparse
 import time
 import os.path as osp
 import lfd
-from lfd import verbs
 import make_verb_library2
 from brett2 import PR2
-
-class Globals:
-    pr2 = None
-    isinstance(pr2, PR2.PR2)
-    
-    def __init__(self): raise
-
-    @staticmethod
-    def setup():
-        Globals.pr2 = PR2.PR2.create()
 
 def call_and_print(cmd,color='green'):
     print colorize(cmd, color, bold=True)
@@ -167,8 +156,8 @@ if __name__ == "__main__":
     arms_used = args.arms_used.split(",")
     data_dir = osp.join(osp.dirname(lfd.__file__), "data")
 
-    Globals.setup()
-    move_pr2_to_start_pos(Globals.pr2)
+    pr2 = PR2.PR2()
+    move_pr2_to_start_pos(pr2)
 
     demo_name = get_new_demo_name(verb, items)
 
