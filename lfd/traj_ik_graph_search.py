@@ -5,7 +5,13 @@ Kinematics helpers for openrave
 import numpy as np
 import scipy.spatial.distance as ssd
 
-PARALLEL_JOBS = -2 # all but one core
+SHOW_PROGRESS = True
+try:
+    from progress.bar import Bar
+except:
+    SHOW_PROGRESS = False
+
+PARALLEL_JOBS = 1
 
 def shortest_paths(ncost_nk,ecost_nkk):
     """       
@@ -40,10 +46,10 @@ def shortest_paths(ncost_nk,ecost_nkk):
 
     return np.array(paths).T, path_costs
 
-def pairwise_squared_dist(x,y):
+def pairwise_squared_dist(x_nk,y_mk):
     "pairwise squared distance between rows of matrices x and y"
-    #return ssd.cdist(x, y, 'sqeuclidean')
-    return ssd.cdist(x, y, lambda u, v: (np.mod(np.abs(u - v), 2.*np.pi)**2).sum())
+    return (np.mod(np.abs(x_nk[:,None,:] - y_mk[None,:,:]), 2*np.pi)**2).sum(axis=2)
+
 
 nodecost_func = None # hack because joblib can't take function args to build_graph_part
 def build_graph_part(solns0, solnsprev):
@@ -81,6 +87,8 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     iksolns = []
     timesteps = []
     last_working_solns = init_solns = np.atleast_2d(start_joints)
+    rospy.loginfo('Enumerating IK solutions for %d points', len(hmats))
+    if SHOW_PROGRESS: bar = Bar('solving ik', max=len(hmats))
     for (i,hmat) in enumerate(hmats):
         if i==0 and start_joints is not None:
             solns = init_solns
@@ -95,8 +103,11 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
         else:
             iksolns.append(last_working_solns)
 
+        if SHOW_PROGRESS: bar.next()
+    if SHOW_PROGRESS: bar.finish()
+
     rospy.loginfo('Done enumerating all IK solns. Now building graph.')
-            
+
     ncost_nk = [None]*len(iksolns)
     ecost_nkk = [None]*(len(iksolns)-1)
     num_nodes = 0
@@ -106,11 +117,15 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     nodecost_func = nodecost
     if PARALLEL_JOBS != 1:
         from joblib import Parallel, delayed
-        graph_parts = Parallel(n_jobs=PARALLEL_JOBS, verbose=1)(
+        graph_parts = Parallel(n_jobs=PARALLEL_JOBS, verbose=5)(
             delayed(build_graph_part)(iksolns[i], iksolns[i-1] if i > 0 else None) for i in range(len(iksolns))
         )
     else:
-        graph_parts = [build_graph_part(iksolns[i], iksolns[i-1] if i > 0 else None) for i in range(len(iksolns))]
+        if SHOW_PROGRESS: bar = Bar('building graph level', max=len(iksolns))
+        for i in range(len(iksolns)):
+            graph_parts.append(build_graph_part(iksolns[i], iksolns[i-1] if i > 0 else None))
+            if SHOW_PROGRESS: bar.next()
+        if SHOW_PROGRESS: bar.finish()
 
     for i in range(len(iksolns)):
         ncost_nk[i] = graph_parts[i][0]

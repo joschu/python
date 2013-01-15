@@ -13,6 +13,7 @@ import jds_utils.conversions as conv
 import jds_utils.math_utils as mu
 from jds_utils.math_utils import interp2d
 import traj_ik_graph_search
+import traj_opt
 
 ALWAYS_FAKE_SUCESS = False
 USE_PLANNING = False
@@ -183,9 +184,13 @@ def unwrap_arm_traj(arm_traj):
         out[:,i] = np.unwrap(arm_traj[:,i])
     return out
 
-def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame, check_collisions=False):
+def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame, downsample=1, check_collisions=False):
     assert(len(xyzs) == len(quats))
     hmats = [conv.trans_rot_to_hmat(xyz, quat) for xyz, quat in zip(xyzs, quats)]
+    ds_hmats = hmats[::downsample]
+    orig_len, ds_len = len(hmats), len(ds_hmats)
+    if downsample != 1:
+        rospy.loginfo('Note: downsampled %s trajectory from %d points to %d points', manip.GetName(), orig_len, ds_len)
 
     link = manip.GetRobot().GetLink(targ_frame)
     Tcur_w_link = link.GetTransform()
@@ -193,9 +198,7 @@ def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame, check_collis
     Tf_link_ee = np.linalg.solve(Tcur_w_link, Tcur_w_ee)
 
     def ikfunc(hmat):
-        #return traj_ik_graph_search.ik_for_link(hmat, manip, targ_frame, return_all_solns=True)
-        params = 1+2+16 if check_collisions else 2+16
-        return manip.FindIKSolutions(hmat.dot(Tf_link_ee), params)
+        return manip.FindIKSolutions(hmat.dot(Tf_link_ee), 2+16 + (1 if check_collisions else 0))
 
     def nodecost(joints):
         robot = manip.GetRobot()
@@ -207,15 +210,18 @@ def make_joint_traj_by_graph_search(xyzs, quats, manip, targ_frame, check_collis
 
     start_joints = manip.GetRobot().GetDOFValues(manip.GetArmIndices())
     paths, costs, timesteps = traj_ik_graph_search.traj_cart2joint(
-        hmats, ikfunc,
+        ds_hmats, ikfunc,
         start_joints=start_joints,
         nodecost=nodecost if check_collisions else None
     )
+    rospy.loginfo("%s: %i of %i points feasible", manip.GetName(), len(timesteps), ds_len)
 
     i_best = np.argmin(costs)
-    print "lowest cost of initial trajs:", costs[i_best]
+    rospy.loginfo("lowest cost of initial trajs: %f", costs[i_best])
     path_init = unwrap_arm_traj(paths[i_best])
-    return path_init, timesteps
+    path_init_us = mu.interp2d(range(orig_len), range(orig_len)[::downsample], path_init) # un-downsample
+    assert len(path_init_us) == orig_len
+    return path_init_us, timesteps
 
 def make_joint_traj(xyzs, quats, joint_seeds,manip, ref_frame, targ_frame,filter_options):
     """
@@ -231,8 +237,6 @@ def make_joint_traj(xyzs, quats, joint_seeds,manip, ref_frame, targ_frame,filter
     robot = manip.GetRobot()
     robot.SetActiveManipulator(manip.GetName())
     joint_inds = manip.GetArmIndices()
-    #robot.SetActiveDOFs(joint_inds)
-    #orig_joint = robot.GetActiveDOFValues()
     orig_joint = robot.GetDOFValues(joint_inds)
 
     joints = []
@@ -240,23 +244,61 @@ def make_joint_traj(xyzs, quats, joint_seeds,manip, ref_frame, targ_frame,filter
 
     for i in xrange(0,n):
         mat4 = conv.trans_rot_to_hmat(xyzs[i], quats[i])
-        #robot.SetActiveDOFValues(joint_seeds[i])
         robot.SetDOFValues(joint_seeds[i], joint_inds)
         joint = PR2.cart_to_joint(manip, mat4, ref_frame, targ_frame, filter_options)
         if joint is not None: 
             joints.append(joint)
             inds.append(i)
-            #robot.SetActiveDOFValues(joint)
             robot.SetDOFValues(joint, joint_inds)
 
-
-    #robot.SetActiveDOFValues(orig_joint)
     robot.SetDOFValues(orig_joint, joint_inds)
-    
-    
+
     rospy.loginfo("found ik soln for %i of %i points",len(inds), n)
     if len(inds) > 2:
         joints2 = mu.interp2d(np.arange(n), inds, joints)
         return joints2, inds
     else:
         return np.zeros((n, len(joints))), []
+
+def fill_stationary(traj, times, n_steps):
+    '''
+    Fills a trajectory at the given times by repeating the joint values at those times for n_steps.
+    times and n_steps come naturally from smooth_disconts()
+    '''
+    if not times: return traj
+    return np.insert(traj, np.repeat(times, n_steps), np.repeat(traj[times], n_steps, axis=0), axis=0)
+
+def smooth_disconts(arm_traj, env, manip, link_name, n_steps=8, discont_gap_thresh=0.5):
+    '''
+    Finds and smooths discontinuities by adding n_steps intermediate steps and optimizing those with trajopt.
+    Returns: the new trajectory, discontinuity times, and n_steps
+    (discont_times and n_steps are suitable for passing into fill_stationary())
+    '''
+    assert n_steps > 0
+
+    if discont_gap_thresh == -1:
+        traj_diffs = abs(arm_traj[1:,:] - arm_traj[:-1,:])
+        discont_gap_thresh = 2.*np.median(traj_diffs, axis=0).max()
+        rospy.loginfo('using joint discontinuity threshold of %f', discont_gap_thresh)
+
+    discont_times = []
+    for i in range(len(arm_traj)):
+        if i == 0: continue
+        maxgap = abs(arm_traj[i,:] - arm_traj[i-1,:]).max()
+        if maxgap > discont_gap_thresh:
+            rospy.loginfo('Discontinuity detected in %s from %d to %d (max gap = %f)', manip.GetName(), i-1, i, maxgap)
+            rospy.loginfo('\tvals at t=%d: %s', i-1, str(arm_traj[i-1,:]))
+            rospy.loginfo('\tvals at t=%d: %s', i, str(arm_traj[i,:]))
+            discont_times.append(i)
+    if len(discont_times) == 0:
+        return arm_traj, [], n_steps
+    rospy.loginfo('%d discontinuities total', len(discont_times))
+    intermediate_trajs = []
+    for i in discont_times:
+        rospy.loginfo('Optimizing traj for discontinuity at %d~%d', i-1, i)
+        itraj = traj_opt.move_arm_straight(env, manip, n_steps+2, link_name, arm_traj[i-1,:], arm_traj[i,:])
+        intermediate_trajs.append(itraj[1:-1])
+
+    new_traj = np.insert(arm_traj, np.repeat(discont_times, n_steps), np.concatenate(intermediate_trajs), axis=0)
+    assert new_traj.shape[0] == arm_traj.shape[0] + n_steps*len(discont_times)
+    return new_traj, discont_times, n_steps
