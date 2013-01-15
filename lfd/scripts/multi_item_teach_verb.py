@@ -35,15 +35,18 @@ def ask_special_point():
         else:
             print "Invalid special point input"
 
-def record_demonstration_for_motion(name_for_motion, item_name, data_dir):
-    # get the point cloud for the first item
-    os.chdir(data_dir + "/images")
+def get_point_cloud(name_for_motion, item_name):
     call_and_print("get_point_cloud.py %s" % (name_for_motion))
     print colorize("now, select the %s object" % (item_name), color="red", bold=True)
     # two point clouds need to be stored, so give first point cloud a suffix of '-1'
     call_and_print("manually_segment_point_cloud.py %s.npz --objs=%s" % (name_for_motion, item_name))
 
-    yes_or_no("Ready to continue?")
+def record_demonstration_for_motion(name_for_motion, item_name, data_dir):
+    os.chdir(data_dir + "/images")
+
+    get_point_cloud(name_for_motion, item_name)
+    while not yes_or_no("Ready to continue?"):
+        get_point_cloud(name_for_motion, item_name)
 
     # do the demonstration for the first motion
     print colorize("now, human, demonstrate the next action for %s on the robot" % (name_for_motion), color="red", bold=True)
