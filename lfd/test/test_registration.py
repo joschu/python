@@ -95,8 +95,8 @@ def test_registration_rope_images():
     tps = registration.tps_rpm(rope[:,:2], sim_ropes[i][:,:2],plotting=10,reg_init=1,reg_final=.025,n_iter=200)
     
 
-#def test_registration_3d():
-if __name__ == "__main__":
+def test_registration_3d():
+#if __name__ == "__main__":
     import rospy, itertools, glob
     from jds_utils.colorize import colorize
     if rospy.get_name() == "/unnamed": rospy.init_node('test_registration_3d',disable_signals=True)
@@ -149,8 +149,8 @@ def test_cups():
     f = registration.tps_rpm(3*xyz1, 3*xyz2, plotting=4,reg_init=1,reg_final=.05,n_iter=200, verbose=False)
 
 
-#if __name__ == "__main__":
-def test_plate():
+if __name__ == "__main__":
+#def test_plate():
     import rospy, itertools, glob
     from jds_utils.colorize import colorize
     from jds_image_proc.pcd_io import load_xyzrgb
@@ -163,4 +163,4 @@ def test_plate():
     from numpy import sin, cos, pi
     xyz_target = xyz1.mean(axis=0)[None,:] + 1.5*np.dot(xyz1 - xyz1.mean(axis=0)[None,:], np.array([[cos(pi/3), sin(pi/3), 0], [-sin(pi/3), cos(pi/3), 0], [0, 0, 1]]))
     
-    f = registration.tps_rpm_zrot(xyz1, xyz_target, plotting=200,reg_init=2,reg_final=.5,n_iter=8, verbose=False)
+    f = registration.tps_rpm_zrot(xyz1, xyz_target, plotting=1,reg_init=2,reg_final=.5,n_iter=8, verbose=False)
