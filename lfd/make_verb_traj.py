@@ -13,7 +13,8 @@ import numpy as np
 from jds_utils import conversions
 import yaml
 from jds_image_proc.clouds import voxel_downsample
-from lfd import verbs, tps
+from lfd import verbs
+from lfd import tps
 from jds_utils.conversions import quats2mats, mats2quats, mat2quat
 
 import jds_utils.transformations as jut
@@ -103,8 +104,11 @@ def make_traj(req):
     Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (0,0,1,1),width=.01,type=Marker.CUBE_LIST))
     return resp
 
-def get_tps_transform(from_cloud, to_cloud):
-    return registration.tps_rpm(from_cloud, to_cloud, plotting=2,reg_init=2,reg_final=.05, n_iter=10, verbose=False)
+def get_tps_transform(from_cloud, to_cloud, use_zrot=False):
+    if use_zrot:
+        return registration.tps_rpm_zrot(from_cloud, to_cloud, plotting=2,reg_init=2,reg_final=.05, n_iter=10, verbose=False)
+    else:
+        return registration.tps_rpm(from_cloud, to_cloud, plotting=2,reg_init=2,reg_final=.05, n_iter=10, verbose=False)
     
 def get_homog_coord(point):
     homog = np.ones(4)
@@ -137,12 +141,12 @@ def make_to_gripper_frame_hmat(transformation):
     return to_gripper_frame_hmat
 
 # the clouds here are PointCloud2 objects
-def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None):
+def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None, use_tps_zrot=False):
     assert isinstance(req, MakeTrajectoryRequest)
     prev_exp_clouds = None if stage_num == 0 else [pc2xyzrgb(cloud)[0] for cloud in prev_exp_clouds]
     cur_exp_clouds = [pc2xyzrgb(cloud)[0] for cloud in req.object_clouds]
     clouds_frame_id = req.object_clouds[0].header.frame_id
-    return make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func)
+    return make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func, use_tps_zrot)
 
 def print_hmat_info(hmat):
     #trans, rot = juc.hmat_to_trans_rot(hmat)
@@ -156,7 +160,7 @@ def print_hmat_info(hmat):
 # prev_exp_clouds has the point cloud of the object from the previous stage in the gripper frame
 # 'prev' and 'cur' is for the previous and current stages; 'demo' and 'exp' are for demonstration and new experiment situations, respectively
 # to_gripper_frame_func transforms a point cloud in base frame to point cloud in gripper frame; if it is None, then it takes the transformation from the robot
-def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None):
+def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None, use_tps_zrot=False):
     arms_used = current_stage_info.arms_used
 
     verb_stage_data = verb_data_accessor.get_demo_data(current_stage_info.stage_name)
@@ -193,7 +197,7 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
             prev_exp_pc_in_gripper_frame = to_gripper_frame_func(prev_exp_pc_down, gripper_data_key)
 
         # get the transformation from the new point cloud to the old point cloud for the previous stage
-        prev_demo_to_exp_grip_transform = get_tps_transform(prev_demo_pc_in_gripper_frame, prev_exp_pc_in_gripper_frame)
+        prev_demo_to_exp_grip_transform = get_tps_transform(prev_demo_pc_in_gripper_frame, prev_exp_pc_in_gripper_frame, use_tps_zrot)
 
         # transforms gripper trajectory point into special point trajectory point
         if prev_stage_info.special_point is None:
@@ -235,7 +239,7 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
         x_nd = voxel_downsample(demo_object_clouds[0], .02)
         y_md = voxel_downsample(cur_exp_clouds[0], .02)
         # transformation from old target object to new target object in world frame
-        cur_demo_to_exp_transform = get_tps_transform(x_nd, y_md)
+        cur_demo_to_exp_transform = get_tps_transform(x_nd, y_md, use_tps_zrot)
 
         # apply the target warping transformation to the special point trajectory
         cur_mid_spec_pt_traj_xyzs, cur_mid_spec_pt_traj_oriens = [], []

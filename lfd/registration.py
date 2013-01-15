@@ -134,7 +134,7 @@ class ThinPlateSplineFixedRot(ThinPlateSpline):
     
     def __init__(self, rot):
         #raise NotImplementedError
-        ThinPlateSpline.__init__(self)
+        ThinPlateSpline.__init__(self, rot.shape[0])
         assert rot.ndim == 2 and rot.shape[0] == rot.shape[1]
         self.n = 0
         self.d = rot.shape[0]

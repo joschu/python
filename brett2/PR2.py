@@ -109,7 +109,7 @@ class PR2(object):
             )
             if not ikmodel.load():
                 ikmodel.autogenerate()
-            if not ikmodel.setrobot(freeinc=[0.05]):
+            if not ikmodel.setrobot(freeinc=[0.1]):
                 raise RuntimeError('failed to load ik')
 
         if not rave_only:

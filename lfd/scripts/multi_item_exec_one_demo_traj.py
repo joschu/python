@@ -52,7 +52,7 @@ def do_stage(demo_base_name, demo_index, stage_num, prev_stage_info, prev_exp_cl
     pc_sel = do_segmentation(stage_info.item)
     make_req = get_trajectory_request(stage_info.verb, pc_sel)
 
-    make_resp = make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor)
+    make_resp = make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, use_tps_zrot=False)
     
     yn = yes_or_no("continue?")
     if yn:
