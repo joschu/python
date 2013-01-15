@@ -106,9 +106,9 @@ def make_traj(req):
 
 def get_tps_transform(from_cloud, to_cloud, use_zrot=False):
     if use_zrot:
-        return registration.tps_rpm_zrot(from_cloud, to_cloud, plotting=2,reg_init=2,reg_final=.05, n_iter=10, verbose=False)
+        return registration.tps_rpm_zrot(from_cloud, to_cloud, plotting=2, reg_init=2, reg_final=.05, n_iter=10, verbose=False, cost_per_radian=0)
     else:
-        return registration.tps_rpm(from_cloud, to_cloud, plotting=2,reg_init=2,reg_final=.05, n_iter=10, verbose=False)
+        return registration.tps_rpm(from_cloud, to_cloud, plotting=2, reg_init=2, reg_final=.05, n_iter=10, verbose=False)
     
 def get_homog_coord(point):
     homog = np.ones(4)
@@ -127,8 +127,8 @@ def apply_tps_transform_to_hmat(tps_transform, hmat):
     if tps_transform is None:
         return hmat
     xyz, quat = juc.hmat_to_trans_rot(hmat)
-    warped_xyz, warped_quat = tps_transform.transform_frames(np.array([xyz]), np.array([juc.quat2mat(quat)]))
-    return juc.trans_rot_to_hmat(warped_xyz[0], mat2quat(warped_quat[0]))
+    warped_xyz, warped_mat = tps_transform.transform_frames(np.array([xyz]), np.array([juc.quat2mat(quat)]))
+    return juc.trans_rot_to_hmat(warped_xyz[0], mat2quat(warped_mat[0]))
 
 # transforms point cloud in base frame to point cloud in gripper frame using tf_listener
 def to_gripper_frame_tf_listener(pc, gripper_frame_name):

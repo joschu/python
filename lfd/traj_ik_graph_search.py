@@ -5,7 +5,7 @@ Kinematics helpers for openrave
 import numpy as np
 import scipy.spatial.distance as ssd
 
-PARALLEL_JOBS = -2 # all but one core
+PARALLEL_JOBS = 1 # all but one core
 
 def shortest_paths(ncost_nk,ecost_nkk):
     """       

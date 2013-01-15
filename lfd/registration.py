@@ -81,29 +81,29 @@ class ThinPlateSpline(Transformation):
     def transform_points(self, x_md):
         return tps.tps_eval(x_md, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
 
-    def transform_frames(self, x_ma, rot_mda, orthogonalize="cross"):
+    def transform_frames(self, x_ma, rot_mad, orthogonalize="cross"):
         """
         orthogonalize: none, svd, qr
         """
         m,d = x_ma.shape
 
         grad_mga = tps.tps_grad(x_ma, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
-        newrot_mdg = (rot_mda[:,:,None,:] * grad_mga[:,None,:,:]).sum(axis=3)
-        # mdg               md_a                  m_ga
+
+        newrot_mgd = np.array([grad_ga.dot(rot_ad) for (grad_ga, rot_ad) in zip(grad_mga, rot_mad)])
 
         newpt_mg = tps.tps_eval(x_ma, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
 
 
         if orthogonalize == "qr": 
-            newrot_mdg =  orthogonalize3_qr(newrot_mdg)
+            newrot_mgd =  orthogonalize3_qr(newrot_mgd)
         elif orthogonalize == "svd":
-            newrot_mdg = orthogonalize3_svd(newrot_mdg)
+            newrot_mgd = orthogonalize3_svd(newrot_mgd)
         elif orthogonalize == "cross":
-            newrot_mdg = orthogonalize3_cross(newrot_mdg)
+            newrot_mgd = orthogonalize3_cross(newrot_mgd)
         elif orthogonalize == "none":
             pass
         else: raise Exception("unknown orthogonalization method %s"%orthogonalize)
-        return newpt_mg, newrot_mdg
+        return newpt_mg, newrot_mgd
 
 class CompositeTransformation(Transformation):
     def __init__(self, init_fn):
@@ -289,7 +289,7 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
     n,d = x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
-    zrots = np.linspace(-np.pi/3, pi/3, 9)
+    zrots = np.linspace(-np.pi/2, pi/2, 11)
 
     displacement = np.median(y_md,axis=0) - np.median(x_nd, axis=0) 
 
