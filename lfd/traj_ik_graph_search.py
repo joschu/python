@@ -48,7 +48,9 @@ def shortest_paths(ncost_nk,ecost_nkk):
 
 def pairwise_squared_dist(x_nk,y_mk):
     "pairwise squared distance between rows of matrices x and y"
-    return (np.mod(np.abs(x_nk[:,None,:] - y_mk[None,:,:]), 2*np.pi)**2).sum(axis=2)
+    diffs_nm = np.abs(x_nk[:,None,:] - y_mk[None,:,:])
+    diffs_nm[:,:,[2,4,6]] %= 2*np.pi
+    return (diffs_nm**2).sum(axis=2)
 
 nodecost_func = None # hack because joblib can't take function args to build_graph_part
 def build_graph_part(solns0, solnsprev):
