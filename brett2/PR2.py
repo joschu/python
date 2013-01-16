@@ -105,7 +105,8 @@ class PR2(object):
             ikmodel = rave.databases.inversekinematics.InverseKinematicsModel(
                 self.robot,
                 iktype=rave.IkParameterization.Type.Transform6D,
-                freeindices=[manip.GetArmIndices()[2]]
+                freeindices=[manip.GetArmIndices()[2]],
+                forceikfast=True
             )
             if not ikmodel.load():
                 ikmodel.autogenerate()

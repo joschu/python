@@ -246,7 +246,7 @@ class SelectTrajectory(smach.State):
             
             from joblib import parallel
             
-            costs_names = parallel.Parallel(n_jobs = 8)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
+            costs_names = parallel.Parallel(n_jobs=-2)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
             #costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
             #costs_names = [calc_seg_cost(seg_name) for seg_name in candidate_demo_names]
             _, best_name = min(costs_names)
@@ -299,7 +299,8 @@ class SelectTrajectory(smach.State):
 
         Globals.pr2.update_rave() 
         trajectory = {}
-        
+
+        # calculate joint trajectory using IK
         for lr in "lr":
             leftright = {"l":"left","r":"right"}[lr]
             if best_demo["arms_used"] in [lr, "b"]:
@@ -311,15 +312,36 @@ class SelectTrajectory(smach.State):
                     warped_demo["%s_gripper_tool_frame"%lr]["orientation"],
                     Globals.pr2.robot.GetManipulator("%sarm"%leftright),
                     "%s_gripper_tool_frame"%lr,
-                    check_collisions=True
+                    check_collisions=True, downsample=2
                 )
-                #arm_traj, feas_inds = lfd_traj.make_joint_traj(warped_demo["%s_gripper_tool_frame"%lr]["position"], warped_demo["%s_gripper_tool_frame"%lr]["orientation"], best_demo["%sarm"%leftright], Globals.pr2.robot.GetManipulator("%sarm"%leftright),"base_footprint","%s_gripper_tool_frame"%lr,1+2+16)
                 if len(feas_inds) == 0: return "failure"
                 trajectory["%s_arm"%lr] = arm_traj
-                rospy.loginfo("%s arm: %i of %i points feasible", leftright, len(feas_inds), len(arm_traj))
                 trajectory["%s_grab"%lr] = best_demo["%s_gripper_joint"%lr] < .07
                 trajectory["%s_gripper"%lr] = warped_demo["%s_gripper_joint"%lr]
                 trajectory["%s_gripper"%lr][trajectory["%s_grab"%lr]] = 0
+        # smooth any discontinuities in the arm traj
+        for lr in "lr":
+            leftright = {"l":"left","r":"right"}[lr]
+            if best_demo["arms_used"] in [lr, "b"]:
+                trajectory["%s_arm"%lr], discont_times, n_steps = lfd_traj.smooth_disconts(
+                    trajectory["%s_arm"%lr],
+                    Globals.pr2.env,
+                    Globals.pr2.robot.GetManipulator("%sarm"%leftright),
+                    "%s_gripper_tool_frame"%lr
+                )
+                # after smoothing the arm traj, we need to fill in all other trajectories (in both arms)
+                other_lr = 'r' if lr == 'l' else 'l'
+                if best_demo["arms_used"] in [other_lr, "b"]:
+                    trajectory["%s_arm"%other_lr] = lfd_traj.fill_stationary(trajectory["%s_arm"%other_lr], discont_times, n_steps)
+                for tmp_lr in 'lr':
+                    if best_demo["arms_used"] in [tmp_lr, "b"]:
+                        trajectory["%s_grab"%tmp_lr] = lfd_traj.fill_stationary(trajectory["%s_grab"%tmp_lr], discont_times, n_steps)
+                        trajectory["%s_gripper"%tmp_lr] = lfd_traj.fill_stationary(trajectory["%s_gripper"%tmp_lr], discont_times, n_steps)
+                        trajectory["%s_gripper"%tmp_lr][trajectory["%s_grab"%tmp_lr]] = 0
+        # plotting
+        for lr in "lr":
+            leftright = {"l":"left","r":"right"}[lr]
+            if best_demo["arms_used"] in [lr, "b"]:
                 # plot warped trajectory
                 Globals.handles.append(Globals.rviz.draw_curve(
                   conversions.array_to_pose_array(
