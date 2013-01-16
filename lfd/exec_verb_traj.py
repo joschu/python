@@ -183,8 +183,8 @@ def exec_traj(req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=Non
                              traj_ik_func, ros_utils.pc2xyzrgb(obj_pc)[0], obj_name)
 
 def unwrap_angles(angles):
-    for i in xrange(angles.shape[1]):
-        angles[:, i] = np.unwrap(angles[:, i])
+    for joint_num in [2, 4, 6]:
+        angles[:, joint_num] = np.unwrap(angles[:, joint_num])
     return angles
 
 def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_gripper_angles, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_cloud_xyz=None, obj_name=""):
