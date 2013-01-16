@@ -5,7 +5,7 @@ import h5py
 from lfd import warping, registration, tps
 import roslib
 roslib.load_manifest("verb_msgs")
-from verb_msgs.srv import MakeTrajectoryRequest, MakeTrajectoryResponse, MakeTrajectory
+from verb_msgs.srv import MakeTrajectoryResponse
 from numpy import asarray
 import numpy as np
 from jds_image_proc.clouds import voxel_downsample

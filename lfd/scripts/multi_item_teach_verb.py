@@ -41,42 +41,43 @@ def get_point_cloud(name_for_motion, item_name):
     # two point clouds need to be stored, so give first point cloud a suffix of '-1'
     call_and_print("manually_segment_point_cloud.py %s.npz --objs=%s" % (name_for_motion, item_name))
 
-def record_demonstration_for_motion(name_for_motion, item_name, data_dir):
-    os.chdir(data_dir + "/images")
-
-    get_point_cloud(name_for_motion, item_name)
-    while not yes_or_no("Ready to continue?"):
-        get_point_cloud(name_for_motion, item_name)
-
-    # do the demonstration for the first motion
+def record_trajectory(dry_run):
     print colorize("now, human, demonstrate the next action for %s on the robot" % (name_for_motion), color="red", bold=True)
-    os.chdir(data_dir + "/bags")
-
     call_and_print("rosrun pr2_controller_manager pr2_controller_manager stop r_arm_controller l_arm_controller")
-
-    # record the demonstration for the first motion
     try:
         old_tmp_bags = glob("tmpname*.bag")
-        if not args.dry_run: 
+        if not dry_run: 
             for bag in old_tmp_bags: 
                 os.remove(bag)
         call_and_print("rosbag record /tf /joint_states /joy -o tmpname")
     except KeyboardInterrupt:
         pass
+    call_and_print("rosrun pr2_controller_manager pr2_controller_manager start r_arm_controller l_arm_controller")
 
-    # rename bag file that was just created
+def rename_bag_file(name_for_motion, n_tries)
+    success = False
+    for i in xrange(n_tries):
+        try:
+            bagname = glob("tmpname*.bag")[0]
+            os.rename(bagname, "%s.bag" % (name_for_motion))
+            success = True
+        except IndexError:
+            time.sleep(.1)
+    if not success:
+        raise Exception("couldn't get bag file")
+
+def record_demonstration_for_motion(name_for_motion, item_name, data_dir):
+    os.chdir(data_dir + "/images")
+    get_point_cloud(name_for_motion, item_name)
+    while not yes_or_no("Ready to continue?"):
+        get_point_cloud(name_for_motion, item_name)
+
+    os.chdir(data_dir + "/bags")
+    record_trajectory(args.dry_run)
+
     n_tries = 20
     if not args.dry_run:
-        success = False
-        for i in xrange(n_tries):
-            try:
-                bagname = glob("tmpname*.bag")[0]
-                os.rename(bagname, "%s.bag" % (name_for_motion))
-                success = True
-            except IndexError:
-                time.sleep(.1)
-        if not success: raise Exception("couldn't get bag file")
-    call_and_print("rosrun pr2_controller_manager pr2_controller_manager start r_arm_controller l_arm_controller")
+        rename_bag_file(name_for_motion, n_tries)
 
 def move_pr2_to_start_pos(pr2):
     HEAD_ANGLE = 1.1
@@ -163,7 +164,6 @@ if __name__ == "__main__":
     move_pr2_to_start_pos(pr2)
 
     demo_name = get_new_demo_name(verb, items)
-
     new_entry_text = get_new_demo_entry_text(demo_name, items, arms_used, data_dir)
 
     yn = yes_or_no("save demonstration?")

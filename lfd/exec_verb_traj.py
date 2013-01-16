@@ -195,19 +195,16 @@ def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_grip
     for (lr, gripper_poses, gripper_angles) in zip("lr", [l_gripper_poses, r_gripper_poses], [l_gripper_angles, r_gripper_angles]):
         if len(gripper_poses) == 0: continue
 
+        # process gripper angles so grabbing objects works better
         unprocessed_gripper_angles = np.array(gripper_angles)
-        #rospy.logwarn("warning! gripper angle hacks")
-        #gripper_angles[gripper_angles < .04] = gripper_angles[gripper_angles < .04] - .02
-
         gripper_angles_grabbing = process_gripper_angles_for_grabbing(lr, unprocessed_gripper_angles)
+        final_gripper_angles = np.concatenate((np.ones(n_steps)*gripper_angles_grabbing[0], gripper_angles_grabbing))
 
-        # add poses to traj to get from current position to start of next traj
+        # prepend gripper_poses with a trajectory to get from the current gripper position to the start of gripper_poses
         Globals.pr2.update_rave()
         current_pos = Globals.pr2.robot.GetLink("%s_gripper_tool_frame"%lr).GetTransform()
-
         before_traj = get_lin_interp_poses(current_pos, juc.pose_to_hmat(gripper_poses[0]), n_steps)
         final_gripper_poses = np.concatenate((np.array(before_traj), gripper_poses))
-        final_gripper_angles = np.concatenate((np.ones(n_steps)*gripper_angles_grabbing[0], gripper_angles_grabbing))
 
         #do ik
         joint_positions = traj_ik_func(Globals.pr2, lr, final_gripper_poses)
@@ -221,11 +218,6 @@ def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_grip
         body_traj["%s_arm"%lr] = final_joint_positions
         body_traj["%s_gripper"%lr] = final_gripper_angles
 
-        pose_array = gm.PoseArray()
-        pose_array.header.frame_id = "base_footprint"
-        pose_array.header.stamp = rospy.Time.now()
-        pose_array.poses = r_gripper_poses if lr == 'r' else l_gripper_poses
-
     yn = yes_or_no("continue?")
     if yn:
         lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
@@ -234,7 +226,7 @@ def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_grip
             handle_grab_or_release_obj(grab_obj_kinbody, l_gripper_poses, l_gripper_angles, r_gripper_poses, r_gripper_angles)
 
         Globals.pr2.join_all()
+
         return ExecTrajectoryResponse(success=True)
     else:
         return ExecTrajectoryResponse(success=False)
-    
