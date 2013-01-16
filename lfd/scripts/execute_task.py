@@ -312,7 +312,7 @@ class SelectTrajectory(smach.State):
                     warped_demo["%s_gripper_tool_frame"%lr]["orientation"],
                     Globals.pr2.robot.GetManipulator("%sarm"%leftright),
                     "%s_gripper_tool_frame"%lr,
-                    check_collisions=True, downsample=2
+                    check_collisions=True
                 )
                 if len(feas_inds) == 0: return "failure"
                 trajectory["%s_arm"%lr] = arm_traj
@@ -388,6 +388,7 @@ class ExecuteTrajectory(smach.State):
             
 
     def execute(self, userdata):
+        raw_input('about to execute')
         #if not args.test: draw_table()        
         Globals.pr2.update_rave()
         if yes_or_no('about to execute trajectory. save?'):
