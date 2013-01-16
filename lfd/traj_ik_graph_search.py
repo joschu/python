@@ -3,15 +3,12 @@ Kinematics helpers for openrave
 """
 
 import numpy as np
-import scipy.spatial.distance as ssd
 
 SHOW_PROGRESS = True
 try:
     from progress.bar import Bar
 except:
     SHOW_PROGRESS = False
-
-PARALLEL_JOBS = 1
 
 def shortest_paths(ncost_nk,ecost_nkk):
     """       
@@ -52,9 +49,7 @@ def pairwise_squared_dist(x_nk,y_mk):
     diffs_nm[:,:,[2,4,6]] %= 2*np.pi
     return (diffs_nm**2).sum(axis=2)
 
-
-nodecost_func = None # hack because joblib can't take function args to build_graph_part
-def build_graph_part(solns0, solnsprev):
+def build_graph_part(nodecost_func, solns0, solnsprev):
     """
     builds vertices for a point in the trajectory, given ik solutions for the
     current point, and builds edges connecting to the previous point, given ik
@@ -90,7 +85,7 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     timesteps = []
     last_working_solns = init_solns = np.atleast_2d(start_joints)
     rospy.loginfo('Enumerating IK solutions for %d points', len(hmats))
-    if SHOW_PROGRESS: bar = Bar('solving ik', max=len(hmats))
+    if SHOW_PROGRESS: bar = Bar(max=len(hmats))
     for (i,hmat) in enumerate(hmats):
         if i==0 and start_joints is not None:
             solns = init_solns
@@ -115,19 +110,11 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     num_nodes = 0
 
     graph_parts = []
-    global nodecost_func
-    nodecost_func = nodecost
-    if PARALLEL_JOBS != 1:
-        from joblib import Parallel, delayed
-        graph_parts = Parallel(n_jobs=PARALLEL_JOBS, verbose=5)(
-            delayed(build_graph_part)(iksolns[i], iksolns[i-1] if i > 0 else None) for i in range(len(iksolns))
-        )
-    else:
-        if SHOW_PROGRESS: bar = Bar('building graph level', max=len(iksolns))
-        for i in range(len(iksolns)):
-            graph_parts.append(build_graph_part(iksolns[i], iksolns[i-1] if i > 0 else None))
-            if SHOW_PROGRESS: bar.next()
-        if SHOW_PROGRESS: bar.finish()
+    if SHOW_PROGRESS: bar = Bar(max=len(iksolns))
+    for i in range(len(iksolns)):
+        graph_parts.append(build_graph_part(nodecost, iksolns[i], iksolns[i-1] if i > 0 else None))
+        if SHOW_PROGRESS: bar.next()
+    if SHOW_PROGRESS: bar.finish()
 
     for i in range(len(iksolns)):
         ncost_nk[i] = graph_parts[i][0]
