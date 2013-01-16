@@ -55,9 +55,9 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
         cur_exp_pc = cur_exp_data["object_clouds"][cur_exp_info.item]["xyz"]
 
         warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc],
-                                                                        "base_footprint", current_stage,
-                                                                        prev_demo_info, [prev_exp_pc],
-                                                                        verb_data_accessor, use_tps_zrot=True)
+                                                                                   "base_footprint", current_stage,
+                                                                                   prev_demo_info, [prev_exp_pc],
+                                                                                   verb_data_accessor, transform_type="tps")
 
         yn = yes_or_no("continue?")
         if yn:

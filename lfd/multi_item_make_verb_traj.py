@@ -20,11 +20,21 @@ class Globals:
     def setup():
         Globals.rviz = RvizWrapper.create()
 
-def get_tps_transform(from_cloud, to_cloud, use_zrot=False):
-    if use_zrot:
-        return registration.tps_rpm_zrot(from_cloud, to_cloud, plotting=2, reg_init=2, reg_final=.05, n_iter=10, verbose=False, cost_per_radian=.001)
-    else:
+def get_warping_transform(from_cloud, to_cloud, transform_type="tps"):
+    if transform_type == "tps":
         return registration.tps_rpm(from_cloud, to_cloud, plotting=2, reg_init=2, reg_final=.05, n_iter=10, verbose=False)
+    elif transform_type == "tps_zrot":
+        return registration.tps_rpm_zrot(from_cloud, to_cloud, plotting=2, reg_init=2, reg_final=.05, n_iter=10, verbose=False, cost_per_radian=.001)
+    elif transform_type == "translation2d":
+        warp = registration.Translation2d()
+        warp.fit(from_cloud, to_cloud)
+        return warp
+    elif transform_type == "rigid2d":
+        warp = registration.Rigid2d()
+        warp.fit(from_cloud, to_cloud)
+        return warp
+    else:
+        raise Exception("transform type %s is not yet implemented" % transform_type)
     
 def get_homog_coord(point):
     homog = np.ones(4)
@@ -57,12 +67,12 @@ def make_to_gripper_frame_hmat(transformation):
     return to_gripper_frame_hmat
 
 # the clouds here are PointCloud2 objects
-def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None, use_tps_zrot=False):
+def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None, transform_type="tps"):
     assert isinstance(req, MakeTrajectoryRequest)
     prev_exp_clouds = None if stage_num == 0 else [pc2xyzrgb(cloud)[0] for cloud in prev_exp_clouds]
     cur_exp_clouds = [pc2xyzrgb(cloud)[0] for cloud in req.object_clouds]
     clouds_frame_id = req.object_clouds[0].header.frame_id
-    return make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func, use_tps_zrot)
+    return make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func, transform_type)
 
 def print_hmat_info(hmat):
     #trans, rot = juc.hmat_to_trans_rot(hmat)
@@ -99,11 +109,13 @@ def get_special_point_translation(special_point):
         special_point_translation = jut.translation_matrix(np.array(special_point))
     return special_point_translation
 
-def get_prev_demo_to_exp_grip_transform(prev_stage_data, prev_stage_info, prev_exp_cloud, arm, to_gripper_frame_func, use_tps_zrot):
+def get_prev_demo_to_exp_grip_transform(prev_stage_data, prev_stage_info, prev_exp_cloud, arm, to_gripper_frame_func, transform_type):
     gripper_data_key = "%s_gripper_tool_frame" % (arm)
     prev_demo_pc_in_gripper_frame = get_prev_demo_pc_in_gripper_frame(prev_stage_data, prev_stage_info, arm)
     prev_exp_pc_in_gripper_frame = get_prev_exp_pc_in_gripper_frame(prev_exp_cloud, gripper_data_key, to_gripper_frame_func)
-    prev_demo_to_exp_grip_transform = get_tps_transform(prev_demo_pc_in_gripper_frame, prev_exp_pc_in_gripper_frame, use_tps_zrot)
+    prev_demo_to_exp_grip_transform = get_warping_transform(prev_demo_pc_in_gripper_frame,
+                                                            prev_exp_pc_in_gripper_frame,
+                                                            transform_type)
     return prev_demo_to_exp_grip_transform
 
 def get_cur_demo_gripper_traj_mats(verb_stage_data, arm):
@@ -113,10 +125,10 @@ def get_cur_demo_gripper_traj_mats(verb_stage_data, arm):
     cur_demo_gripper_traj_mats = [juc.trans_rot_to_hmat(trans, orien) for (trans, orien) in zip(cur_demo_gripper_traj_xyzs, cur_demo_gripper_traj_oriens)]
     return cur_demo_gripper_traj_mats
 
-def get_cur_demo_to_exp_transform(cur_demo_cloud, cur_exp_cloud, use_tps_zrot):
+def get_cur_demo_to_exp_transform(cur_demo_cloud, cur_exp_cloud, transform_type):
     x_nd = voxel_downsample(cur_demo_cloud, .02)
     y_md = voxel_downsample(cur_exp_cloud, .02)
-    cur_demo_to_exp_transform = get_tps_transform(x_nd, y_md, use_tps_zrot)
+    cur_demo_to_exp_transform = get_warping_transform(x_nd, y_md, transform_type)
     return cur_demo_to_exp_transform
 
 def get_cur_demo_spec_pt_traj_mats(cur_demo_gripper_traj_mats, special_point_translation):
@@ -159,7 +171,7 @@ def set_traj_fields_for_response(warped_stage_data, traj, arm, frame_id):
 # prev_exp_clouds has the point cloud of the object from the previous stage in the gripper frame
 # 'prev' and 'cur' is for the previous and current stages; 'demo' and 'exp' are for demonstration and new experiment situations, respectively
 # to_gripper_frame_func transforms a point cloud in base frame to point cloud in gripper frame; if it is None, then it takes the transformation from the robot
-def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None, use_tps_zrot=False):
+def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None, transform_type="tps"):
 
     arms_used = current_stage_info.arms_used
 
@@ -175,7 +187,7 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
         # make sure that the tool stage only uses one arm (the one with the tool)
         prev_demo_to_exp_grip_transform = get_prev_demo_to_exp_grip_transform(prev_verb_stage_data, prev_stage_info,
                                                                               prev_exp_clouds[0], arms_used,
-                                                                              to_gripper_frame_func, use_tps_zrot)
+                                                                              to_gripper_frame_func, transform_type)
         special_point_translation = get_special_point_translation(prev_stage_info.special_point)
 
     cur_verb_stage_data = verb_data_accessor.get_demo_data(current_stage_info.stage_name)
@@ -187,7 +199,8 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
 
     # find the target transformation for the experiment scene
     cur_demo_to_exp_transform = get_cur_demo_to_exp_transform(cur_verb_stage_data["object_clouds"][current_stage_info.item]["xyz"],
-                                                              cur_exp_clouds[0], use_tps_zrot)
+                                                              cur_exp_clouds[0],
+                                                              transform_type)
 
     arms_used_list = ['r', 'l'] if arms_used == 'b' else [arms_used]
     for arm in arms_used_list:
@@ -233,11 +246,6 @@ def plot_spec_pts(xyzs, rgba):
     pose_array = juc.array_to_pose_array(asarray(xyzs), 'base_footprint')
     Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = rgba, ns = "multi_item_make_verb_traj_service"))
 
-def plot_pc(xyzs, rgba):
-    cloud = voxel_downsample(xyzs, .02)
-    pose_array = juc.array_to_pose_array(cloud, 'base_footprint')
-    Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = rgba, width=.01, type=Marker.CUBE_LIST))
-
 def plot_original_and_warped_demo_and_spec_pt(best_demo, warped_demo, spec_pt_xyzs, warped_spec_pt_xyzs, arms_used, traj):
     if arms_used in "lb":
         plot_traj(asarray(best_demo["l_gripper_tool_frame"]["position"]),
@@ -259,13 +267,6 @@ def plot_original_and_warped_demo_and_spec_pt(best_demo, warped_demo, spec_pt_xy
 
     plot_spec_pts(spec_pt_xyzs, (1,0.5,0.5,1))
     plot_spec_pts(warped_spec_pt_xyzs, (0.5,1,0.5,1))
-
-    for (clouds, rgba) in [(sorted_values(best_demo["object_clouds"]), (1,0,0,.5)),
-                           (sorted_values(warped_demo["object_clouds"]), (0,1,0,.5))]:
-        cloud = []
-        for subcloud in clouds:
-            cloud.extend(np.asarray(subcloud["xyz"]).reshape(-1,3))
-        plot_pc(np.array(cloud), rgba)
 
 def sorted_values(d):
     return [d[key] for key in sorted(d.keys())]

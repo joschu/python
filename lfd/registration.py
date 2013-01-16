@@ -28,6 +28,15 @@ def tps_kernel(dist, dim):
     else:
         raise NotImplementedError
 
+def draw_pc(xyzs, rgba):
+    pose_array = conversions.array_to_pose_array(xyzs, "base_footprint")
+    Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba=rgba, type=Marker.CUBE_LIST))
+
+def draw_orig_new_warped_pcs(orig_pc, new_pc, warped_pc):
+    draw_pc(orig_pc, (1,0,0,.4))
+    draw_pc(new_pc, (0,0,1,.4))
+    draw_pc(warped_pc, (0,1,0,.4))
+
 class Transformation(object):
     n_params = 0
     def fit(self, x_nd, y_nd):
@@ -257,7 +266,6 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
 
         goodn = wt_n > .1
 
-
         targ_Nd = np.dot(corr_nm[goodn, :]/wt_n[goodn][:,None], y_md)
 
         f.fit(x_nd[goodn], targ_Nd, bend_coef = regs[i], wt_n = wt_n[goodn], rot_coef = 10*regs[i], verbose=verbose)
@@ -311,10 +319,6 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
         costs.append(cost)
         fs.append(f)
 
-
-
-
-        
     i_best = np.argmin(costs)
     print "best index", i_best
     print "best angle", zrots[i_best]
@@ -366,21 +370,13 @@ def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1, d=3):
         plot_warped_grid_2d(f, x_nd.min(axis=0), x_nd.max(axis=0))
         plt.ginput()
     elif d == 3:
-
         Globals.setup()
-
         mins = x_nd.min(axis=0)
         maxes = x_nd.max(axis=0)
         mins -= np.array([.1, .1, .01])
         maxes += np.array([.1, .1, .01])
         Globals.handles = warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res, zres=-1)
-        orig_pose_array = conversions.array_to_pose_array(x_nd, "base_footprint")
-        target_pose_array = conversions.array_to_pose_array(y_md, "base_footprint")
-        warped_pose_array = conversions.array_to_pose_array(f(x_nd), 'base_footprint')
-        Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,.4),type=Marker.CUBE_LIST))
-        Globals.handles.append(Globals.rviz.draw_curve(target_pose_array,rgba=(0,0,1,.4),type=Marker.CUBE_LIST))
-        Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,.4),type=Marker.CUBE_LIST))
-
+        draw_orig_new_warped_pcs(x_nd, y_md, f(x_nd))
 
 def find_targets(x_md, y_nd, corr_opts):
     """finds correspondence matrix, and then for each point in source cloud,
@@ -423,20 +419,17 @@ def orthogonalize3_cross(mats_n33):
 
     return np.concatenate([xnew_n3[:,:,None], ynew_n3[:,:,None], znew_n3[:,:,None]],2)
 
-
 def orthogonalize3_svd(x_k33):
     u_k33, s_k3, v_k33 = svds(x_k33)
     return (u_k33[:,:,:,None] * v_k33[:,None,:,:]).sum(axis=3)
+
 def orthogonalize3_qr(x_k33):
     raise NotImplementedError
-
-
 
 def fit_score(src, targ, dist_param):
     "how good of a partial match is src to targ"
     sqdists = ssd.cdist(src, targ,'sqeuclidean')
     return -np.exp(-sqdists/dist_param**2).sum()
-
 
 class Rigid2d(Transformation):
     n_params = 3
@@ -472,6 +465,9 @@ class Rigid2d(Transformation):
         self.set_params(best_params)
         self.objective = best_val
 
+        Globals.setup()
+        draw_orig_new_warped_pcs(x_n3, y_n3, self.transform_points(x_n3))
+
     def transform_points(self, x_n3):
 
         a = self.angle
@@ -480,7 +476,6 @@ class Rigid2d(Transformation):
                             [0,     0,      1]])
 
         return np.dot(x_n3, rot_mat.T) + np.r_[self.tx, self.ty, 0][None,:]
-
 
     def transform_frames(self, x_n3, rot_n33, orthogonalize=True):
         newx_n3 = self.transform_points(x_n3)
@@ -492,7 +487,6 @@ class Rigid2d(Transformation):
 
         newrot_n33 = np.array([np.dot(j, rot) for rot in rot_n33])
         return newx_n3, newrot_n33
-
 
 class Rigid3d(Transformation):
     n_params = 6
@@ -550,7 +544,6 @@ class Rigid3d(Transformation):
         newrot_n33 = np.array([np.dot(j, rot) for rot in rot_n33])
         return newx_n3, newrot_n33
 
-
 class Translation2d(Transformation):
     n_params = 2
     tx = 0
@@ -585,6 +578,9 @@ class Translation2d(Transformation):
         print "best_params:", best_params
         self.set_params(best_params)
         self.objective = best_val
+
+        Globals.setup()
+        draw_orig_new_warped_pcs(x_n3, y_n3, self.transform_points(x_n3))
 
     def transform_points(self, x_n3):
 
