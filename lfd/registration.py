@@ -178,6 +178,7 @@ class ThinPlateSplineFixedRot(ThinPlateSpline):
         residual_cost = (wt_n[:,None] * ((y_nd - self.transform_points(x_nd))**2).sum(axis=1)).sum()
         curvature_cost = smoothing * np.trace(np.dot(self.w_nd.T, np.dot(K_nn, self.w_nd)))
         self.cost = residual_cost + curvature_cost + rotation_cost
+        self.residual_cost, self.curvature_cost, self.rotation_cost = residual_cost, curvature_cost, rotation_cost
         if verbose:
             print "cost = residual + curvature + rotation"
             print " %.3g = %.3g + %.3g + %.3g"%(self.cost, residual_cost, curvature_cost, rotation_cost)

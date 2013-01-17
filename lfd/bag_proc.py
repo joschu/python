@@ -11,6 +11,7 @@ from jds_utils.func_utils import once
 from brett2 import ros_utils
 from jds_utils import conversions
 from jds_utils.math_utils import norms
+from jds_utils.yes_or_no import yes_or_no
 import sensor_msgs.msg as sm
 
 MIN_TIME = .025
@@ -209,18 +210,24 @@ def get_transformed_clouds(bag,times):
 
     return clouds
 
+ACTION_TO_CHAR = {
+    'look': '*',
+    'start': '[',
+    'stop': ']',
+    'l_open': 'L',
+    'l_close': 'l',
+    'r_open': 'R',
+    'r_close': 'r',
+    'done': '.',
+}
+CHAR_TO_ACTION = dict((v, k) for k, v in ACTION_TO_CHAR.iteritems())
+
 def actions_to_str(all_times):
-    CHARS = {
-        'look': '*',
-        'start': '[',
-        'stop': ']',
-        'l_open': 'L',
-        'l_close': 'l',
-        'r_open': 'R',
-        'r_close': 'r',
-        'done': '.',
-    }
-    return ''.join(CHARS[a] for _, a in all_times)
+    return ''.join(ACTION_TO_CHAR[a] for _, a in all_times)
+
+def str_to_actions(s, times):
+    assert len(s) == len(times)
+    return [ (t, CHAR_TO_ACTION[c]) for t, c in zip(times, s) ]
 
 def read_button_presses(button_presses):
     all_times = []
@@ -307,6 +314,11 @@ def create_segments(bag, link_names):
     button_presses = get_button_presses(bag)
     all_times = read_button_presses(button_presses)
     print 'Events in bag file:', actions_to_str(all_times)
+    if yes_or_no('edit events?'):
+        s = raw_input('new action sequence (must be the same length as the original): ')
+        #print all_times
+        all_times = str_to_actions(s, [t for t, _ in all_times])
+        #print all_times
 
     start_times, stop_times, look_times, l_close_times, l_open_times, r_close_times, r_open_times, done_times = \
         correct_bag_errors(all_times)
