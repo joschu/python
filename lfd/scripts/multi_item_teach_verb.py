@@ -41,7 +41,7 @@ def get_point_cloud(name_for_motion, item_name):
     # two point clouds need to be stored, so give first point cloud a suffix of '-1'
     call_and_print("manually_segment_point_cloud.py %s.npz --objs=%s" % (name_for_motion, item_name))
 
-def record_trajectory(dry_run):
+def record_trajectory(dry_run, name_for_motion):
     print colorize("now, human, demonstrate the next action for %s on the robot" % (name_for_motion), color="red", bold=True)
     call_and_print("rosrun pr2_controller_manager pr2_controller_manager stop r_arm_controller l_arm_controller")
     try:
@@ -54,7 +54,7 @@ def record_trajectory(dry_run):
         pass
     call_and_print("rosrun pr2_controller_manager pr2_controller_manager start r_arm_controller l_arm_controller")
 
-def rename_bag_file(name_for_motion, n_tries)
+def rename_bag_file(name_for_motion, n_tries):
     success = False
     for i in xrange(n_tries):
         try:
@@ -73,7 +73,7 @@ def record_demonstration_for_motion(name_for_motion, item_name, data_dir):
         get_point_cloud(name_for_motion, item_name)
 
     os.chdir(data_dir + "/bags")
-    record_trajectory(args.dry_run)
+    record_trajectory(args.dry_run, name_for_motion)
 
     n_tries = 20
     if not args.dry_run:
@@ -109,11 +109,11 @@ def get_new_demo_entry_text(demo_name, items, arms_used, data_dir):
         special_pts.append("None" if special_pt is None else special_pt)
             
     new_entry_text = """
-# AUTOMATICALLY ADDED BY two_item_teach_verb.py ON %(datestr)s
+# AUTOMATICALLY ADDED BY multi_item_teach_verb.py ON %(datestr)s
 %(demo_name)s:
     stages: %(stages)s
     verb: %(verb)s
-    args: %(items)s
+    items: %(items)s
     arms_used: %(arms_used)s
     special_pts : %(special_pts)s
 

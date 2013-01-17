@@ -32,8 +32,8 @@ def rot_distance(quat1, quat2):
     return euclidean_dist(diff_quat, [0, 0, 0, 1])
 
 # What should these values be?
-XYZ_TOLERANCE = 0.02
-ROT_TOLERANCE = 0.1
+XYZ_TOLERANCE = 0.025
+ROT_TOLERANCE = 0.2
         
 # returns if the trajectories are approximately the same
 def similar_trajectories(traj1, traj2):
@@ -55,10 +55,10 @@ def test_cup_pour_init():
 # MAKE SURE THAT ROSCORE IS RUNNING FOR THIS TEST, BECAUSE MULTI_ITEM_MAKE_VERB_TRAJ DOES PLOTTING FOR RVIZ
 
 # tests that if the target object is the same, then the difference between the demo and experiment special point trajectories are the translation between the the demo and experiment target objects
-def test_translation(demo_name, exp_name):
+def test_translation(demo_name, exp_name, data_dir):
     test_cup_pour_init()
 
-    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir="test/multi_item/multi_item_data/pour_green_blue_r_r")
+    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=("test/multi_item/multi_item_data/"+data_dir))
 
     current_stage = 1
 
@@ -77,8 +77,8 @@ def test_translation(demo_name, exp_name):
     gripper_data_key = "%s_gripper_tool_frame" % cur_demo_info.arms_used
 
     # point clouds of tool for demo and experiment
-    prev_exp_pc = prev_exp_data["object_clouds"][prev_exp_info.item]["xyz"]
-    cur_exp_pc = cur_exp_data["object_clouds"][cur_exp_info.item]["xyz"]
+    prev_exp_pc = prev_exp_data["object_cloud"][prev_exp_info.item]["xyz"]
+    cur_exp_pc = cur_exp_data["object_cloud"][cur_exp_info.item]["xyz"]
 
     # calculate the transformation from the world frame to the gripper frame
     prev_exp_gripper_pos = prev_exp_data[gripper_data_key]["position"][-1]
@@ -87,7 +87,7 @@ def test_translation(demo_name, exp_name):
 
     gripper_frame_trans = multi_item_make_verb_traj.make_to_gripper_frame_hmat(prev_world_to_gripper_trans)
 
-    warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc], None, current_stage, prev_demo_info, [prev_exp_pc], verb_data_accessor, to_gripper_frame_func=gripper_frame_trans)
+    warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, cur_exp_pc, None, current_stage, prev_demo_info, prev_exp_pc, verb_data_accessor, to_gripper_frame_func=gripper_frame_trans, transform_type="tps")
 
     # get the actual transformation between the old and new target objects (just a translation for this test)
     params = get_test_params()
@@ -111,11 +111,11 @@ def test_translation(demo_name, exp_name):
 
     # compare the expected new special point trajectory to the result of make_traj_multi_stage
     result_traj = warped_traj_resp.traj
-    cur_exp_traj_as_mats = [juc.pose_to_hmat(pose) for pose in result_traj.r_gripper_poses.poses]
+    cur_exp_traj_as_mats = [juc.pose_to_hmat(pose) for pose in result_traj.l_gripper_poses.poses]
 
     report(similar_trajectories(expected_gripper_traj, cur_exp_traj_as_mats))
 
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
         rospy.init_node("test_multi_item_translation",disable_signals=True)
-    test_translation("pour-green0-blue0", "pour-green1-blue0")
+    test_translation("pour-yellow0-blue0", "pour-yellow1-blue0", "pour_yellow_blue_l_l")

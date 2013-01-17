@@ -1,8 +1,9 @@
 #!/usr/bin/env python
+import rospy
 import argparse
+from brett2.ros_utils import pc2xyzrgb
 from lfd import multi_item_verbs, multi_item_make_verb_traj, exec_verb_traj, ik_functions
 from verb_msgs.srv import *
-import rospy
 import numpy as np
 import brett2.ros_utils as ru
 import roslib; roslib.load_manifest("snazzy_msgs")
@@ -11,8 +12,9 @@ import sensor_msgs.msg as sm
 from jds_utils.yes_or_no import yes_or_no
 from jds_utils.colorize import colorize
 import subprocess
+from lfd import scene_diff
 
-def call_and_print(cmd,color='green'):
+def call_and_print(cmd, color='green'):
     print colorize(cmd, color, bold=True)
     subprocess.check_call(cmd, shell=True)
 
@@ -22,6 +24,15 @@ def get_trajectory_request(verb, pc):
     make_req.object_clouds.append(pc)
     return make_req
 
+def get_all_clouds_pc2(num_objs):
+    clouds = []
+    for obj_num in xrange(num_objs):
+        next_cloud = do_segmentation("object%i" % obj_num)        
+        while not yes_or_no("Continue?"):
+            next_cloud = do_segmentation("object%i" % obj_num)        
+        clouds.append(next_cloud)
+    return clouds
+
 def do_segmentation(obj_name):
     seg_svc = rospy.ServiceProxy("/interactive_segmentation", ProcessCloud)
     pc = rospy.wait_for_message("/drop/points", sm.PointCloud2)
@@ -30,44 +41,48 @@ def do_segmentation(obj_name):
     pc_sel = seg_svc.call(ProcessCloudRequest(cloud_in = pc_tf)).cloud_out
     return pc_sel
 
-def do_single(demo_base_name, demo_index, stage_num, prev_demo_index, verb_data_accessor):
+def do_single(demo_name, stage_num, prev_demo_index, verb_data_accessor, prev_and_cur_pc2):
     if stage_num == 0:
-        do_stage(demo_base_name, demo_index, stage_num, None, None, verb_data_accessor)
+        do_stage(demo_name, stage_num, None, None, prev_and_cur_pc2[1], verb_data_accessor)
     else:
         prev_stage_num = stage_num - 1
         prev_demo_name = demo_base_name + str(prev_demo_index)
         prev_stage_info = verb_data_accessor.get_stage_info(prev_demo_name, prev_stage_num)
-        prev_exp_pc = do_segmentation(prev_stage_info.item)
 
         call_and_print("rosrun pr2_controller_manager pr2_controller_manager stop r_arm_controller l_arm_controller")
         print colorize("do the stage involving the %s" % (prev_stage_info.item), color="red", bold=True)
         yes_or_no("type y to continue")
         call_and_print("rosrun pr2_controller_manager pr2_controller_manager start r_arm_controller l_arm_controller")
 
-        do_stage(demo_base_name, demo_index, stage_num, prev_stage_info, np.array([prev_exp_pc]), verb_data_accessor)
+        do_stage(demo_name, stage_num, prev_stage_info, prev_and_cur_pc2[0], prev_and_cur_pc2[1], verb_data_accessor)
 
-def do_stage(demo_base_name, demo_index, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor):
-    demo_name = demo_base_name + str(demo_index)
+def do_stage(demo_name, stage_num, prev_stage_info, prev_exp_pc2, cur_exp_pc2, verb_data_accessor):
     stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
-    pc_sel = do_segmentation(stage_info.item)
-    make_req = get_trajectory_request(stage_info.verb, pc_sel)
+    make_req = get_trajectory_request(stage_info.verb, cur_exp_pc2)
 
-    make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, transform_type="tps")
+    make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_pc2, verb_data_accessor, transform_type="tps")
     
     yn = yes_or_no("continue?")
     if yn:
         exec_req = ExecTrajectoryRequest()
         exec_req.traj = make_resp.traj
-        exec_verb_traj.exec_traj(exec_req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=pc_sel, obj_name=stage_info.item)
-
-    # return stage info and object clouds so they can be saved for use in the next stage if necessary
-    return (stage_info, make_req.object_clouds)
+        exec_verb_traj.exec_traj(exec_req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=cur_exp_pc2, obj_name=stage_info.item)
 
 # get the trajectory for each stage and execute the trajectory
-def do_multiple_stages(demo_base_name, stages, verb_data_accessor):
-    prev_stage_info, prev_exp_clouds = None, None
-    for stage_num, demo_num in enumerate(stages):
-        prev_stage_info, prev_exp_clouds = do_stage(demo_base_name, demo_num, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor)
+def do_multiple_varied_demos(demo_base_name, stages, verb_data_accessor, all_clouds_pc2):
+    prev_stage_info, prev_exp_pc2 = None, None
+    for (stage_num, (demo_num, cur_exp_pc2)) in enumerate(zip(stages, all_clouds_pc2)):
+        demo_name = demo_base_name + str(demo_num)
+        do_stage(demo_name, stage_num, prev_stage_info, prev_exp_pc2, cur_exp_pc2, verb_data_accessor)
+        prev_stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
+        prev_exp_pc2 = cur_exp_pc2
+
+def do_multiple_single_demo(demo_name, verb_data_accessor, all_clouds_pc2):
+    prev_stage_info, prev_exp_pc2 = None, None
+    for stage_num, cur_exp_pc2 in enumerate(all_clouds_pc2):
+        do_stage(demo_name, stage_num, prev_stage_info, prev_exp_pc2, cur_exp_pc2, verb_data_accessor)
+        prev_stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
+        prev_exp_pc2 = cur_exp_pc2
 
 def do_globals_setup():
     multi_item_make_verb_traj.Globals.setup()
@@ -94,26 +109,36 @@ def get_exp_args():
     args = parser.parse_args()
     return args
 
-def run_exp(args):
+def run_exp(args, verb_data_accessor):
     demo_base_name = args.demo
     print "using demo base", args.demo
+    if args.verb is not None:
+        exp_clouds_pc2 = get_all_clouds_pc2(verb_data_accessor.get_num_stages_for_verb(args.verb))
+        exp_clouds = [pc2xyzrgb(cloud)[0] for cloud in exp_clouds_pc2]
+        closest_demo_name = scene_diff.get_closest_demo(args.verb, exp_clouds)
+        do_multiple_single_demo(closest_demo_name, verb_data_accessor, exp_clouds_pc2)
     if args.single is not None:
         params = [int(num) for num in args.single.split(',')]
         # make sure there are three values or the stage number is zero
         if len(params) == 3:
+            prev_and_cur_pc2 = get_all_clouds_pc2(2)
             demo_index, stage_num, prev_demo_index = params
         elif len(params) == 2 and params[1] == 0:
+            prev_and_cur_pc2 = [None, get_all_clouds_pc2(1)[0]]
             demo_index, stage_num = params
             prev_demo_index = -1
         else:
             raise ValueError("Invalid 'single' argument")
-        do_single(demo_base_name, demo_index, stage_num, prev_demo_index, verb_data_accessor)
+        do_single(demo_base_name, demo_index, stage_num, prev_demo_index, verb_data_accessor, prev_and_cur_pc2)
     elif args.stages is not None:
         if args.stages[0] == 'a':
-            stages = [int(args.stages[1:]) for i in range(verb_data_accessor.get_num_stages(demo_base_name))]
+            demo_name = demo_base_name + args.stages[1:]
+            exp_clouds_pc2 = get_all_clouds_pc2(verb_data_accessor.get_num_stages(demo_name))
+            do_multiple_single_demo(demo_name, verb_data_accessor, exp_clouds_pc2)
         else:
-            stages = args.stages
-        do_multiple_stages(demo_base_name, stages, verb_data_accessor)
+            stages = [int(stage) for stage in args.stages.split(",")]
+            exp_clouds_pc2 = get_all_clouds_pc2(len(stages))
+            do_multiple_varied_demos(demo_base_name, stages, verb_data_accessor, exp_clouds_pc2)
 
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed": 
@@ -129,4 +154,4 @@ if __name__ == "__main__":
     assert (args.stages is not None and args.single is None) or (args.stages is None and args.single is not None)
 
     if args.demo is not None:
-        run_exp(args)
+        run_exp(args, verb_data_accessor)

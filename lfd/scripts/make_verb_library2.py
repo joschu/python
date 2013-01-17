@@ -9,11 +9,11 @@ import os
 import yaml
 import h5py
 from copy import copy
-from lfd import verbs, multi_item_verbs
 from lfd.utils_lfd import group_to_dict
 from jds_utils.colorize import colorize
 
 def make_verb_library_single(data_dir, verb_lib):
+    from lfd import verbs
     link_names = ["r_gripper_tool_frame", "l_gripper_tool_frame"]
     for (verb_name, verb_info) in verbs.get_all_demo_info().items():
         print colorize("processing demo: %s"%verb_name, "red")
@@ -28,12 +28,13 @@ def make_verb_library_single(data_dir, verb_lib):
         
         bag_proc.dict_to_hdf(verb_lib, verb_data, verb_name)
 
-        seg_file.copy("/", verb_lib[verb_name],"object_clouds")
+        seg_file.copy("/", verb_lib[verb_name], "object_clouds")
         verb_lib[verb_name]["arms_used"] = verb_info["arms_used"]
 
 # make the verb library for a multiple stage_name action    
 # instead of creating a single entry in the hdf5 file for <verb_name>-<item_name>, create an entry for each stage_name
 def make_verb_library_multi(data_dir, verb_lib):
+    from lfd import multi_item_verbs
     link_names = ["r_gripper_tool_frame", "l_gripper_tool_frame"]
     verb_data_accessor = multi_item_verbs.VerbDataAccessor()
     for (verb_name, verb_info) in verb_data_accessor.get_all_demo_info().items():
@@ -53,7 +54,7 @@ def make_verb_library_multi(data_dir, verb_lib):
             
             bag_proc.dict_to_hdf(verb_lib, stage_data, stage_name)
 
-            seg_file.copy("/", verb_lib[stage_name], "object_clouds")
+            seg_file.copy("/", verb_lib[stage_name], "object_cloud")
             # is the following needed, since it is stored in the yaml file?
             verb_lib[stage_name]["arms_used"] = verb_info["arms_used"][stage_num]
 

@@ -30,11 +30,17 @@ class VerbDataAccessor:
             if self.all_demo_info is None:
                 self.all_demo_info = {} 
 
-    def get_num_stages(self, demo_base_name):
+    def get_num_stages(self, demo_name):
         for demo_name, demo_info in self.all_demo_info.items():
-            if demo_name.find(demo_base_name) == 0:
-                return len(demo_info["args"])
+            if demo_name.find(demo_name) == 0:
+                return len(demo_info["items"])
         return 0
+
+    def get_num_stages_for_verb(self, verb):
+        for name, info in self.all_demo_info.items():
+            if info["verb"] == verb:
+                return len(info["items"])
+        raise KeyError("Could not find a demo corresponding to %s" % verb)
 
     def get_all_demo_info(self):
         return self.all_demo_info
@@ -64,10 +70,10 @@ class VerbDataAccessor:
     def get_stage_info_from_demo_info(self, demo_info, stage_num):
         special_point = None if demo_info["special_pts"][stage_num] == "None" else demo_info["special_pts"][stage_num]
         return VerbStageInfo(demo_info["stages"][stage_num],
-                            demo_info["verb"],
-                            demo_info["args"][stage_num],
-                            demo_info["arms_used"][stage_num],
-                            special_point)
+                             demo_info["verb"],
+                             demo_info["items"][stage_num],
+                             demo_info["arms_used"][stage_num],
+                             special_point)
 
     def get_demo_data(self, demo_name):
         h5file = h5py.File(self.h5path, "r")

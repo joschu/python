@@ -5,7 +5,7 @@ import h5py
 from lfd import warping, registration, tps
 import roslib
 roslib.load_manifest("verb_msgs")
-from verb_msgs.srv import MakeTrajectoryResponse
+from verb_msgs.srv import MakeTrajectoryRequest, MakeTrajectoryResponse
 from numpy import asarray
 import numpy as np
 from jds_image_proc.clouds import voxel_downsample
@@ -66,14 +66,6 @@ def make_to_gripper_frame_hmat(transformation):
         return np.array([apply_transform_to_xyz(transformation, point) for point in pc])
     return to_gripper_frame_hmat
 
-# the clouds here are PointCloud2 objects
-def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None, transform_type="tps"):
-    assert isinstance(req, MakeTrajectoryRequest)
-    prev_exp_clouds = None if stage_num == 0 else [pc2xyzrgb(cloud)[0] for cloud in prev_exp_clouds]
-    cur_exp_clouds = [pc2xyzrgb(cloud)[0] for cloud in req.object_clouds]
-    clouds_frame_id = req.object_clouds[0].header.frame_id
-    return make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func, transform_type)
-
 def print_hmat_info(hmat):
     #trans, rot = juc.hmat_to_trans_rot(hmat)
     #print trans, jut.euler_from_quaternion(rot)
@@ -87,7 +79,7 @@ def get_prev_demo_pc_in_gripper_frame(prev_stage_data, prev_stage_info, arm):
     prev_demo_gripper_orien = prev_stage_data[gripper_data_key]["orientation"][-1]
     prev_demo_gripper_to_base_transform = juc.trans_rot_to_hmat(prev_demo_gripper_pos, prev_demo_gripper_orien)
     prev_demo_base_to_gripper_transform = np.linalg.inv(prev_demo_gripper_to_base_transform)
-    prev_demo_pc = prev_stage_data["object_clouds"][prev_stage_info.item]["xyz"]
+    prev_demo_pc = prev_stage_data["object_cloud"][prev_stage_info.item]["xyz"]
     prev_demo_pc_down = voxel_downsample(prev_demo_pc, .02)
     prev_demo_pc_in_gripper_frame = np.array([apply_transform_to_xyz(prev_demo_base_to_gripper_transform, point) for point in prev_demo_pc_down])
     return prev_demo_pc_in_gripper_frame
@@ -164,6 +156,14 @@ def set_traj_fields_for_response(warped_stage_data, traj, arm, frame_id):
         traj.l_gripper_angles = warped_stage_data[gripper_joint_key]
         traj.l_gripper_poses.header.frame_id = frame_id
 
+def make_traj_multi_stage(req, current_stage_info, stage_num, prev_stage_info, prev_exp_cloud_pc2, verb_data_accessor, to_gripper_frame_func=None, transform_type="tps"):
+    assert isinstance(req, MakeTrajectoryRequest)
+    assert len(req.object_clouds) == 1
+    prev_exp_cloud = None if stage_num == 0 else pc2xyzrgb(prev_exp_cloud_pc2)[0]
+    cur_exp_cloud = pc2xyzrgb(req.object_clouds[0])[0]
+    clouds_frame_id = req.object_clouds[0].header.frame_id
+    return make_traj_multi_stage_do_work(current_stage_info, cur_exp_cloud, clouds_frame_id, stage_num, prev_stage_info, prev_exp_cloud, verb_data_accessor, to_gripper_frame_func, transform_type)
+
 # the clouds here have already been processed into lists of xyzs
 # make trajectory for a certain stage of a task
 # current_stage_info is the demo information to use
@@ -171,7 +171,7 @@ def set_traj_fields_for_response(warped_stage_data, traj, arm, frame_id):
 # prev_exp_clouds has the point cloud of the object from the previous stage in the gripper frame
 # 'prev' and 'cur' is for the previous and current stages; 'demo' and 'exp' are for demonstration and new experiment situations, respectively
 # to_gripper_frame_func transforms a point cloud in base frame to point cloud in gripper frame; if it is None, then it takes the transformation from the robot
-def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_frame_id, stage_num, prev_stage_info, prev_exp_clouds, verb_data_accessor, to_gripper_frame_func=None, transform_type="tps"):
+def make_traj_multi_stage_do_work(current_stage_info, cur_exp_cloud, frame_id, stage_num, prev_stage_info, prev_exp_cloud, verb_data_accessor, to_gripper_frame_func=None, transform_type="tps"):
 
     arms_used = current_stage_info.arms_used
 
@@ -186,7 +186,7 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
         prev_verb_stage_data = verb_data_accessor.get_demo_data(prev_stage_info.stage_name)
         # make sure that the tool stage only uses one arm (the one with the tool)
         prev_demo_to_exp_grip_transform = get_prev_demo_to_exp_grip_transform(prev_verb_stage_data, prev_stage_info,
-                                                                              prev_exp_clouds[0], arms_used,
+                                                                              prev_exp_cloud, arms_used,
                                                                               to_gripper_frame_func, transform_type)
         special_point_translation = get_special_point_translation(prev_stage_info.special_point)
 
@@ -198,8 +198,8 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
     traj.arms_used = arms_used
 
     # find the target transformation for the experiment scene
-    cur_demo_to_exp_transform = get_cur_demo_to_exp_transform(cur_verb_stage_data["object_clouds"][current_stage_info.item]["xyz"],
-                                                              cur_exp_clouds[0],
+    cur_demo_to_exp_transform = get_cur_demo_to_exp_transform(cur_verb_stage_data["object_cloud"][current_stage_info.item]["xyz"],
+                                                              cur_exp_cloud,
                                                               transform_type)
 
     arms_used_list = ['r', 'l'] if arms_used == 'b' else [arms_used]
@@ -223,7 +223,7 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_clouds, clouds_fra
         warped_transs, warped_rots = juc.hmats_to_transs_rots(cur_exp_gripper_traj_mats)
         warped_stage_data[gripper_data_key]["position"] = warped_transs
         warped_stage_data[gripper_data_key]["orientation"] = warped_rots
-        set_traj_fields_for_response(warped_stage_data, traj, arm, clouds_frame_id)
+        set_traj_fields_for_response(warped_stage_data, traj, arm, frame_id)
 
         # save the demo special point traj for plotting
         demo_spec_pt_xyzs, exp_spec_pt_xyzs = [], []

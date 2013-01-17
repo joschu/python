@@ -51,12 +51,12 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
         cur_exp_data = verb_data_accessor.get_demo_data(cur_exp_info.stage_name)
     
         # point clouds of tool for demo and experiment
-        prev_exp_pc = prev_exp_data["object_clouds"][prev_exp_info.item]["xyz"]
-        cur_exp_pc = cur_exp_data["object_clouds"][cur_exp_info.item]["xyz"]
+        prev_exp_pc = prev_exp_data["object_cloud"][prev_exp_info.item]["xyz"]
+        cur_exp_pc = cur_exp_data["object_cloud"][cur_exp_info.item]["xyz"]
 
-        warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, [cur_exp_pc],
+        warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, cur_exp_pc,
                                                                                    "base_footprint", current_stage,
-                                                                                   prev_demo_info, [prev_exp_pc],
+                                                                                   prev_demo_info, prev_exp_pc,
                                                                                    verb_data_accessor, transform_type="tps")
 
         yn = yes_or_no("continue?")
