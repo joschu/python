@@ -2,6 +2,7 @@ from brett2.PR2 import PR2
 #roslib.load_manifest("nav_msgs"); import nav_msgs.msg as nm
 import trajectory_msgs.msg as tm
 import numpy as np
+from numpy import sin, cos
 import rospy
 import scipy.interpolate as si
 from Queue import Queue, Empty
@@ -31,6 +32,7 @@ class TrajectoryController:
             joints.append((jtp.positions[0], jtp.positions[1], jtp.positions[2]))
             ts.append(jtp.time_from_start.to_sec())
         self.q.put( (np.array(joints),np.array(ts)) )
+        self.msg = msg
         
     def listen_loop(self):
         while not rospy.is_shutdown():
@@ -50,30 +52,65 @@ class BaseTrajectoryController(TrajectoryController):
     def control_loop(self,joints,ts):                
         print "running control loop with new trajectory"
         
+        
         F = Spline2D(ts, joints)        
         
         t_start = time()        
         duration = ts[-1]
+
+        prev_err = None
+        prev_time = None
+
+        kp = 1
+        kd = .1
         
+        use_relative = False
+        frame_id = self.msg.header.frame_id
+        if "base" in frame_id:
+            use_relative = True
+            pos_start = self.brett.base.get_pose("odom_combined")
+        elif "odom_combined" in frame_id or "map" in frame_id:
+            pass
+        else:
+            raise Exception("invalid frame %s for base traj"%frame_id)
+
         while True:
             
             if rospy.is_shutdown(): 
                 return
             if self.stop_requested:
                 self.ctrl_loop_running = False
+                rospy.loginfo("stop requested--leaving control loop")
                 return
             
             t_elapsed = time() - t_start
-            if t_elapsed > duration+1: return
+            if t_elapsed > duration+5: 
+                rospy.loginfo("time elapsed (+1sec)--leaving control loop")
+                return
             
-            pos_cur = self.brett.base.get_pose("odom_combined")
+            else:
+                if use_relative:
+                    # invert transform from orig position
+                    pos_cur = self.brett.base.get_pose("odom_combined")
+                    pos_cur -= pos_start
+                    a = pos_start[2]
+                    pos_cur[:2] = np.array([[cos(a), sin(a)],[-sin(a), cos(a)]]).dot(pos_cur[:2])
+                else:
+                    pos_cur = self.brett.base.get_pose("odom_combined")
             
             if t_elapsed > duration: pos_targ = joints[-1]
             else: pos_targ = F(t_elapsed, nu = 0)
             
+            
             pos_targ[2] = ku.closer_ang(pos_targ[2], pos_cur[2])                                                                
-            twist = (pos_targ - pos_cur)
-            twist *= .5 #np.linalg.norm(np.r_[.5,.5,1] / twist, np.inf)
+            err = (pos_targ - pos_cur)
+            
+            
+            
+            twist = kp*err
+            if prev_err is not None: twist += kd*(err - prev_err)/(t_elapsed - prev_time)
+            prev_err = err
+            prev_time = t_elapsed
             
             a = pos_cur[2]
             twist[0:2] = np.dot(
@@ -82,6 +119,7 @@ class BaseTrajectoryController(TrajectoryController):
                 twist[0:2])
             
             self.brett.base.set_twist(twist)
+            pos_prev = pos_cur
             sleep(.01)
 
     
