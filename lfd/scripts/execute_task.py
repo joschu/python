@@ -133,7 +133,11 @@ class LookAtObject(smach.State):
         returns: success, failure
         """
         Globals.handles = []
+        draw_table()
         
+        Globals.pr2.rgrip.set_angle(.08)
+        Globals.pr2.lgrip.set_angle(.08)
+        Globals.pr2.join_all()
         if not args.use_tracking:
             Globals.pr2.larm.goto_posture('side')
             Globals.pr2.rarm.goto_posture('side')
@@ -242,7 +246,7 @@ class SelectTrajectory(smach.State):
             
             from joblib import parallel
             
-            costs_names = parallel.Parallel(n_jobs = 8)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
+            costs_names = parallel.Parallel(n_jobs=-2)(parallel.delayed(calc_seg_cost)(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names)
             #costs_names = [calc_seg_cost(seg_name, xyz_new_ds, dists_new) for seg_name in candidate_demo_names]
             #costs_names = [calc_seg_cost(seg_name) for seg_name in candidate_demo_names]
             _, best_name = min(costs_names)
@@ -262,17 +266,19 @@ class SelectTrajectory(smach.State):
             self.f = registration.Translation2d()
             self.f.fit(xyz_demo_ds, xyz_new_ds)
         else:
-            self.f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting = 20, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False)                
+            self.f = registration.tps_rpm(xyz_demo_ds, xyz_new_ds, plotting = 20, reg_init=1,reg_final=.01,n_iter=n_iter,verbose=False)#, interactive=True)
+            np.savez('registration_data', xyz_demo_ds=xyz_demo_ds, xyz_new_ds=xyz_new_ds)
+            # print 'correspondences', self.f.corr_nm
 
 
 
         #################### Generate new trajectory ##################
         
         #### Plot original and warped point clouds #######
-        orig_pose_array = conversions.array_to_pose_array(np.squeeze(best_demo["cloud_xyz_ds"]), "base_footprint")
-        warped_pose_array = conversions.array_to_pose_array(self.f.transform_points(np.squeeze(best_demo["cloud_xyz_ds"])), "base_footprint")
-        Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),id=19024,type=Marker.CUBE_LIST))
-        Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),id=2983,type=Marker.CUBE_LIST))
+        # orig_pose_array = conversions.array_to_pose_array(np.squeeze(best_demo["cloud_xyz_ds"]), "base_footprint")
+        # warped_pose_array = conversions.array_to_pose_array(self.f.transform_points(np.squeeze(best_demo["cloud_xyz_ds"])), "base_footprint")
+        # Globals.handles.append(Globals.rviz.draw_curve(orig_pose_array,rgba=(1,0,0,1),id=19024,type=Marker.CUBE_LIST))
+        # Globals.handles.append(Globals.rviz.draw_curve(warped_pose_array,rgba=(0,1,0,1),id=2983,type=Marker.CUBE_LIST))
 
         #### Plot grid ########
         mins = np.squeeze(best_demo["cloud_xyz"]).min(axis=0)
@@ -284,24 +290,76 @@ class SelectTrajectory(smach.State):
         
         #### Actually generate the trajectory ###########
         warped_demo = warping.transform_demo_with_fingertips(self.f, best_demo)
-        
+        if yes_or_no('dump warped demo?'):
+            import pickle
+            fname = '/tmp/warped_demo_' + str(np.random.randint(9999999999)) + '.pkl'
+            with open(fname, 'w') as f:
+                pickle.dump(warped_demo, f)
+            print 'saved to', fname
+
         Globals.pr2.update_rave() 
         trajectory = {}
-        
+
+        # calculate joint trajectory using IK
         for lr in "lr":
             leftright = {"l":"left","r":"right"}[lr]
             if best_demo["arms_used"] in [lr, "b"]:
                 if args.hard_table:
                     clipinplace(warped_demo["l_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
                     clipinplace(warped_demo["r_gripper_tool_frame"]["position"][:,2],Globals.table_height+.032,np.inf)
-                arm_traj, feas_inds = lfd_traj.make_joint_traj(warped_demo["%s_gripper_tool_frame"%lr]["position"], warped_demo["%s_gripper_tool_frame"%lr]["orientation"], best_demo["%sarm"%leftright], Globals.pr2.robot.GetManipulator("%sarm"%leftright),"base_footprint","%s_gripper_tool_frame"%lr,1+2+16)
+                arm_traj, feas_inds = lfd_traj.make_joint_traj_by_graph_search(
+                    warped_demo["%s_gripper_tool_frame"%lr]["position"],
+                    warped_demo["%s_gripper_tool_frame"%lr]["orientation"],
+                    Globals.pr2.robot.GetManipulator("%sarm"%leftright),
+                    "%s_gripper_tool_frame"%lr,
+                    check_collisions=True
+                )
                 if len(feas_inds) == 0: return "failure"
                 trajectory["%s_arm"%lr] = arm_traj
-                rospy.loginfo("left arm: %i of %i points feasible", len(feas_inds), len(arm_traj))
                 trajectory["%s_grab"%lr] = best_demo["%s_gripper_joint"%lr] < .07
                 trajectory["%s_gripper"%lr] = warped_demo["%s_gripper_joint"%lr]
                 trajectory["%s_gripper"%lr][trajectory["%s_grab"%lr]] = 0
-                Globals.handles.append(Globals.rviz.draw_curve(conversions.array_to_pose_array(alternate(warped_demo["%s_gripper_l_finger_tip_link"%lr]["position"],warped_demo["%s_gripper_r_finger_tip_link"%lr]["position"]), "base_footprint"), width=.001, rgba = (1,0,1,.4),type=Marker.LINE_LIST))
+        # smooth any discontinuities in the arm traj
+        for lr in "lr":
+            leftright = {"l":"left","r":"right"}[lr]
+            if best_demo["arms_used"] in [lr, "b"]:
+                trajectory["%s_arm"%lr], discont_times, n_steps = lfd_traj.smooth_disconts(
+                    trajectory["%s_arm"%lr],
+                    Globals.pr2.env,
+                    Globals.pr2.robot.GetManipulator("%sarm"%leftright),
+                    "%s_gripper_tool_frame"%lr
+                )
+                # after smoothing the arm traj, we need to fill in all other trajectories (in both arms)
+                other_lr = 'r' if lr == 'l' else 'l'
+                if best_demo["arms_used"] in [other_lr, "b"]:
+                    trajectory["%s_arm"%other_lr] = lfd_traj.fill_stationary(trajectory["%s_arm"%other_lr], discont_times, n_steps)
+                for tmp_lr in 'lr':
+                    if best_demo["arms_used"] in [tmp_lr, "b"]:
+                        trajectory["%s_grab"%tmp_lr] = lfd_traj.fill_stationary(trajectory["%s_grab"%tmp_lr], discont_times, n_steps)
+                        trajectory["%s_gripper"%tmp_lr] = lfd_traj.fill_stationary(trajectory["%s_gripper"%tmp_lr], discont_times, n_steps)
+                        trajectory["%s_gripper"%tmp_lr][trajectory["%s_grab"%tmp_lr]] = 0
+        # plotting
+        for lr in "lr":
+            leftright = {"l":"left","r":"right"}[lr]
+            if best_demo["arms_used"] in [lr, "b"]:
+                # plot warped trajectory
+                Globals.handles.append(Globals.rviz.draw_curve(
+                  conversions.array_to_pose_array(
+                    alternate(warped_demo["%s_gripper_l_finger_tip_link"%lr]["position"], warped_demo["%s_gripper_r_finger_tip_link"%lr]["position"]),
+                    "base_footprint"
+                  ),
+                  width=.001, rgba = (1,0,1,.4), type=Marker.LINE_LIST,
+                  ns='warped_finger_traj'
+                ))
+                # plot original trajectory
+                Globals.handles.append(Globals.rviz.draw_curve(
+                  conversions.array_to_pose_array(
+                    alternate(best_demo["%s_gripper_l_finger_tip_link"%lr]["position"], best_demo["%s_gripper_r_finger_tip_link"%lr]["position"]),
+                    "base_footprint"
+                  ),
+                  width=.001, rgba = (0,1,1,.4), type=Marker.LINE_LIST,
+                  ns='demo_finger_traj'
+                ))
 
         userdata.trajectory = trajectory
 
@@ -330,9 +388,17 @@ class ExecuteTrajectory(smach.State):
             
 
     def execute(self, userdata):
+        raw_input('about to execute')
         #if not args.test: draw_table()        
         Globals.pr2.update_rave()
+        if yes_or_no('about to execute trajectory. save?'):
+            import pickle
+            fname = '/tmp/trajectory_' + str(np.random.randint(9999999999)) + '.pkl'
+            with open(fname, 'w') as f:
+                pickle.dump(userdata.trajectory, f)
+            print 'saved to', fname
         success = lfd_traj.follow_trajectory_with_grabs(Globals.pr2, userdata.trajectory)
+        raw_input('done executing segment. press enter to continue')
         if success: 
             if args.count_steps: Globals.stage += 1
             return "success"

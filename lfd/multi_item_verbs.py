@@ -17,11 +17,11 @@ class VerbDataAccessor:
     VERBS_H5 = "verbs2.h5"
     DEMO_YAML_FILE = "multi_item_verb_demos2.yaml"
 
-    def __init__(self, test=False):
-        if test:
-            self.load_data("test/multi_item_data")
-        else:
+    def __init__(self, test_info_dir=""):
+        if test_info_dir == "":
             self.load_data("data")
+        else:
+            self.load_data(test_info_dir)
 
     def load_data(self, data_dir):
         self.h5path = osp.join(osp.dirname(lfd.__file__), data_dir, self.VERBS_H5)

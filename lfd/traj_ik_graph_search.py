@@ -4,6 +4,12 @@ Kinematics helpers for openrave
 
 import numpy as np
 
+SHOW_PROGRESS = True
+try:
+    from progress.bar import Bar
+except:
+    SHOW_PROGRESS = False
+
 def shortest_paths(ncost_nk,ecost_nkk):
     """       
     Find minimum cost paths through graph (one path for each end point)
@@ -37,9 +43,24 @@ def shortest_paths(ncost_nk,ecost_nkk):
 
     return np.array(paths).T, path_costs
 
-def pairwise_squared_dist(x,y):
+def pairwise_squared_dist(x_nk,y_mk):
     "pairwise squared distance between rows of matrices x and y"
-    return (x**2).sum(axis=1)[:,None]+(y**2).sum(axis=1)[None,:]-2*x.dot(y.T)    
+    diffs_nm = np.abs(x_nk[:,None,:] - y_mk[None,:,:])
+    diffs_nm[:,:,[2,4,6]] %= 2*np.pi
+    return (diffs_nm**2).sum(axis=2)
+
+def build_graph_part(nodecost_func, solns0, solnsprev):
+    """
+    builds vertices for a point in the trajectory, given ik solutions for the
+    current point, and builds edges connecting to the previous point, given ik
+    solutions for the previous point
+    """
+    if nodecost_func is None: ncost_nk_i = np.zeros(len(solns0))
+    else: ncost_nk_i = np.array([nodecost_func(soln) for soln in solns0])
+    if solnsprev is None: ecost_nkk_i = None
+    else: ecost_nkk_i = pairwise_squared_dist(solnsprev, solns0)
+    num_nodes = len(solns0)
+    return ncost_nk_i, ecost_nkk_i, num_nodes
 
 def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     """
@@ -59,33 +80,50 @@ def traj_cart2joint(hmats, ikfunc, start_joints = None, nodecost=None):
     
     
     """
+    import rospy
     iksolns = []
     timesteps = []
+    last_working_solns = init_solns = np.atleast_2d(start_joints)
+    rospy.loginfo('Enumerating IK solutions for %d points', len(hmats))
+    if SHOW_PROGRESS: bar = Bar(max=len(hmats))
     for (i,hmat) in enumerate(hmats):
         if i==0 and start_joints is not None:
-            solns = np.atleast_2d(start_joints)
+            solns = init_solns
         else:
             solns = ikfunc(hmat)
+            if len(solns) > 0:
+                last_working_solns = solns
+
         if len(solns) > 0:
             iksolns.append(solns)
             timesteps.append(i)
+        else:
+            iksolns.append(last_working_solns)
 
-            
-    ncost_nk = []
-    ecost_nkk = []
-   
-    for i in xrange(0,len(iksolns)):
-        solns0 = iksolns[i]
-        if nodecost is None: ncost_nk.append(np.zeros(len(solns0)))
-        else: ncost_nk.append(np.array([nodecost(soln) for soln in solns0]))
-        if i>0:
-            solnsprev = iksolns[i-1]
-            ecost_nkk.append(pairwise_squared_dist(solnsprev, solns0))
-    
+        if SHOW_PROGRESS: bar.next()
+    if SHOW_PROGRESS: bar.finish()
+
+    rospy.loginfo('Done enumerating all IK solns. Now building graph.')
+
+    ncost_nk = [None]*len(iksolns)
+    ecost_nkk = [None]*(len(iksolns)-1)
+    num_nodes = 0
+
+    graph_parts = []
+    if SHOW_PROGRESS: bar = Bar(max=len(iksolns))
+    for i in range(len(iksolns)):
+        graph_parts.append(build_graph_part(nodecost, iksolns[i], iksolns[i-1] if i > 0 else None))
+        if SHOW_PROGRESS: bar.next()
+    if SHOW_PROGRESS: bar.finish()
+
+    for i in range(len(iksolns)):
+        ncost_nk[i] = graph_parts[i][0]
+        if i > 0: ecost_nkk[i-1] = graph_parts[i][1]
+        num_nodes += graph_parts[i][2]
+
+    rospy.loginfo('Calculating shortest paths on %d nodes', num_nodes)
     paths, path_costs = shortest_paths(ncost_nk, ecost_nkk)
     return [np.array([iksolns[t][i] for (t,i) in enumerate(path)]) for path in paths], path_costs, timesteps
-    
-    
 
 def ik_for_link(T_w_link, manip, link_name, filter_options = 18, return_all_solns = False):
     """
@@ -105,7 +143,7 @@ def ik_for_link(T_w_link, manip, link_name, filter_options = 18, return_all_soln
 
     link = robot.GetLink(link_name)
 
-    if not robot.DoesAffect(manip.GetArmJoints()[-1], link.GetIndex()):
+    if not robot.DoesAffect(manip.GetArmIndices()[-1], link.GetIndex()):
         raise Exception("link %s is not attached to end effector of manipulator %s"%(link_name, manip.GetName()))
 
     Tcur_w_link = link.GetTransform()

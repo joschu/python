@@ -10,7 +10,8 @@ import lfd
 from lfd import bag_proc
 import rosbag
 import os.path as osp
-import os
+from jds_utils.yes_or_no import yes_or_no
+import os, sys
 import yaml
 import h5py
 
@@ -21,7 +22,13 @@ with open(osp.join(data_dir,task_file),"r") as fh:
 
 
 db_file = osp.join(data_dir, task_info[args.task]["db_file"])
-if osp.exists(db_file): os.remove(db_file)
+print 'Writing to', db_file
+if osp.exists(db_file):
+    if yes_or_no(db_file + ' already exists. Overwrite?'):
+        os.remove(db_file)
+    else:
+        print 'Aborting.'
+        sys.exit(1)
 task_lib = h5py.File(db_file, mode="w")
 
 

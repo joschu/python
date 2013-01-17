@@ -208,48 +208,112 @@ def get_transformed_clouds(bag,times):
         clouds.append((xyz_tf, rgb))
 
     return clouds
-    
-    
-def create_segments(bag, link_names):    
-    """extract a bunch of dictionaries from bag file, each one corresponding to one segment of trajectory. 
+
+def actions_to_str(all_times):
+    CHARS = {
+        'look': '*',
+        'start': '[',
+        'stop': ']',
+        'l_open': 'L',
+        'l_close': 'l',
+        'r_open': 'R',
+        'r_close': 'r',
+        'done': '.',
+    }
+    return ''.join(CHARS[a] for _, a in all_times)
+
+def read_button_presses(button_presses):
+    all_times = []
+    for (time, button) in button_presses:
+        if button == 12: all_times.append((time, 'look'))
+        elif button == 0: all_times.append((time, 'start'))
+        elif button == 3: all_times.append((time, 'stop'))
+        elif button == 7: all_times.append((time, 'l_open'))
+        elif button == 5: all_times.append((time, 'l_close'))
+        elif button == 15: all_times.append((time, 'r_open'))
+        elif button == 13: all_times.append((time, 'r_close'))
+        elif button == 14: all_times.append((time, 'done'))
+    all_times.sort()
+    return all_times
+
+def correct_bag_errors(all_times):
+    # Try to correct errors in start/stop/look
+    corrected_all_times = []
+
+    # First find the segment start/stops. They should come in pairs.
+    start_times = [p[0] for p in all_times if p[1] == 'start']
+    stop_times = [p[0] for p in all_times if p[1] == 'stop']
+    assert len(start_times) == len(stop_times)
+    segments = zip(start_times, stop_times) # TODO: check that the segments make sense + error recovery
+    assert all(a <= b for a, b in segments)
+    assert all(segments[i][1] <= segments[i+1][0] for i in range(len(segments)-1))
+    def get_containing_seg(segments, t):
+        for i, (sstart, send) in enumerate(segments):
+            if sstart <= t <= send:
+                return i
+        return -1
+
+    # remove gripper open/closes that don't happen in a segment
+    for i in range(len(all_times)):
+        if all_times[i][1] in ['l_open', 'l_close', 'r_open', 'r_close'] and get_containing_seg(segments, all_times[i][0]) == -1:
+            print "WARNING: ignoring button press '%s' at time %s (because this should occur within a segment)" % \
+                (all_times[i][1], all_times[i][0])
+            continue
+        corrected_all_times.append(all_times[i])
+    all_times = corrected_all_times; corrected_all_times = []
+    print 'After ignoring extra open/close events:', actions_to_str(all_times)
+
+    # first, as a heuristic, only choose 'done's that occur at the very end (there should be only one)
+    for i in range(len(all_times)):
+        if i < len(all_times) - 1 and all_times[i][1] == 'done':
+            print "WARNING: ignoring button press '%s' at time %s (because 'done' should only happen at the end)" % \
+                (all_times[i][1], all_times[i][0])
+            continue
+        corrected_all_times.append(all_times[i])
+    # we might've removed all the done events, so insert a fake one at the end if necessary
+    if corrected_all_times[-1][1] != 'done':
+        new_time = corrected_all_times[-1][0] + 1.0
+        print "WARNING: inserting artificial 'done' at time %s (because the last event should be a 'done')" % \
+                (new_time)
+        corrected_all_times.append((new_time, 'done'))
+    all_times = corrected_all_times; corrected_all_times = []
+    print 'After ignoring extra done events:', actions_to_str(all_times)
+
+    # only choose the 'look's that occur right before the 'start's
+    # (this way the view probably won't be occluded...)
+    for i in range(len(all_times)):
+        if i < len(all_times) - 1 and all_times[i][1] == 'look' and all_times[i+1][1] != 'start':
+            print "WARNING: ignoring button press '%s' at time %s (because the next action is not 'start')" % \
+                (all_times[i][1], all_times[i][0])
+            continue
+        corrected_all_times.append(all_times[i])
+    all_times = corrected_all_times; corrected_all_times = []
+    print 'After ignoring extra look events:', actions_to_str(all_times)
+
+    start_times = [t for t, action in all_times if action == 'start']
+    stop_times = [t for t, action in all_times if action == 'stop']
+    look_times = [t for t, action in all_times if action == 'look']
+    l_close_times = [t for t, action in all_times if action == 'l_close']
+    l_open_times = [t for t, action in all_times if action == 'l_open']
+    r_close_times = [t for t, action in all_times if action == 'r_close']
+    r_open_times = [t for t, action in all_times if action == 'r_open']
+    done_times = [t for t, action in all_times if action == 'done']
+
+    return start_times, stop_times, look_times, l_close_times, l_open_times, r_close_times, r_open_times, done_times
+
+def create_segments(bag, link_names):
+    """extract a bunch of dictionaries from bag file, each one corresponding to one segment of trajectory.
     each segment corresponds to 'look', 'start', and 'stop' button presses"""
     button_presses = get_button_presses(bag)
-    
-    start_times, stop_times, look_times, l_close_times, l_open_times, r_close_times, r_open_times, done_times = [],[],[],[],[],[],[],[]
-    for (time, button) in button_presses:
-        if button == 12: look_times.append(time)
-        elif button == 0: start_times.append(time)
-        elif button == 3: stop_times.append(time)
-        elif button == 7: l_open_times.append(time)
-        elif button == 5: l_close_times.append(time)
-        elif button == 15: r_open_times.append(time)
-        elif button == 13: r_close_times.append(time)
-        elif button == 14: done_times.append(time)
-        
+    all_times = read_button_presses(button_presses)
+    print 'Events in bag file:', actions_to_str(all_times)
+
+    start_times, stop_times, look_times, l_close_times, l_open_times, r_close_times, r_open_times, done_times = \
+        correct_bag_errors(all_times)
+    assert len(start_times) == len(stop_times) == len(look_times)
+    assert len(done_times) == 1
+
     kinematics_info = extract_kinematics_from_bag(bag, link_names)
-
-    # try to correct errors in start/stop/look
-    all_times = []
-    for t in start_times: all_times.append((t, 'start'))
-    for t in stop_times: all_times.append((t, 'stop'))
-    for t in look_times: all_times.append((t, 'look'))
-    all_times.sort()
-    print all_times
-    corrected_all_times = []
-    expected_action = 'look'
-    for i in range(len(all_times)):
-      t, action = all_times[i]
-      if action == expected_action:
-        corrected_all_times.append((t, action))
-        expected_action = {'look':'start', 'start':'stop', 'stop':'look'}[action]
-      else:
-        print "WARNING: ignoring button press '%s' at time %s (was expecting '%s')" % (action, str(t), expected_action)
-    print corrected_all_times
-    start_times = [t for t, action in corrected_all_times if action == 'start']
-    stop_times = [t for t, action in corrected_all_times if action == 'stop']
-    look_times = [t for t, action in corrected_all_times if action == 'look']
-    assert len(start_times)==len(stop_times)==len(look_times)
-
 
     N = len(kinematics_info["time"])
     
@@ -257,24 +321,24 @@ def create_segments(bag, link_names):
     l_close = np.zeros(N, bool)
     r_open = np.zeros(N, bool)
     r_close = np.zeros(N, bool)
-    
+
     times = kinematics_info["time"]
     l_open[np.searchsorted(times, l_open_times)] = True
     l_close[np.searchsorted(times, l_close_times)] = True
     r_open[np.searchsorted(times, r_open_times)] = True
     r_close[np.searchsorted(times, r_close_times)] = True
-            
+
     kinematics_info["l_open"] = l_open
     kinematics_info["l_close"] = l_close
     kinematics_info["r_open"] = r_open
     kinematics_info["r_close"] = r_close
-    
+
     start_inds = np.searchsorted(times, start_times)
     stop_inds = np.searchsorted(times, stop_times)
 
 
     look_clouds = get_transformed_clouds(bag, look_times)
-    
+
     seg_infos = []
     
     for (start_ind, stop_ind, (xyz, bgr)) in zip(start_inds, stop_inds, look_clouds):
@@ -310,9 +374,7 @@ def create_segment_without_look(bag, link_names):
     kinematics_info = extract_kinematics_from_bag(bag, link_names)
     
     assert len(start_times)==len(stop_times)
-                    
-        
-    N = len(kinematics_info["time"])
+
     times = kinematics_info["time"]
     start_inds = np.searchsorted(times, start_times)
     stop_inds = np.searchsorted(times, stop_times)
@@ -338,11 +400,11 @@ def path_length(x):
 def determine_arms_used(segment):
     r_xyz = segment["r_gripper_tool_frame"]["position"]        
     l_xyz = segment["l_gripper_tool_frame"]["position"]
-    r_gripper = segment["r_gripper_joint"]
-    l_gripper = segment["l_gripper_joint"]
+    #r_gripper = segment["r_gripper_joint"]
+    #l_gripper = segment["l_gripper_joint"]
     
-    right_used = path_length(r_xyz) > .05 or path_length(r_gripper) > .04
-    left_used = path_length(l_xyz) > .05 or path_length(l_gripper) > .04
+    right_used = path_length(r_xyz) > .05 #or path_length(r_gripper) > .04
+    left_used = path_length(l_xyz) > .05 #or path_length(l_gripper) > .04
     
     if right_used and not left_used: return "r"
     elif left_used and not right_used: return "l"

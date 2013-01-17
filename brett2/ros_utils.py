@@ -211,7 +211,7 @@ class RvizWrapper:
         return RvizWrapper()
 
     def __init__(self):
-        self.pub = rospy.Publisher('visualization_marker', Marker)
+        self.pub = rospy.Publisher('visualization_marker', Marker, latch=True)
         self.array_pub = rospy.Publisher("visualization_marker_array", MarkerArray)        
         self.ids = set([])
         register_deletion()
@@ -266,8 +266,8 @@ class RvizWrapper:
         marker.text = text
         marker.lifetime = rospy.Duration(duration)
         self.pub.publish(marker)
-        self.ids.add(id)        
-        return MarkerHandle(marker, self.pub)        
+        self.ids.add(id)
+        return MarkerHandle(marker, self.pub)
        
     def get_unused_id(self):
         while True:

@@ -92,7 +92,21 @@ class PR2(object):
         self.env = rave.Environment()
         self.env.StopSimulation()
         self.env.Load("robots/pr2-beta-static.zae") # todo: use up-to-date urdf
-        self.robot = self.env.GetRobots()[0]  
+        self.robot = self.env.GetRobots()[0]
+
+        # set up arm ik solvers (discretization level, etc.)
+        for manip in [self.robot.GetManipulator("leftarm"), self.robot.GetManipulator("rightarm")]:
+            self.robot.SetActiveManipulator(manip)
+            ikmodel = rave.databases.inversekinematics.InverseKinematicsModel(
+                self.robot,
+                iktype=rave.IkParameterization.Type.Transform6D,
+                freeindices=[manip.GetArmIndices()[2]],
+                forceikfast=True
+            )
+            if not ikmodel.load():
+                ikmodel.autogenerate()
+            #if not ikmodel.setrobot(freeinc=[0.1]):
+            #    raise RuntimeError('failed to load ik')
 
         if not rave_only:
             self.joint_listener = TopicListener("/joint_states", sm.JointState)
@@ -122,6 +136,7 @@ class PR2(object):
 
     def get_last_joint_message(self):
         return self.joint_listener.last_msg
+
     def update_rave(self, use_map = False):
         ros_values = self.get_last_joint_message().position        
         rave_values = [ros_values[i_ros] for i_ros in self.good_ros_inds]        
@@ -420,7 +435,7 @@ class Gripper(object):
     def close(self,max_effort=default_max_effort):
         self.set_angle(-.01, max_effort = max_effort)        
     def is_closed(self): # (and empty)
-        return self.get_angle() <= self.closed_angle + .0025
+        return self.get_angle() <= self.closed_angle# + 0.001 #.0025
     def set_angle_target(self, position, max_effort = default_max_effort):
         self.controller_pub.publish(pcm.Pr2GripperCommand(position=position,max_effort=max_effort))
     def follow_timed_trajectory(self, times, angs):

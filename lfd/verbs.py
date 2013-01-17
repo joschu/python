@@ -4,9 +4,6 @@ from utils_lfd import group_to_dict
 import os.path as osp
 import h5py
 
-
-
-
 h5path = osp.join(osp.dirname(lfd.__file__),"data","verbs2.h5")
 with open(osp.join(osp.dirname(lfd.__file__), "data", "verb_demos2.yaml"), "r") as fh:
     all_demo_info = yaml.load(fh)
