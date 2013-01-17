@@ -288,7 +288,7 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
     else:
         return f
 
-def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, cost_per_radian = 10):
+def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, dist2_per_pt_per_radian=1e-6):
     """
     Do tps_rpm algorithm for each z angle rotation
     Then don't reestimate affine part in tps optimization
@@ -314,8 +314,8 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
 
 
         # seems like a reasonable goodness-of-fit measure
-        print "tps cost", f.cost
-        cost = f.cost + abs(a)*cost_per_radian
+        print "tps cost", f.cost, "rot cost", abs(a) * dist2_per_pt_per_radian
+        cost = f.cost/len(x_nd) + abs(a)*dist2_per_pt_per_radian
         costs.append(cost)
         fs.append(f)
 

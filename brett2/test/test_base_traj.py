@@ -7,24 +7,30 @@ import scipy.interpolate as si
 import rospy
 from time import time,sleep
 import roslib
+from jds_utils.math_utils import linspace2d
 
         
 if rospy.get_name() == "/unnamed":
     rospy.init_node("test_base_traj",anonymous=True, disable_signals=True)
 
-xyas = np.r_[0,0,0][None,:] - np.linspace(0,1,10)[:,None]
-ts = np.linspace(0,10,10)
+brett = PR2.create()
+
+
+n_steps = 10
+ts = np.linspace(0,1,n_steps)
+
+xya_cur = np.r_[0,0,0]
+xya_targ = np.r_[1,0,0]
+xyas = linspace2d(xya_cur, xya_targ, n_steps)
 
 pub = rospy.Publisher("base_traj_controller/command", tm.JointTrajectory)
-brett = PR2()
-xyacur = np.array(brett.base.get_pose("odom_combined"))
 
 jt = tm.JointTrajectory()
 for i in xrange(10):
     
     jtp = tm.JointTrajectoryPoint()
     jtp.time_from_start = rospy.Duration(ts[i])
-    jtp.positions = xyas[i]+xyacur
+    jtp.positions = xyas[i]
     jt.points.append(jtp)
     
 pub.publish(jt)

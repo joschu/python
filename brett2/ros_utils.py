@@ -27,13 +27,18 @@ def get_tf_listener():
     return tf.TransformListener()
 
 def pc2xyzrgb(pc):
-    arr = np.fromstring(pc.data,dtype='float32').reshape(pc.height,pc.width,8)
+    arr = np.fromstring(pc.data,dtype='float32').reshape(pc.height,pc.width,pc.point_step/4)
     xyz = arr[:,:,0:3]
     
     rgb0 = np.ndarray(buffer=arr[:,:,4].copy(),shape=(pc.height, pc.width,4),dtype='uint8')
     rgb = rgb0[:,:,0:3]
     
     return xyz,rgb
+
+def pc2xyz(pc):
+    arr = np.fromstring(pc.data,dtype='float32').reshape(pc.height,pc.width,pc.point_step/4)
+    xyz = arr[:,:,0:3]
+    return xyz
 
 def xyz2pc(xyz,frame_id):
     bgr = np.zeros_like(xyz)
