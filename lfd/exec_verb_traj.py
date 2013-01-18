@@ -212,7 +212,6 @@ def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_grip
             return ExecTrajectoryResponse(success=False)
 
         unwrapped_joint_positions = unwrap_angles(joint_positions)
-        #smoothed_joint_positions = ku.smooth_positions(unwrapped_joint_positions, .15)
         final_joint_positions = fix_end_joint_positions(lr, unprocessed_gripper_angles, unwrapped_joint_positions)
 
         body_traj["%s_arm"%lr] = final_joint_positions

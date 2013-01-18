@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import rospy
 import argparse
-from brett2.ros_utils import pc2xyzrgb
+from brett2.ros_utils import pc2xyzrgb, xyz2pc
 from lfd import multi_item_verbs, multi_item_make_verb_traj, exec_verb_traj, ik_functions
 from verb_msgs.srv import *
 import numpy as np
@@ -24,6 +24,16 @@ def get_trajectory_request(verb, pc):
     make_req.object_clouds.append(pc)
     return make_req
 
+def filter_pc2s(all_clouds_pc2):
+    new_clouds = []
+    for cloud_pc2 in all_clouds_pc2:
+        cloud_xyz = pc2xyzrgb(cloud_pc2)[0]
+        graph = ri.points_to_graph(xyz, .03)
+        cc = ri.largest_connected_component(graph)
+        good_xyzs = np.array([graph.node[node_id]["xyz"] for node_id in graph.nodes()])
+        new_clouds.append(xyz2pc(good_xyzs))
+    return new_clouds
+
 def get_all_clouds_pc2(num_objs):
     clouds = []
     for obj_num in xrange(num_objs):
@@ -31,7 +41,8 @@ def get_all_clouds_pc2(num_objs):
         while not yes_or_no("Continue?"):
             next_cloud = do_segmentation("object%i" % obj_num)        
         clouds.append(next_cloud)
-    return clouds
+    filtered_clouds = filter_pc2s(clouds)
+    return filtered_clouds
 
 def do_segmentation(obj_name):
     seg_svc = rospy.ServiceProxy("/interactive_segmentation", ProcessCloud)

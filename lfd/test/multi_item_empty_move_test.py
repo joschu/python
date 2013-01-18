@@ -1,4 +1,5 @@
 import rospy
+import sys
 from lfd import exec_verb_traj, multi_item_make_verb_traj, multi_item_verbs, ik_functions
 from verb_msgs.srv import ExecTrajectoryRequest
 from jds_utils.yes_or_no import yes_or_no
@@ -57,7 +58,7 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
         warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, cur_exp_pc,
                                                                                    "base_footprint", current_stage,
                                                                                    prev_demo_info, prev_exp_pc,
-                                                                                   verb_data_accessor, transform_type="tps")
+                                                                                   verb_data_accessor, transform_type="tps_zrot")
 
         yn = yes_or_no("continue?")
         if yn:
@@ -75,6 +76,19 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
         rospy.init_node("test_multi_item_empty_move",disable_signals=True)
-    do_empty_move("pour-green0-blue0", "pour-green1-blue0", "pour_green_blue_r_r")
-    #do_empty_move("place-marker-cup0", "place-markerLong-cupBlue0", "place_marker_cup_l_l_2")
-    #do_empty_move("grab-marker0", "grab-markerRotated0", "grab_marker_l")
+
+    test_name = sys.argv[1]
+    if test_name == "marker45":
+        do_empty_move("grab-marker00", "grab-marker450", "grab_marker_l")
+    elif test_name == "marker90":
+        do_empty_move("grab-marker00", "grab-marker900", "grab_marker_l")
+    elif test_name == "pouryellow":
+        do_empty_move("pour-yellow0-blue0", "pour-yellow1-blue0", "pour_yellow_blue_l_l")
+    elif test_name == "pourwhite":
+        do_empty_move("pour-largewhite-bowl0", "pour-largeyellow-bowl0", "pour_cup_bowl_l_l")
+    elif test_name == "pourred":
+        do_empty_move("pour-largered-bowl0", "pour-largeyellow-bowl0", "pour_cup_bowl_l_l")
+    elif test_name == "scoop0":
+        do_empty_move("scoop-spoon-wavy0", "scoop-spoon-smallblue0", "scoop_spoon_bowl_l_l")
+    elif test_name == "scoop1":
+        do_empty_move("scoop-spoon-wavy0", "scoop-spoon-smallwhite0", "scoop_spoon_bowl_l_l")

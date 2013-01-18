@@ -22,9 +22,9 @@ class Globals:
 
 def get_warping_transform(from_cloud, to_cloud, transform_type="tps"):
     if transform_type == "tps":
-        return registration.tps_rpm(from_cloud, to_cloud, plotting=2, reg_init=2, reg_final=.05, n_iter=10, verbose=False)
+        return registration.tps_rpm(from_cloud, to_cloud, plotting=2, reg_init=2, reg_final=.5, n_iter=10, verbose=False)
     elif transform_type == "tps_zrot":
-        return registration.tps_rpm_zrot(from_cloud, to_cloud, plotting=2, reg_init=2, reg_final=.05, n_iter=10, verbose=False, cost_per_radian=.001)
+        return registration.tps_rpm_zrot(from_cloud, to_cloud, plotting=2, reg_init=2, reg_final=.5, n_iter=10, verbose=False)
     elif transform_type == "translation2d":
         warp = registration.Translation2d()
         warp.fit(from_cloud, to_cloud)
