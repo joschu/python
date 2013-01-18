@@ -10,7 +10,7 @@ parser.add_argument("infile")
 parser.add_argument("--outfile")
 parser.add_argument("--plotting", action="store_true")
 parser.add_argument("--objs",nargs="*",type=str)
-parser.add_argument("--do_filtering")
+parser.add_argument("--do_filtering", action="store_true")
 args = parser.parse_args()
 
 from point_clouds import tabletop
@@ -62,17 +62,20 @@ def get_good_inds(orig_xyz, good_xyz):
 for object_name in object_names:
     pc_sel = seg_svc.call(ProcessCloudRequest(cloud_in = pc)).cloud_out
     xyz, rgb = ros_utils.pc2xyzrgb(pc_sel)
+    xyz = xyz.reshape(-1,3)
+    rgb = rgb.reshape(-1,3)
     if args.do_filtering:
         graph = ri.points_to_graph(xyz, .03)
         cc = ri.largest_connected_component(graph)
-        good_xyzs = np.array([graph.node[node_id]["xyz"] for node_id in graph.nodes()])
+        good_xyzs = np.array([graph.node[node_id]["xyz"] for node_id in cc.nodes()])
         good_inds = get_good_inds(xyz, good_xyzs)
         good_rgbs = rgb[good_inds]
     else:
         good_xyzs, good_rgbs = xyz, rgb
+
     outfile.create_group(object_name)
-    outfile[object_name]["xyz"] = good_xyzs.reshape(-1,3)
-    outfile[object_name]["rgb"] = rgb.reshape(-1,3)
+    outfile[object_name]["xyz"] = good_xyzs
+    outfile[object_name]["rgb"] = good_rgbs
 
 if args.plotting:
     rviz = ros_utils.RvizWrapper.create()

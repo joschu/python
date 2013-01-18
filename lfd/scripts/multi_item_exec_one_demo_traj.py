@@ -13,6 +13,7 @@ from jds_utils.yes_or_no import yes_or_no
 from jds_utils.colorize import colorize
 import subprocess
 from lfd import scene_diff
+from rope_vision import rope_initialization as ri
 
 def call_and_print(cmd, color='green'):
     print colorize(cmd, color, bold=True)
@@ -27,11 +28,11 @@ def get_trajectory_request(verb, pc):
 def filter_pc2s(all_clouds_pc2):
     new_clouds = []
     for cloud_pc2 in all_clouds_pc2:
-        cloud_xyz = pc2xyzrgb(cloud_pc2)[0]
-        graph = ri.points_to_graph(xyz, .03)
+        cloud_xyz = (pc2xyzrgb(cloud_pc2)[0]).reshape(-1,3)
+        graph = ri.points_to_graph(cloud_xyz, .03)
         cc = ri.largest_connected_component(graph)
-        good_xyzs = np.array([graph.node[node_id]["xyz"] for node_id in graph.nodes()])
-        new_clouds.append(xyz2pc(good_xyzs))
+        good_xyzs = np.array([graph.node[node_id]["xyz"] for node_id in cc.nodes()])
+        new_clouds.append(xyz2pc(good_xyzs, cloud_pc2.header.frame_id))
     return new_clouds
 
 def get_all_clouds_pc2(num_objs):
@@ -71,7 +72,7 @@ def do_stage(demo_name, stage_num, prev_stage_info, prev_exp_pc2, cur_exp_pc2, v
     stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
     make_req = get_trajectory_request(stage_info.verb, cur_exp_pc2)
 
-    make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_pc2, verb_data_accessor, transform_type="tps")
+    make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_pc2, verb_data_accessor, transform_type="tps_zrot")
     
     yn = yes_or_no("continue?")
     if yn:

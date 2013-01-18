@@ -39,7 +39,7 @@ def get_point_cloud(name_for_motion, item_name):
     call_and_print("get_point_cloud.py %s" % (name_for_motion))
     print colorize("now, select the %s object" % (item_name), color="red", bold=True)
     # two point clouds need to be stored, so give first point cloud a suffix of '-1'
-    call_and_print("manually_segment_point_cloud.py %s.npz --objs=%s --do_filtering=True --plotting=True" % \
+    call_and_print("manually_segment_point_cloud.py %s.npz --objs=%s --do_filtering --plotting" % \
                    (name_for_motion, item_name))
 
 def record_trajectory(dry_run, name_for_motion):

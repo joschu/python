@@ -365,7 +365,7 @@ class Head(TrajectoryControllerWrapper):
         TrajectoryControllerWrapper.__init__(self,pr2,"head_traj_controller")
 
     def set_pan_tilt(self, pan, tilt):
-        self.goto_joint_positions([pan, tilt])
+        self.goto_joint_positions([pan, tilt], unwrap=False)
     def look_at(self, xyz_target, reference_frame, camera_frame):
         self.pr2.update_rave()
 
@@ -398,7 +398,7 @@ class Torso(TrajectoryControllerWrapper):
 
 
 class Gripper(object):
-    default_max_effort = 20
+    default_max_effort = 40
     def __init__(self,pr2,lr):
         assert isinstance(pr2, PR2)
         self.pr2 = pr2
