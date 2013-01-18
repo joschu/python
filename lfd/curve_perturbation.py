@@ -76,7 +76,9 @@ def _resample_spline(spline, tolerance=0.0001):
 
 def perturb_curve(curve, s=0.001, const_radius=False):
     new_spline = _resample_spline(_perturb_spline(_to_spline(curve), s, const_radius))
-    return _adjust_curve(_eval_spline(new_spline), curve)
+    new_curve = _adjust_curve(_eval_spline(new_spline), curve)
+    assert new_curve.shape == curve.shape
+    return new_curve
 
 if __name__ == '__main__':
     import argparse
