@@ -327,7 +327,7 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
     best_f = fs[i_best]
 
     if plotting:
-        plot_orig_and_warped_clouds(best_f, x_nd, y_md)   
+        plot_orig_and_warped_clouds(best_f.transform_points, x_nd, y_md)   
 
     return best_f
 
