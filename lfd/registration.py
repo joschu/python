@@ -324,7 +324,12 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
     print "best index", i_best
     print "best angle", zrots[i_best]
 
-    return fs[i_best]
+    best_f = fs[i_best]
+
+    if plotting:
+        plot_orig_and_warped_clouds(best_f, x_nd, y_md)   
+
+    return best_f
 
 def fit_affine_by_tpsrpm(x_nd, y_md):
     # use tps-rpm to get correspondences, then fit an affine transformation by least squares
