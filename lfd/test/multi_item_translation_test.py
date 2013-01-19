@@ -32,8 +32,8 @@ def rot_distance(quat1, quat2):
     return euclidean_dist(diff_quat, [0, 0, 0, 1])
 
 # What should these values be?
-XYZ_TOLERANCE = 0.025
-ROT_TOLERANCE = 0.2
+XYZ_TOLERANCE = 0.02
+ROT_TOLERANCE = 0.1
         
 # returns if the trajectories are approximately the same
 def similar_trajectories(traj1, traj2):
@@ -118,4 +118,4 @@ def test_translation(demo_name, exp_name, data_dir):
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
         rospy.init_node("test_multi_item_translation",disable_signals=True)
-    test_translation("pour-yellow0-blue0", "pour-yellow1-blue0", "pour_yellow_blue_l_l")
+    test_translation("place-cup-bowl0", "place-cup-bowltranslated0", "place_cup_bowl_l_l")
