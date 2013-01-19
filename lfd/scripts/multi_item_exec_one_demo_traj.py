@@ -14,6 +14,7 @@ from jds_utils.colorize import colorize
 import subprocess
 from lfd import scene_diff
 from rope_vision import rope_initialization as ri
+from jds_image_proc.clouds import voxel_downsample
 
 def call_and_print(cmd, color='green'):
     print colorize(cmd, color, bold=True)
@@ -29,7 +30,8 @@ def filter_pc2s(all_clouds_pc2):
     new_clouds = []
     for cloud_pc2 in all_clouds_pc2:
         cloud_xyz = (pc2xyzrgb(cloud_pc2)[0]).reshape(-1,3)
-        graph = ri.points_to_graph(cloud_xyz, .03)
+        cloud_xyz_down = voxel_downsample(cloud_xyz, .02)
+        graph = ri.points_to_graph(cloud_xyz_down, .03)
         cc = ri.largest_connected_component(graph)
         good_xyzs = np.array([graph.node[node_id]["xyz"] for node_id in cc.nodes()])
         new_clouds.append(xyz2pc(good_xyzs, cloud_pc2.header.frame_id))
@@ -58,7 +60,7 @@ def do_single(demo_name, stage_num, prev_demo_index, verb_data_accessor, prev_an
         do_stage(demo_name, stage_num, None, None, prev_and_cur_pc2[1], verb_data_accessor)
     else:
         prev_stage_num = stage_num - 1
-        prev_demo_name = demo_base_name + str(prev_demo_index)
+        prev_demo_name = "%s%i" % (demo_base_name, prev_demo_index)
         prev_stage_info = verb_data_accessor.get_stage_info(prev_demo_name, prev_stage_num)
 
         call_and_print("rosrun pr2_controller_manager pr2_controller_manager stop r_arm_controller l_arm_controller")
@@ -84,7 +86,7 @@ def do_stage(demo_name, stage_num, prev_stage_info, prev_exp_pc2, cur_exp_pc2, v
 def do_multiple_varied_demos(demo_base_name, stages, verb_data_accessor, all_clouds_pc2):
     prev_stage_info, prev_exp_pc2 = None, None
     for (stage_num, (demo_num, cur_exp_pc2)) in enumerate(zip(stages, all_clouds_pc2)):
-        demo_name = demo_base_name + str(demo_num)
+        demo_name = "%s%i" % (demo_base_name, demo_num)
         do_stage(demo_name, stage_num, prev_stage_info, prev_exp_pc2, cur_exp_pc2, verb_data_accessor)
         prev_stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
         prev_exp_pc2 = cur_exp_pc2
@@ -144,7 +146,7 @@ def run_exp(args, verb_data_accessor):
         do_single(demo_base_name, demo_index, stage_num, prev_demo_index, verb_data_accessor, prev_and_cur_pc2)
     elif args.stages is not None:
         if args.stages[0] == 'a':
-            demo_name = demo_base_name + args.stages[1:]
+            demo_name = "%s%s" % (demo_base_name, args.stages[1:])
             exp_clouds_pc2 = get_all_clouds_pc2(verb_data_accessor.get_num_stages(demo_name))
             do_multiple_single_demo(demo_name, verb_data_accessor, exp_clouds_pc2)
         else:

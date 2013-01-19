@@ -28,6 +28,7 @@ import h5py
 from snazzy_msgs.srv import *
 from jds_utils import conversions
 import rope_vision.rope_initialization as ri
+from jds_image_proc.clouds import voxel_downsample
 
 rospy.init_node("manually_segment_point_cloud")
 listener = tf.TransformListener()
@@ -65,7 +66,8 @@ for object_name in object_names:
     xyz = xyz.reshape(-1,3)
     rgb = rgb.reshape(-1,3)
     if args.do_filtering:
-        graph = ri.points_to_graph(xyz, .03)
+        xyz_down = voxel_downsample(xyz, .02)
+        graph = ri.points_to_graph(xyz_down, .03)
         cc = ri.largest_connected_component(graph)
         good_xyzs = np.array([graph.node[node_id]["xyz"] for node_id in cc.nodes()])
         good_inds = get_good_inds(xyz, good_xyzs)
@@ -75,7 +77,7 @@ for object_name in object_names:
 
     outfile.create_group(object_name)
     outfile[object_name]["xyz"] = good_xyzs
-    outfile[object_name]["rgb"] = good_rgbs
+    #outfile[object_name]["rgb"] = good_rgbs
 
 if args.plotting:
     rviz = ros_utils.RvizWrapper.create()
