@@ -130,16 +130,18 @@ class PR2(object):
 
             # make the joint limits match the PR2 soft limits
             low_limits, high_limits = self.robot.GetDOFLimits()
-            rarm_inds = self.robot.GetManipulator("rightarm").GetArmIndices()
-            low_limits[rarm_inds[3]] = -2.1213
-            high_limits[rarm_inds[3]] = -0.15
-            low_limits[rarm_inds[5]] = -2.0
-            high_limits[rarm_inds[5]] = -0.1
-            larm_inds = self.robot.GetManipulator("leftarm").GetArmIndices()
-            low_limits[larm_inds[3]] = -2.1213
-            high_limits[larm_inds[3]] = -0.15
-            low_limits[larm_inds[5]] = -2.0
-            high_limits[larm_inds[5]] = -0.1
+            rarm_low_limits = [-2.1353981634, -0.3536, -3.75, -2.1213, None, -2.0, None]
+            rarm_high_limits = [0.564601836603, 1.2963, 0.65, -0.15, None, -0.1, None]
+            for rarm_index, low, high in zip(self.robot.GetManipulator("rightarm").GetArmIndices(), rarm_low_limits, rarm_high_limits):
+                if low is not None and high is not None:
+                    low_limits[rarm_index] = low
+                    high_limits[rarm_index] = high
+            larm_low_limits = [-0.564601836603, -0.3536, -0.65, -2.1213, None, -2.0, None]
+            larm_high_limits = [2.1353981634, 1.2963, 3.75, -0.15, None, -0.1, None]
+            for larm_index, low, high in zip(self.robot.GetManipulator("leftarm").GetArmIndices(), larm_low_limits, larm_high_limits):
+                if low is not None and high is not None:
+                    low_limits[larm_index] = low
+                    high_limits[larm_index] = high
             self.robot.SetDOFLimits(low_limits, high_limits)
 
             rospy.on_shutdown(self.stop_all)
