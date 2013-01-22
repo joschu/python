@@ -128,6 +128,20 @@ class PR2(object):
             self.torso = Torso(self)
             self.base = Base(self)
 
+            # make the joint limits match the PR2 soft limits
+            low_limits, high_limits = self.robot.GetDOFLimits()
+            rarm_inds = self.robot.GetManipulator("rightarm").GetArmIndices()
+            low_limits[rarm_inds[3]] = -2.1213
+            high_limits[rarm_inds[3]] = -0.15
+            low_limits[rarm_inds[5]] = -2.0
+            high_limits[rarm_inds[5]] = -0.1
+            larm_inds = self.robot.GetManipulator("leftarm").GetArmIndices()
+            low_limits[larm_inds[3]] = -2.1213
+            high_limits[larm_inds[3]] = -0.15
+            low_limits[larm_inds[5]] = -2.0
+            high_limits[larm_inds[5]] = -0.1
+            self.robot.SetDOFLimits(low_limits, high_limits)
+
             rospy.on_shutdown(self.stop_all)
 
     def start_thread(self, thread):
