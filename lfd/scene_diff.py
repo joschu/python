@@ -21,7 +21,7 @@ def get_clouds_for_demo(verb_data_accessor, demo_name):
     for stage_num in xrange(verb_data_accessor.get_num_stages(demo_name)):
         demo_stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
         demo_stage_name = demo_name + "-%i"%stage_num
-        demo_stage_data = verb_data_accessor.get_demo_data(demo_stage_name)
+        demo_stage_data = verb_data_accessor.get_demo_stage_data(demo_stage_name)
         demo_clouds.append(demo_stage_data["object_cloud"][demo_stage_info.item]["xyz"])
     return demo_clouds
 

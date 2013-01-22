@@ -18,7 +18,7 @@ def get_args():
 def save_simple_pc(demo_dir, demo_name, stage_num, file_name):
     verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir="test/multi_item/multi_item_data/%s"%demo_dir)
     stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
-    stage_data = verb_data_accessor.get_demo_data(stage_info.stage_name)
+    stage_data = verb_data_accessor.get_demo_stage_data(stage_info.stage_name)
     stage_pc = stage_data["object_cloud"][stage_info.item]["xyz"]
     pc_down = voxel_downsample(stage_pc, .02)
     os.chdir(osp.join(osp.dirname(__file__), "test_pcs"))

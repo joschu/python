@@ -69,7 +69,7 @@ class VerbDataAccessor:
                              demo_info["arms_used"][stage_num],
                              special_point)
 
-    def get_demo_data(self, demo_name):
+    def get_demo_stage_data(self, demo_name):
         h5file = h5py.File(self.h5path, "r")
         out = group_to_dict(h5file[demo_name])
         h5file.close()

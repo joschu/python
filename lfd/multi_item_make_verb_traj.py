@@ -184,14 +184,14 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_cloud, frame_id, s
         # no special point translation for first stage since no tool yet
         special_point_translation = np.identity(4)
     else:
-        prev_verb_stage_data = verb_data_accessor.get_demo_data(prev_stage_info.stage_name)
+        prev_verb_stage_data = verb_data_accessor.get_demo_stage_data(prev_stage_info.stage_name)
         # make sure that the tool stage only uses one arm (the one with the tool)
         prev_demo_to_exp_grip_transform = get_prev_demo_to_exp_grip_transform(prev_verb_stage_data, prev_stage_info,
                                                                               prev_exp_cloud, arms_used,
                                                                               to_gripper_frame_func, transform_type)
         special_point_translation = get_special_point_translation(prev_stage_info.special_point)
 
-    cur_verb_stage_data = verb_data_accessor.get_demo_data(current_stage_info.stage_name)
+    cur_verb_stage_data = verb_data_accessor.get_demo_stage_data(current_stage_info.stage_name)
     warped_stage_data = group_to_dict(cur_verb_stage_data) # deep copy it
 
     resp = MakeTrajectoryResponse()

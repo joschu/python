@@ -47,7 +47,7 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
         if current_stage > 0:
             prev_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage-1)
             prev_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage-1)
-            prev_exp_data = verb_data_accessor.get_demo_data(prev_exp_info.stage_name)
+            prev_exp_data = verb_data_accessor.get_demo_stage_data(prev_exp_info.stage_name)
             prev_exp_pc = prev_exp_data["object_cloud"][prev_exp_info.item]["xyz"]
         else:
             prev_demo_info, prev_exp_info, prev_exp_data, prev_exp_pc = None, None, None, None
@@ -55,7 +55,7 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
         # info and data for current stage
         cur_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage)
         cur_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage)
-        cur_exp_data = verb_data_accessor.get_demo_data(cur_exp_info.stage_name)
+        cur_exp_data = verb_data_accessor.get_demo_stage_data(cur_exp_info.stage_name)
         cur_exp_pc = cur_exp_data["object_cloud"][cur_exp_info.item]["xyz"]
 
         warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, cur_exp_pc,

@@ -43,6 +43,7 @@ def get_point_cloud(name_for_motion, item_name):
                    (name_for_motion, item_name))
 
 def record_trajectory(dry_run, name_for_motion):
+    raw_input("Press enter when ready to record")
     print colorize("now, human, demonstrate the next action for %s on the robot" % (name_for_motion), color="red", bold=True)
     call_and_print("rosrun pr2_controller_manager pr2_controller_manager stop r_arm_controller l_arm_controller")
     try:

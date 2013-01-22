@@ -64,15 +64,15 @@ def test_translation(demo_name, exp_name, data_dir):
 
     # info and data for previous stage
     prev_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage-1)
-    prev_demo_data = verb_data_accessor.get_demo_data(prev_demo_info.stage_name)
+    prev_demo_data = verb_data_accessor.get_demo_stage_data(prev_demo_info.stage_name)
     prev_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage-1)
-    prev_exp_data = verb_data_accessor.get_demo_data(prev_exp_info.stage_name)
+    prev_exp_data = verb_data_accessor.get_demo_stage_data(prev_exp_info.stage_name)
 
     # info and data for current stage
     cur_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage)
-    cur_demo_data = verb_data_accessor.get_demo_data(cur_demo_info.stage_name)
+    cur_demo_data = verb_data_accessor.get_demo_stage_data(cur_demo_info.stage_name)
     cur_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage)
-    cur_exp_data = verb_data_accessor.get_demo_data(cur_exp_info.stage_name)
+    cur_exp_data = verb_data_accessor.get_demo_stage_data(cur_exp_info.stage_name)
     
     gripper_data_key = "%s_gripper_tool_frame" % cur_demo_info.arms_used
 
