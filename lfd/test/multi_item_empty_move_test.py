@@ -9,6 +9,7 @@ import os
 import argparse
 
 EMPTY_MOVE_PARAM_FILE = osp.join(osp.dirname(osp.abspath(__file__)), "multi_item/multi_item_params/empty_move_params.yaml")
+TEST_DATA_DIR = "multi_item/empty_move_data"
 
 def get_test_params():
     f = open(EMPTY_MOVE_PARAM_FILE, 'r')
@@ -40,7 +41,7 @@ def pour_empty_move_init():
 def do_empty_move(demo_name, exp_name, test_dir_name):
     pour_empty_move_init()
 
-    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir="test/multi_item/multi_item_data/%s"%test_dir_name)
+    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=osp.join("test", TEST_DATA_DIR, test_dir_name))
 
     for current_stage in xrange(verb_data_accessor.get_num_stages(demo_name)):
         # info and data for previous stage
@@ -77,8 +78,7 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
                 break
 
 def get_test_demos():
-    test_dir = "multi_item/multi_item_data"
-    abs_test_dir = osp.join(osp.dirname(osp.abspath(__file__)), test_dir)
+    abs_test_dir = osp.join(osp.dirname(osp.abspath(__file__)), TEST_DATA_DIR)
     test_demo_dirs = os.listdir(abs_test_dir)
     test_demos = {}
     for test_demo_dir in test_demo_dirs:
@@ -114,6 +114,6 @@ if __name__ == "__main__":
         if demo_name.find(args.item2) != -1:
             exp_part = demo_name
 
-    assert demo_part is not None and exp_part is not None
+    assert demo_part is not None and exp_part is not None, all_test_demos[args.verb]
     print "Testing with demo %s and experiment %s from directory %s" % (demo_part, exp_part, test_demo_dir)
     do_empty_move(demo_part, exp_part, test_demo_dir)

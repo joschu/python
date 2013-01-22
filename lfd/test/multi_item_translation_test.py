@@ -58,7 +58,7 @@ def test_cup_pour_init():
 def test_translation(demo_name, exp_name, data_dir):
     test_cup_pour_init()
 
-    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=("test/multi_item/multi_item_data/"+data_dir))
+    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=("test/multi_item/translation_test_data/"+data_dir))
 
     current_stage = 1
 
