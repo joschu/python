@@ -59,15 +59,9 @@ class VerbDataAccessor:
     def get_stage_info(self, demo_name, stage_num):
         return self.get_stage_info_from_demo_info(self.get_demo_info(demo_name), stage_num)
 
-    def get_closest_demo_verb_info_by_stage(self, verb, scene_info, stage_num):
-        verb_infos = self.get_verb_info(self, verb)
-        if len(verb_infos) == 0: raise Exception("%s isn't in library"%verb)
-        # get_closest is not implemented yet
-        closest_demo_name_info_pair = verb_infos[0]
-        closest_demo_info = closest_demo_name_info_pair[1] #get the verb info out of the pair
-        return self.get_stage_info_from_demo_info(closest_demo_info, stage_num)
-
     def get_stage_info_from_demo_info(self, demo_info, stage_num):
+        if stage_num < 0:
+            return None
         special_point = None if demo_info["special_pts"][stage_num] == "None" else demo_info["special_pts"][stage_num]
         return VerbStageInfo(demo_info["stages"][stage_num],
                              demo_info["verb"],

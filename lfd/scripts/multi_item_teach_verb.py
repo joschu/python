@@ -67,15 +67,17 @@ def rename_bag_file(name_for_motion, n_tries):
     if not success:
         raise Exception("couldn't get bag file")
 
-def record_demonstration_for_motion(name_for_motion, item_name, data_dir):
-    os.chdir(data_dir + "/images")
-    get_point_cloud(name_for_motion, item_name)
-    while not yes_or_no("Ready to continue?"):
+def record_demo_stage(name_for_motion, item_name, data_dir):
+    if item_name != "none":
+        os.chdir(data_dir + "/images")
         get_point_cloud(name_for_motion, item_name)
+        while not yes_or_no("Ready to continue?"):
+            get_point_cloud(name_for_motion, item_name)
+    else:
+        print colorize("no target to select for this stage", color="red", bold=True)
 
     os.chdir(data_dir + "/bags")
     record_trajectory(args.dry_run, name_for_motion)
-
     n_tries = 20
     if not args.dry_run:
         rename_bag_file(name_for_motion, n_tries)
@@ -97,17 +99,21 @@ def get_new_demo_name(verb, items):
         if demo_name not in all_demo_info:
             return demo_name
 
-def get_new_demo_entry_text(demo_name, items, arms_used, data_dir):
+def do_teach_verb(demo_name, items, arms_used, data_dir):
     demo_names_with_stage = []
     special_pts = []
     for i in range(len(items)):
         demo_name_with_stage = "%s-%s" % (demo_name, i)
         demo_names_with_stage.append(demo_name_with_stage)
-        record_demonstration_for_motion(demo_name_with_stage, items[i], data_dir)
+        record_demo_stage(demo_name_with_stage, items[i], data_dir)
 
         # specify the special point for the item
         special_pt = ask_special_point()
         special_pts.append("None" if special_pt is None else special_pt)
+
+    return demo_names_with_stage, special_pts
+
+def get_new_demo_entry_text(demo_name, demo_names_with_stage, items, arms_used, special_pts):
             
     new_entry_text = """
 # AUTOMATICALLY ADDED BY multi_item_teach_verb.py ON %(datestr)s
@@ -165,7 +171,8 @@ if __name__ == "__main__":
     move_pr2_to_start_pos(pr2)
 
     demo_name = get_new_demo_name(verb, items)
-    new_entry_text = get_new_demo_entry_text(demo_name, items, arms_used, data_dir)
+    demo_names_with_stage, special_pts = do_teach_verb(demo_name, items, arms_used, data_dir)
+    new_entry_text = get_new_demo_entry_text(demo_name, demo_names_with_stage, items, arms_used, special_pts)
 
     yn = yes_or_no("save demonstration?")
     # add the entry to the verbs yaml file

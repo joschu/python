@@ -175,14 +175,15 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_cloud, frame_id, s
 
     arms_used = current_stage_info.arms_used
 
-    assert (stage_num == 0) or (stage_num > 0 and arms_used in ['r', 'l'])
+    # make sure this is the first stage or there is no tool or there is a tool and only one arm is used
+    assert stage_num == 0 or (prev_stage_info.item == "none") or (arms_used in ['r', 'l'])
 
-    if stage_num == 0:
+    if stage_num == 0 or prev_stage_info.item == "none":
         # don't do any extra transformation for the first stage
         prev_demo_to_exp_grip_transform = None
         # no special point translation for first stage since no tool yet
         special_point_translation = np.identity(4)
-    elif stage_num > 0:
+    else:
         prev_verb_stage_data = verb_data_accessor.get_demo_data(prev_stage_info.stage_name)
         # make sure that the tool stage only uses one arm (the one with the tool)
         prev_demo_to_exp_grip_transform = get_prev_demo_to_exp_grip_transform(prev_verb_stage_data, prev_stage_info,
@@ -223,6 +224,7 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_cloud, frame_id, s
         warped_transs, warped_rots = juc.hmats_to_transs_rots(cur_exp_gripper_traj_mats)
         warped_stage_data[gripper_data_key]["position"] = warped_transs
         warped_stage_data[gripper_data_key]["orientation"] = warped_rots
+
         set_traj_fields_for_response(warped_stage_data, traj, arm, frame_id)
 
         # save the demo special point traj for plotting
@@ -254,7 +256,6 @@ def plot_original_and_warped_demo_and_spec_pt(best_demo, warped_demo, spec_pt_xy
         plot_traj(asarray(warped_demo["l_gripper_tool_frame"]["position"]),
                   (0,1,0,1),
                   asarray(warped_demo["l_gripper_tool_frame"]["orientation"]))
-        #Globals.handles.extend(Globals.rviz.draw_trajectory(traj.l_gripper_poses, traj.l_gripper_angles, ns = "multi_item_make_verb_traj_service_grippers"))
         
     if arms_used in "rb":
         plot_traj(asarray(best_demo["r_gripper_tool_frame"]["position"]),
@@ -263,7 +264,6 @@ def plot_original_and_warped_demo_and_spec_pt(best_demo, warped_demo, spec_pt_xy
         plot_traj(asarray(warped_demo["r_gripper_tool_frame"]["position"]),
                   (0,1,0,1),
                   asarray(warped_demo["r_gripper_tool_frame"]["orientation"]))
-        #Globals.handles.extend(Globals.rviz.draw_trajectory(traj.r_gripper_poses, traj.r_gripper_angles, ns = "multi_item_make_verb_traj_service_grippers"))
 
     plot_spec_pts(spec_pt_xyzs, (1,0.5,0.5,1))
     plot_spec_pts(warped_spec_pt_xyzs, (0.5,1,0.5,1))
