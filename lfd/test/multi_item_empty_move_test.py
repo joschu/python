@@ -5,8 +5,10 @@ from verb_msgs.srv import ExecTrajectoryRequest
 from jds_utils.yes_or_no import yes_or_no
 import yaml
 import os.path as osp
+import os
+import argparse
 
-EMPTY_MOVE_PARAM_FILE = osp.join(osp.dirname(__file__), "multi_item/multi_item_params/empty_move_params.yaml")
+EMPTY_MOVE_PARAM_FILE = osp.join(osp.dirname(osp.abspath(__file__)), "multi_item/multi_item_params/empty_move_params.yaml")
 
 def get_test_params():
     f = open(EMPTY_MOVE_PARAM_FILE, 'r')
@@ -42,17 +44,18 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
 
     for current_stage in xrange(verb_data_accessor.get_num_stages(demo_name)):
         # info and data for previous stage
-        prev_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage-1)
-        prev_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage-1)
-        prev_exp_data = verb_data_accessor.get_demo_data(prev_exp_info.stage_name)
+        if current_stage > 0:
+            prev_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage-1)
+            prev_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage-1)
+            prev_exp_data = verb_data_accessor.get_demo_data(prev_exp_info.stage_name)
+            prev_exp_pc = prev_exp_data["object_cloud"][prev_exp_info.item]["xyz"]
+        else:
+            prev_demo_info, prev_exp_info, prev_exp_data, prev_exp_pc = None, None, None, None
 
         # info and data for current stage
         cur_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage)
         cur_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage)
         cur_exp_data = verb_data_accessor.get_demo_data(cur_exp_info.stage_name)
-    
-        # point clouds of tool for demo and experiment
-        prev_exp_pc = prev_exp_data["object_cloud"][prev_exp_info.item]["xyz"]
         cur_exp_pc = cur_exp_data["object_cloud"][cur_exp_info.item]["xyz"]
 
         warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, cur_exp_pc,
@@ -73,22 +76,44 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
             if not yn:
                 break
 
+def get_test_demos():
+    test_dir = "multi_item/multi_item_data"
+    abs_test_dir = osp.join(osp.dirname(osp.abspath(__file__)), test_dir)
+    test_demo_dirs = os.listdir(abs_test_dir)
+    test_demos = {}
+    for test_demo_dir in test_demo_dirs:
+        verb_data_accessor = multi_item_verbs.VerbDataAccessor(osp.join(abs_test_dir, test_demo_dir))
+        all_demo_info = verb_data_accessor.get_all_demo_info()
+        verb = all_demo_info[all_demo_info.keys()[0]]["verb"]
+        test_demos[verb] = (test_demo_dir, all_demo_info.keys())
+    return test_demos
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("verb")
+    parser.add_argument("item1")
+    parser.add_argument("item2")
+    args = parser.parse_args()
+    return args
+
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
         rospy.init_node("test_multi_item_empty_move",disable_signals=True)
 
-    test_name = sys.argv[1]
-    if test_name == "marker45":
-        do_empty_move("grab-marker00", "grab-marker450", "grab_marker_l")
-    elif test_name == "marker90":
-        do_empty_move("grab-marker00", "grab-marker900", "grab_marker_l")
-    elif test_name == "pouryellow":
-        do_empty_move("pour-yellow0-blue0", "pour-yellow1-blue0", "pour_yellow_blue_l_l")
-    elif test_name == "pourwhite":
-        do_empty_move("pour-largewhite-bowl0", "pour-largeyellow-bowl0", "pour_cup_bowl_l_l")
-    elif test_name == "pourred":
-        do_empty_move("pour-largered-bowl0", "pour-largeyellow-bowl0", "pour_cup_bowl_l_l")
-    elif test_name == "scoop0":
-        do_empty_move("scoop-spoon-wavy0", "scoop-spoon-smallblue0", "scoop_spoon_bowl_l_l")
-    elif test_name == "scoop1":
-        do_empty_move("scoop-spoon-wavy0", "scoop-spoon-smallwhite0", "scoop_spoon_bowl_l_l")
+    if len(sys.argv) == 1:
+        print get_test_demos()
+
+    args = get_args()
+    all_test_demos = get_test_demos()
+
+    demo_part, exp_part = None, None
+    test_demo_dir, verb_demos = all_test_demos[args.verb]
+    for demo_name in verb_demos:
+        if demo_name.find(args.item1) != -1:
+            demo_part = demo_name
+        if demo_name.find(args.item2) != -1:
+            exp_part = demo_name
+
+    assert demo_part is not None and exp_part is not None
+    print "Testing with demo %s and experiment %s from directory %s" % (demo_part, exp_part, test_demo_dir)
+    do_empty_move(demo_part, exp_part, test_demo_dir)
