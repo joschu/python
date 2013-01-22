@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 import rospy
 import argparse
-from brett2.ros_utils import pc2xyzrgb, xyz2pc
+from brett2.ros_utils import pc2xyzrgb, xyz2pc, RvizWrapper, Marker
 from lfd import multi_item_verbs, multi_item_make_verb_traj, exec_verb_traj, ik_functions
 from verb_msgs.srv import *
 import numpy as np
-import brett2.ros_utils as ru
+from brett2 import ros_utils
 import roslib; roslib.load_manifest("snazzy_msgs")
 from snazzy_msgs.srv import *
 import sensor_msgs.msg as sm
@@ -15,6 +15,18 @@ import subprocess
 from lfd import scene_diff
 from rope_vision import rope_initialization as ri
 from jds_image_proc.clouds import voxel_downsample
+from jds_utils import conversions as juc
+
+class Globals:
+    handles = []
+    rviz = None
+    isinstance(rviz, ros_utils.RvizWrapper)
+    
+    def __init__(self): raise
+
+    @staticmethod
+    def setup():
+        Globals.rviz = ros_utils.RvizWrapper.create()
 
 def call_and_print(cmd, color='green'):
     print colorize(cmd, color, bold=True)
@@ -26,31 +38,31 @@ def get_trajectory_request(verb, pc):
     make_req.object_clouds.append(pc)
     return make_req
 
-def filter_pc2s(all_clouds_pc2):
-    new_clouds = []
-    for cloud_pc2 in all_clouds_pc2:
-        cloud_xyz = (pc2xyzrgb(cloud_pc2)[0]).reshape(-1,3)
-        cloud_xyz_down = voxel_downsample(cloud_xyz, .02)
-        graph = ri.points_to_graph(cloud_xyz_down, .03)
-        cc = ri.largest_connected_component(graph)
-        good_xyzs = np.array([graph.node[node_id]["xyz"] for node_id in cc.nodes()])
-        new_clouds.append(xyz2pc(good_xyzs, cloud_pc2.header.frame_id))
-    return new_clouds
+def filter_pc2(cloud_pc2):
+    cloud_xyz = (pc2xyzrgb(cloud_pc2)[0]).reshape(-1,3)
+    cloud_xyz_down = voxel_downsample(cloud_xyz, .02)
+    graph = ri.points_to_graph(cloud_xyz_down, .03)
+    cc = ri.largest_connected_component(graph)
+    good_xyzs = np.array([graph.node[node_id]["xyz"] for node_id in cc.nodes()])
+    pose_array = juc.array_to_pose_array(good_xyzs, "base_footprint")
+    Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = (1,1,0,1), type=Marker.CUBE_LIST, width=.001, ns="segmentation"))
+    raw_input("press enter when done looking")
+    del Globals.handles[:]
+    return xyz2pc(good_xyzs, cloud_pc2.header.frame_id)
 
 def get_all_clouds_pc2(num_objs):
     clouds = []
     for obj_num in xrange(num_objs):
-        next_cloud = do_segmentation("object%i" % obj_num)        
+        next_cloud = filter_pc2(do_segmentation("object%i" % obj_num))
         while not yes_or_no("Continue?"):
-            next_cloud = do_segmentation("object%i" % obj_num)        
+            next_cloud = filter_pc2(do_segmentation("object%i" % obj_num))
         clouds.append(next_cloud)
-    filtered_clouds = filter_pc2s(clouds)
-    return filtered_clouds
+    return clouds
 
 def do_segmentation(obj_name):
     seg_svc = rospy.ServiceProxy("/interactive_segmentation", ProcessCloud)
     pc = rospy.wait_for_message("/drop/points", sm.PointCloud2)
-    pc_tf = ru.transformPointCloud2(pc, exec_verb_traj.Globals.pr2.tf_listener, "base_footprint", pc.header.frame_id)
+    pc_tf = ros_utils.transformPointCloud2(pc, exec_verb_traj.Globals.pr2.tf_listener, "base_footprint", pc.header.frame_id)
     print "select the %s" % (obj_name)
     pc_sel = seg_svc.call(ProcessCloudRequest(cloud_in = pc_tf)).cloud_out
     return pc_sel
@@ -101,6 +113,7 @@ def do_multiple_single_demo(demo_name, verb_data_accessor, all_clouds_pc2):
 def do_globals_setup():
     multi_item_make_verb_traj.Globals.setup()
     exec_verb_traj.Globals.setup()
+    Globals.setup()
 
 def move_pr2_to_start_pos(pr2):
     HEAD_ANGLE = 1.1
