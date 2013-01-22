@@ -3,6 +3,8 @@ import argparse
 import numpy as np
 import sys
 from jds_image_proc.clouds import voxel_downsample
+import os
+import os.path as osp
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -19,6 +21,7 @@ def save_simple_pc(demo_dir, demo_name, stage_num, file_name):
     stage_data = verb_data_accessor.get_demo_data(stage_info.stage_name)
     stage_pc = stage_data["object_cloud"][stage_info.item]["xyz"]
     pc_down = voxel_downsample(stage_pc, .02)
+    os.chdir(osp.join(osp.dirname(__file__), "test_pcs"))
     np.savetxt("%s.pc" % (stage_info.item if file_name is None else file_name), pc_down)
 
 if __name__ == "__main__":
