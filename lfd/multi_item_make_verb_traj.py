@@ -66,9 +66,10 @@ def make_to_gripper_frame_hmat(transformation):
         return np.array([apply_transform_to_xyz(transformation, point) for point in pc])
     return to_gripper_frame_hmat
 
-def print_hmat_info(hmat):
+def print_hmat_info(hmat, title):
     #trans, rot = juc.hmat_to_trans_rot(hmat)
     #print trans, jut.euler_from_quaternion(rot)
+    print title
     print hmat
 
 # transform point cloud in base frame to gripper frame
@@ -140,6 +141,7 @@ def get_cur_exp_spec_pt_traj_mats(cur_demo_spec_pt_traj_mats, cur_demo_to_exp_tr
 def get_cur_exp_gripper_traj_mats(cur_exp_spec_pt_traj_mats, prev_demo_to_exp_grip_transform, special_point_translation):
     # transformation from the new special point to the gripper frame
     cur_exp_inv_spec_pt_transform = np.linalg.inv(apply_tps_transform_to_hmat(prev_demo_to_exp_grip_transform, special_point_translation))
+    print_hmat_info(cur_exp_inv_spec_pt_transform, "cur_exp_inv_spec_pt_transform")
     # transform the warped special point trajectory back to a gripper trajectory in the experiment
     cur_exp_gripper_traj_mats = [np.dot(spec_pt_mat, cur_exp_inv_spec_pt_transform) for spec_pt_mat in cur_exp_spec_pt_traj_mats]
     return cur_exp_gripper_traj_mats
