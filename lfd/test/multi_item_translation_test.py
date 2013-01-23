@@ -7,6 +7,8 @@ import yaml
 import numpy as np
 import os.path as osp
 
+# Tests that warping does the right thing for a simple translation of the target (everything else stays the same)
+
 TRANSLATION_PARAM_FILE = osp.join(osp.dirname(__file__), "multi_item/multi_item_params/translation_params.yaml")
 
 def report((x, msg)):
@@ -32,8 +34,8 @@ def rot_distance(quat1, quat2):
     return euclidean_dist(diff_quat, [0, 0, 0, 1])
 
 # What should these values be?
-XYZ_TOLERANCE = 0.025
-ROT_TOLERANCE = 0.2
+XYZ_TOLERANCE = 0.02
+ROT_TOLERANCE = 0.1
         
 # returns if the trajectories are approximately the same
 def similar_trajectories(traj1, traj2):
@@ -54,25 +56,24 @@ def test_cup_pour_init():
 
 # MAKE SURE THAT ROSCORE IS RUNNING FOR THIS TEST, BECAUSE MULTI_ITEM_MAKE_VERB_TRAJ DOES PLOTTING FOR RVIZ
 
-# tests that if the target object is the same, then the difference between the demo and experiment special point trajectories are the translation between the the demo and experiment target objects
 def test_translation(demo_name, exp_name, data_dir):
     test_cup_pour_init()
 
-    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=("test/multi_item/multi_item_data/"+data_dir))
+    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=("test/multi_item/translation_test_data/"+data_dir))
 
     current_stage = 1
 
     # info and data for previous stage
     prev_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage-1)
-    prev_demo_data = verb_data_accessor.get_demo_data(prev_demo_info.stage_name)
+    prev_demo_data = verb_data_accessor.get_demo_stage_data(prev_demo_info.stage_name)
     prev_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage-1)
-    prev_exp_data = verb_data_accessor.get_demo_data(prev_exp_info.stage_name)
+    prev_exp_data = verb_data_accessor.get_demo_stage_data(prev_exp_info.stage_name)
 
     # info and data for current stage
     cur_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage)
-    cur_demo_data = verb_data_accessor.get_demo_data(cur_demo_info.stage_name)
+    cur_demo_data = verb_data_accessor.get_demo_stage_data(cur_demo_info.stage_name)
     cur_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage)
-    cur_exp_data = verb_data_accessor.get_demo_data(cur_exp_info.stage_name)
+    cur_exp_data = verb_data_accessor.get_demo_stage_data(cur_exp_info.stage_name)
     
     gripper_data_key = "%s_gripper_tool_frame" % cur_demo_info.arms_used
 
@@ -118,4 +119,4 @@ def test_translation(demo_name, exp_name, data_dir):
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
         rospy.init_node("test_multi_item_translation",disable_signals=True)
-    test_translation("pour-yellow0-blue0", "pour-yellow1-blue0", "pour_yellow_blue_l_l")
+    test_translation("place-cup-bowl0", "place-cup-bowltranslated0", "place_cup_bowl_l_l")

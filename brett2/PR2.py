@@ -128,6 +128,22 @@ class PR2(object):
             self.torso = Torso(self)
             self.base = Base(self)
 
+            # make the joint limits match the PR2 soft limits
+            low_limits, high_limits = self.robot.GetDOFLimits()
+            rarm_low_limits = [-2.1353981634, -0.3536, -3.75, -2.1213, None, -2.0, None]
+            rarm_high_limits = [0.564601836603, 1.2963, 0.65, -0.15, None, -0.1, None]
+            for rarm_index, low, high in zip(self.robot.GetManipulator("rightarm").GetArmIndices(), rarm_low_limits, rarm_high_limits):
+                if low is not None and high is not None:
+                    low_limits[rarm_index] = low
+                    high_limits[rarm_index] = high
+            larm_low_limits = [-0.564601836603, -0.3536, -0.65, -2.1213, None, -2.0, None]
+            larm_high_limits = [2.1353981634, 1.2963, 3.75, -0.15, None, -0.1, None]
+            for larm_index, low, high in zip(self.robot.GetManipulator("leftarm").GetArmIndices(), larm_low_limits, larm_high_limits):
+                if low is not None and high is not None:
+                    low_limits[larm_index] = low
+                    high_limits[larm_index] = high
+            self.robot.SetDOFLimits(low_limits, high_limits)
+
             rospy.on_shutdown(self.stop_all)
 
     def start_thread(self, thread):
@@ -365,7 +381,7 @@ class Head(TrajectoryControllerWrapper):
         TrajectoryControllerWrapper.__init__(self,pr2,"head_traj_controller")
 
     def set_pan_tilt(self, pan, tilt):
-        self.goto_joint_positions([pan, tilt])
+        self.goto_joint_positions([pan, tilt], unwrap=False)
     def look_at(self, xyz_target, reference_frame, camera_frame):
         self.pr2.update_rave()
 
@@ -398,7 +414,7 @@ class Torso(TrajectoryControllerWrapper):
 
 
 class Gripper(object):
-    default_max_effort = 20
+    default_max_effort = 40
     def __init__(self,pr2,lr):
         assert isinstance(pr2, PR2)
         self.pr2 = pr2

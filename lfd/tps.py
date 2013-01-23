@@ -71,6 +71,16 @@ def tps_nonrigidity(x_ma, lin_ag, trans_g, w_ng, x_na):
         err_mab[m] = np.dot(grad_mga[m].T, grad_mga[m]) - np.eye(D)
     return err_mab.flatten()
 
+def tps_eval2(lin_ag, trans_g, w_ng, x_na, y_ng, bend_coef, K_nn=None, return_tuple=False):
+    D = lin_ag.shape[0]
+    K_nn = K_nn or ssd.squareform(ssd.pdist(x_na))
+    ypred_ng = np.dot(K_nn, w_ng) + np.dot(x_na, lin_ag) + trans_g[None,:]
+    res_cost = ((ypred_ng - y_ng)**2).sum()
+    bend_cost = bend_coef * sum(np.dot(w_ng[:,g], np.dot(-K_nn, w_ng[:,g])) for g in xrange(D))
+    if return_tuple:
+        return res_cost, bend_cost, res_cost + bend_cost
+    else:
+        return res_cost + bend_cost
 
 def tps_nr_eval(lin_ag, trans_g, w_ng, x_na, y_ng, xnr_ma, bend_coef, nr_coef, K_nn = None, return_tuple=False):
     D = lin_ag.shape[0]
@@ -132,7 +142,7 @@ def tps_fit(x_na, y_ng, bend_coef, rot_coef, wt_n=None):
     return lin_ag, trans_g, w_ng
     
 
-def tps_fit2(x_na, y_ng, bend_coef, rot_coef,wt_n=None):
+def tps_fit2(x_na, y_ng, bend_coef, rot_coef, wt_n=None):
     N,D = x_na.shape
     _u,_s,_vh = np.linalg.svd(np.c_[x_na, np.ones((N,1))])
     N_nq = _u[:,4:] # null of data

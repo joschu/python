@@ -92,16 +92,20 @@ def get_open_index(angles):
         index += 1
     return index
 
+# checks if the gripper is closing during the stage
 def is_closing(angles):
     return get_close_index(angles) < len(angles)
 
+# checks if the gripper is opening during the stage
 def is_opening(angles):
     return get_open_index(angles) < len(angles)
 
+# replace the slice of old_array between start and end with new_value
 def replace_range(new_value, old_array, start=0, end=-1):
     end = len(old_array) if end == -1 else end
     return np.concatenate((old_array[:start], np.array([new_value for i in xrange(end-start)]), old_array[end:]))
 
+# if the gripper effort is this much or more (by magnitude), then it is grabbing something
 GRIPPER_EFFORT_GRAB_THRESHHOLD = -10
 # gripper is 'l' or 'r'
 def is_grabbing_obj(gripper):
@@ -120,17 +124,7 @@ def process_gripper_angles_for_grabbing(lr, gripper_angles):
             return replace_range(0, gripper_angles, start=start_close_index)
     return gripper_angles
 
-def fix_end_joint_positions(lr, gripper_angles, joint_positions):
-    if is_grabbing_obj(lr):
-        start_open_index = get_open_index(gripper_angles)
-        if 0 < start_open_index < len(joint_positions):
-            return replace_range(joint_positions[start_open_index-1], joint_positions, start=start_open_index)
-    else:
-        start_close_index = get_close_index(gripper_angles)
-        if 0 < start_close_index < len(joint_positions):
-            return replace_range(joint_positions[start_close_index-1], joint_positions, start=start_close_index)
-    return joint_positions
-
+# fixes the end of joint_positions once the gripper starts opening or closing
 # adds the point cloud to the openrave environment
 def setup_obj_rave(obj_cloud_xyz, obj_name):
     rave_env = Globals.pr2.env
@@ -142,11 +136,13 @@ def setup_obj_rave(obj_cloud_xyz, obj_name):
     rave_env.Add(body)
     return body
  
+# have the robot grab the openrave object
 def grab_obj_single_grip_rave(lr, obj_kinbody):
     rave_robot = Globals.pr2.robot
     rave_robot.Grab(obj_kinbody, rave_robot.GetLink("%s_gripper_tool_frame"%lr))
     
-# assuming now that only one object is held at a time
+# have the robot release what it has grabbed
+# assuming that it has only grabbed the tool, so that is the only thing being released
 def release_objs_single_grip_rave(lr):
     rave_robot = Globals.pr2.robot
     rave_robot.ReleaseAllGrabbed()
@@ -175,6 +171,7 @@ def get_lin_interp_poses(start_pos, end_pos, n_steps):
     gripper_poses = [juc.hmat_to_pose(hmat) for hmat in hmats]   
     return gripper_poses
 
+# wrapper for exec_traj_do_work which takes in a ros message
 def exec_traj(req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=None, obj_name=""):
     assert isinstance(req, ExecTrajectoryRequest)
     traj = req.traj
@@ -182,6 +179,7 @@ def exec_traj(req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=Non
                              traj.r_gripper_poses.poses, traj.r_gripper_angles,
                              traj_ik_func, ros_utils.pc2xyzrgb(obj_pc)[0], obj_name)
 
+# unwrap continuous joints to avoid winding
 def unwrap_angles(angles):
     for joint_num in [2, 4, 6]:
         angles[:, joint_num] = np.unwrap(angles[:, joint_num])
@@ -212,8 +210,7 @@ def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_grip
             return ExecTrajectoryResponse(success=False)
 
         unwrapped_joint_positions = unwrap_angles(joint_positions)
-        #smoothed_joint_positions = ku.smooth_positions(unwrapped_joint_positions, .15)
-        final_joint_positions = fix_end_joint_positions(lr, unprocessed_gripper_angles, unwrapped_joint_positions)
+        final_joint_positions = unwrapped_joint_positions
 
         body_traj["%s_arm"%lr] = final_joint_positions
         body_traj["%s_gripper"%lr] = final_gripper_angles
@@ -221,9 +218,11 @@ def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_grip
     yn = yes_or_no("continue?")
     if yn:
         lt.follow_trajectory_with_grabs(Globals.pr2, body_traj)
-        
+
         if grab_obj_kinbody is not None:
             handle_grab_or_release_obj(grab_obj_kinbody, l_gripper_poses, l_gripper_angles, r_gripper_poses, r_gripper_angles)
+
+        raw_input("Press enter when done viewing trajectory")
 
         Globals.pr2.join_all()
 

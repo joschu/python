@@ -174,6 +174,7 @@ class ThinPlateSplineFixedRot(ThinPlateSpline):
         residual_cost = (wt_n[:,None] * ((y_ng - self.transform_points(x_na))**2).sum(axis=1)).sum()
         curvature_cost = bend_coef * np.trace(np.dot(self.w_ng.T, np.dot(K_nn, self.w_ng)))
         self.cost = residual_cost + curvature_cost + rotation_cost
+        self.residual_cost, self.curvature_cost, self.rotation_cost = residual_cost, curvature_cost, rotation_cost
         if verbose:
             print "cost = residual + curvature + rotation"
             print " %.3g = %.3g + %.3g + %.3g"%(self.cost, residual_cost, curvature_cost, rotation_cost)
@@ -323,7 +324,12 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
     print "best index", i_best
     print "best angle", zrots[i_best]*180/np.pi
 
-    return fs[i_best]
+    best_f = fs[i_best]
+
+    if plotting:
+        plot_orig_and_warped_clouds(best_f.transform_points, x_nd, y_md)   
+
+    return best_f
 
 def fit_affine_by_tpsrpm(x_nd, y_md):
     # use tps-rpm to get correspondences, then fit an affine transformation by least squares

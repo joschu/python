@@ -12,6 +12,8 @@ def get_manipulator(pr2, lr):
     manip = pr2.robot.GetManipulator(manip_name)
     return manip
 
+### trajectory optimization initialized with graph search result ###
+
 def get_ik_request(manip_name, link_name, xyz_end, quat_end, traj_init, xyzs, quats):
     n_steps = len(traj_init)
     request = {
@@ -85,7 +87,8 @@ def do_traj_ik_graph_search_opt(pr2, lr, gripper_poses):
     prob = trajoptpy.ConstructProblem(s, pr2.env)
     result = trajoptpy.OptimizeProblem(prob)
 
-# do ik using the graph search algorithm
+### graph search algorithm ###
+
 def do_traj_ik_graph_search(pr2, lr, gripper_poses):
     manip = get_manipulator(pr2, lr)
     hmats = [juc.pose_to_hmat(pose) for pose in gripper_poses]
@@ -114,7 +117,8 @@ def do_traj_ik_graph_search(pr2, lr, gripper_poses):
 
     return best_path
 
-# do ik using the openrave ik
+### openrave ik ###
+
 def do_traj_ik_default(pr2, lr, gripper_poses):
     gripper_xyzs, gripper_quats = [], []
     for pose in gripper_poses:
@@ -125,7 +129,8 @@ def do_traj_ik_default(pr2, lr, gripper_poses):
     joint_positions, inds = trajectories.make_joint_traj(gripper_xyzs, gripper_quats, manip, "base_footprint", "%s_gripper_tool_frame"%lr, filter_options = 1+18)
     return joint_positions
 
-# do ik by calling the plan_traj service
+### call the plan_traj service to do ik ###
+
 def do_traj_ik_opt(pr2, lr, gripper_poses):
     plan_traj_req = PlanTrajRequest()
     plan_traj_req.manip = "rightarm" if lr == 'r' else "leftarm"

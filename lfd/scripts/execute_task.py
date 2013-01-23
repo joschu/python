@@ -17,6 +17,7 @@ parser.add_argument("--use_tracking", action="store_true")
 parser.add_argument("--reg_final", type=float, default=.025)
 parser.add_argument("--use_rigid", action="store_true")
 parser.add_argument("--cloud_topic", type=str, default="/preprocessor/points")
+parser.add_argument("--delay_before_look", type=float, default=-1)
 args = parser.parse_args()
 
 
@@ -150,6 +151,9 @@ class LookAtObject(smach.State):
         Globals.pr2.lgrip.set_angle(.08)
         Globals.pr2.join_all()
 
+        if args.delay_before_look > 0:
+            rospy.loginfo('sleeping for %f secs before looking', args.delay_before_look)
+            rospy.sleep(args.delay_before_look)
 
         if args.test:
             xyz = np.squeeze(np.asarray(demos[select_from_list(demos.keys())]["cloud_xyz"]))
@@ -388,7 +392,6 @@ class ExecuteTrajectory(smach.State):
             
 
     def execute(self, userdata):
-        raw_input('about to execute')
         #if not args.test: draw_table()        
         Globals.pr2.update_rave()
         if yes_or_no('about to execute trajectory. save?'):
