@@ -7,6 +7,8 @@ import yaml
 import numpy as np
 import os.path as osp
 
+# Tests that warping does the right thing for a simple translation of the target (everything else stays the same)
+
 TRANSLATION_PARAM_FILE = osp.join(osp.dirname(__file__), "multi_item/multi_item_params/translation_params.yaml")
 
 def report((x, msg)):
@@ -54,7 +56,6 @@ def test_cup_pour_init():
 
 # MAKE SURE THAT ROSCORE IS RUNNING FOR THIS TEST, BECAUSE MULTI_ITEM_MAKE_VERB_TRAJ DOES PLOTTING FOR RVIZ
 
-# tests that if the target object is the same, then the difference between the demo and experiment special point trajectories are the translation between the the demo and experiment target objects
 def test_translation(demo_name, exp_name, data_dir):
     test_cup_pour_init()
 

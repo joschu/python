@@ -8,15 +8,23 @@ import os.path as osp
 import os
 import argparse
 
+# Moves a pr2 by using data from demonstrations.
+# Uses the scene from one demonstration as the demo scene and the scene from another demonstration as the experiment scene.
+# Used in simulation (Gazebo)
+# roscore needs to be running for this test; Gazebo or the actual robot should be started already so roscore shouldn't need to be started separately
+
 EMPTY_MOVE_PARAM_FILE = osp.join(osp.dirname(osp.abspath(__file__)), "multi_item/multi_item_params/empty_move_params.yaml")
 TEST_DATA_DIR = "multi_item/empty_move_data"
 
+# gets the parameters from the parameters file for the test
+# currently, the only parameter is a fake table
 def get_test_params():
     f = open(EMPTY_MOVE_PARAM_FILE, 'r')
     params = yaml.load(f)
     f.close()
     return params
 
+# sets the table parameters using the values in the parameter file
 def set_table_params():
     params = get_test_params()
     table_bounds = params["table_bounds"]
@@ -30,8 +38,8 @@ def move_to_start_pos(pr2):
     pr2.rarm.goto_posture('side')
     pr2.larm.goto_posture('side')
     pr2.join_all()
-    
-def pour_empty_move_init():
+
+def empty_move_init():
     set_table_params()
     exec_verb_traj.Globals.setup()
     multi_item_make_verb_traj.Globals.setup()
@@ -39,7 +47,7 @@ def pour_empty_move_init():
 
 # makes the PR2 go through motions using fake data
 def do_empty_move(demo_name, exp_name, test_dir_name):
-    pour_empty_move_init()
+    empty_move_init()
 
     verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=osp.join("test", TEST_DATA_DIR, test_dir_name))
 
@@ -51,6 +59,7 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
             prev_exp_data = verb_data_accessor.get_demo_stage_data(prev_exp_info.stage_name)
             prev_exp_pc = prev_exp_data["object_cloud"][prev_exp_info.item]["xyz"]
         else:
+            # first stage has no previous items
             prev_demo_info, prev_exp_info, prev_exp_data, prev_exp_pc = None, None, None, None
 
         # info and data for current stage
@@ -77,6 +86,9 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
             if not yn:
                 break
 
+# looks in the test data directory for all demos
+# assumes that there is only one verb for each test data directory
+# returns a dictionary: { verb -> (test directory name, [list of demo names]) }
 def get_test_demos():
     abs_test_dir = osp.join(osp.dirname(osp.abspath(__file__)), TEST_DATA_DIR)
     test_demo_dirs = os.listdir(abs_test_dir)
@@ -96,12 +108,19 @@ def get_args():
     args = parser.parse_args()
     return args
 
+def print_usage():
+    for verb, info in get_test_demos().items():
+        print verb, ":", info
+    print "verb is the verb name"
+    print "item1 is a unique part of the demo name to use for the demonstration scene"
+    print "item2 is a unique part of the demo name to use for the experiment scene"
+
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
         rospy.init_node("test_multi_item_empty_move",disable_signals=True)
 
     if len(sys.argv) == 1:
-        print get_test_demos()
+        print_usage()
 
     args = get_args()
     all_test_demos = get_test_demos()

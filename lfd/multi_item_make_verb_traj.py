@@ -164,7 +164,9 @@ def get_cur_exp_gripper_traj_mats(cur_exp_spec_pt_traj_mats, prev_demo_to_exp_gr
     cur_exp_gripper_traj_mats = [np.dot(spec_pt_mat, cur_exp_inv_spec_pt_transform) for spec_pt_mat in cur_exp_spec_pt_traj_mats]
     return cur_exp_gripper_traj_mats
 
-def set_traj_fields_for_response(warped_stage_data, traj, arm, frame_id):
+# sets fields of traj in the MakeTrajectoryResponse
+def set_traj_fields_for_response(warped_stage_data, resp, arm, frame_id):
+    traj = resp.traj
     gripper_data_key = "%s_gripper_tool_frame" % (arm)
     gripper_joint_key = "%s_gripper_joint" % (arm)
     if arm == 'r':
@@ -216,8 +218,7 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_cloud, frame_id, s
     warped_stage_data = group_to_dict(cur_verb_stage_data) # deep copy it
 
     resp = MakeTrajectoryResponse()
-    traj = resp.traj
-    traj.arms_used = arms_used
+    resp.traj.arms_used = arms_used
 
     # find the target transformation for the experiment scene
     cur_demo_to_exp_transform = get_cur_demo_to_exp_transform(cur_verb_stage_data["object_cloud"][current_stage_info.item]["xyz"],
@@ -246,7 +247,7 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_cloud, frame_id, s
         warped_stage_data[gripper_data_key]["position"] = warped_transs
         warped_stage_data[gripper_data_key]["orientation"] = warped_rots
 
-        set_traj_fields_for_response(warped_stage_data, traj, arm, frame_id)
+        set_traj_fields_for_response(warped_stage_data, resp, arm, frame_id)
 
         # save the demo special point traj for plotting
         demo_spec_pt_xyzs, exp_spec_pt_xyzs = [], []
@@ -257,19 +258,22 @@ def make_traj_multi_stage_do_work(current_stage_info, cur_exp_cloud, frame_id, s
     Globals.handles = []
     plot_original_and_warped_demo_and_spec_pt(cur_verb_stage_data, warped_stage_data,
                                               demo_spec_pt_xyzs, exp_spec_pt_xyzs,
-                                              arms_used, traj)
+                                              arms_used)
 
     return resp
 
+# plots a trajectory in rviz; uses RvizWrapper function that displays arrows giving the orientation of the gripper(s)
 def plot_traj(xyzs, rgba, quats=None):
     pose_array = juc.array_to_pose_array(asarray(xyzs), 'base_footprint', quats)
     Globals.handles.append(Globals.rviz.draw_traj_points(pose_array, rgba = rgba, ns = "multi_item_make_verb_traj_service"))
 
+# plots the special point trajectory; uses the RvizWrapper function that displays points
 def plot_spec_pts(xyzs, rgba):
     pose_array = juc.array_to_pose_array(asarray(xyzs), 'base_footprint')
     Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = rgba, ns = "multi_item_make_verb_traj_service"))
 
-def plot_original_and_warped_demo_and_spec_pt(best_demo, warped_demo, spec_pt_xyzs, warped_spec_pt_xyzs, arms_used, traj):
+# plots the original and warped gripper trajectories; also plots the original and warped special point trajs
+def plot_original_and_warped_demo_and_spec_pt(best_demo, warped_demo, spec_pt_xyzs, warped_spec_pt_xyzs, arms_used):
     if arms_used in "lb":
         plot_traj(asarray(best_demo["l_gripper_tool_frame"]["position"]),
                   (1,0,0,1),
