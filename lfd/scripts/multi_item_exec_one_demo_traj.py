@@ -70,7 +70,7 @@ def get_all_clouds_pc2(num_objs):
         clouds.append(next_cloud)
     return clouds
 
-# execute for a single stage (manually do the previous stage)
+# execute for a single stage test (manually do the previous stage)
 def do_single(demo_name, stage_num, prev_demo_index, verb_data_accessor, prev_and_cur_pc2):
     if stage_num == 0:
         do_stage(demo_name, stage_num, None, None, prev_and_cur_pc2[1], verb_data_accessor)
@@ -86,13 +86,21 @@ def do_single(demo_name, stage_num, prev_demo_index, verb_data_accessor, prev_an
 
         do_stage(demo_name, stage_num, prev_stage_info, prev_and_cur_pc2[0], prev_and_cur_pc2[1], verb_data_accessor)
 
-# execute a stage as part of a full experiment
+# execute a single stage
 def do_stage(demo_name, stage_num, prev_stage_info, prev_exp_pc2, cur_exp_pc2, verb_data_accessor):
     stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
     make_req = get_trajectory_request(stage_info.verb, cur_exp_pc2)
 
-    make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_pc2, verb_data_accessor, transform_type="tps_zrot")
-    #make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, stage_info, stage_num, prev_stage_info, prev_exp_pc2, verb_data_accessor, transform_type="rigid2d")
+    if stage_num == 0:
+        grip_to_world_transform_func = None
+    else:
+        grip_to_world_transform_func = multi_item_make_verb_traj.make_grip_to_world_transform_tf("%s_gripper_tool_frame" %
+                                                                                                     verb_data_accessor.get_stage_info(demo_name, stage_num).arms_used)
+
+    make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, stage_info,
+                                                                stage_num, prev_stage_info,
+                                                                prev_exp_pc2, verb_data_accessor,
+                                                                grip_to_world_transform_func, "tps_zrot")
     
     yn = yes_or_no("continue?")
     if yn:
