@@ -73,7 +73,7 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
         else:
             grip_to_world_transform_func = multi_item_make_verb_traj.make_grip_to_world_transform_tf("%s_gripper_tool_frame" % cur_exp_info.arms_used)
 
-        warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, cur_exp_pc, "base_footprint",
+        warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(demo_name, cur_exp_pc, "base_footprint",
                                                                                    stage_num, prev_demo_info, prev_exp_pc,
                                                                                    verb_data_accessor, grip_to_world_transform_func, transform_type="tps_zrot")
 

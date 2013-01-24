@@ -202,7 +202,8 @@ def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_grip
         Globals.pr2.update_rave()
         current_pos = Globals.pr2.robot.GetLink("%s_gripper_tool_frame"%lr).GetTransform()
         before_traj = get_lin_interp_poses(current_pos, juc.pose_to_hmat(gripper_poses[0]), n_steps)
-        final_gripper_poses = np.concatenate((np.array(before_traj), gripper_poses))
+        prepended_gripper_poses = np.concatenate((np.array(before_traj), gripper_poses))
+        final_gripper_poses = prepended_gripper_poses
 
         #do ik
         joint_positions = traj_ik_func(Globals.pr2, lr, final_gripper_poses)

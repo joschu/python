@@ -97,10 +97,10 @@ def do_stage(demo_name, stage_num, prev_stage_info, prev_exp_pc2, cur_exp_pc2, v
         grip_to_world_transform_func = multi_item_make_verb_traj.make_grip_to_world_transform_tf("%s_gripper_tool_frame" %
                                                                                                      verb_data_accessor.get_stage_info(demo_name, stage_num).arms_used)
 
-    make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, stage_info,
+    make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, demo_name,
                                                                 stage_num, prev_stage_info,
                                                                 prev_exp_pc2, verb_data_accessor,
-                                                                grip_to_world_transform_func, "tps_zrot")
+                                                                "tps_zrot")
     
     yn = yes_or_no("continue?")
     if yn:

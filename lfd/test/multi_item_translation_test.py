@@ -88,7 +88,7 @@ def test_translation(demo_name, exp_name, data_dir):
 
     grip_to_world_trans_func = multi_item_make_verb_traj.make_grip_to_world_transform_hmat(prev_grip_to_world_trans)
 
-    warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(cur_demo_info, cur_exp_pc, None, current_stage, prev_demo_info, prev_exp_pc, verb_data_accessor, grip_to_world_trans_func, "tps")
+    warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(demo_name, cur_exp_pc, None, current_stage, prev_demo_info, prev_exp_pc, verb_data_accessor, grip_to_world_trans_func, "tps")
 
     # get the actual transformation between the old and new target objects (just a translation for this test)
     params = get_test_params()
