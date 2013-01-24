@@ -13,8 +13,8 @@ import argparse
 # Used in simulation (Gazebo)
 # roscore needs to be running for this test; Gazebo or the actual robot should be started already so roscore shouldn't need to be started separately
 
-EMPTY_MOVE_PARAM_FILE = osp.join(osp.dirname(osp.abspath(__file__)), "multi_item/multi_item_params/empty_move_params.yaml")
 TEST_DATA_DIR = "multi_item/empty_move_data"
+EMPTY_MOVE_PARAM_FILE = osp.join(osp.dirname(__file__), TEST_DATA_DIR, "empty_move_params.yaml")
 
 # gets the parameters from the parameters file for the test
 # currently, the only parameter is a fake table

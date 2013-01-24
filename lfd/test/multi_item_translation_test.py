@@ -9,7 +9,8 @@ import os.path as osp
 
 # Tests that warping does the right thing for a simple translation of the target (everything else stays the same)
 
-TRANSLATION_PARAM_FILE = osp.join(osp.dirname(__file__), "multi_item/multi_item_params/translation_params.yaml")
+TEST_DATA_DIR = "multi_item/translation_test_data"
+TRANSLATION_PARAM_FILE = osp.join(osp.dirname(__file__), TEST_DATA_DIR, "translation_params.yaml")
 
 def report((x, msg)):
     if x:
@@ -59,7 +60,7 @@ def test_cup_pour_init():
 def test_translation(demo_name, exp_name, data_dir):
     test_cup_pour_init()
 
-    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=("test/multi_item/translation_test_data/"+data_dir))
+    verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=osp.join("test", TEST_DATA_DIR, data_dir))
 
     current_stage = 1
 
@@ -91,7 +92,7 @@ def test_translation(demo_name, exp_name, data_dir):
     warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(demo_name, cur_exp_pc,
                                                                                None, current_stage,
                                                                                prev_demo_info, prev_exp_pc,
-                                                                               verb_data_accessor, grip_to_world_trans_func,
+                                                                               verb_data_accessor, world_to_grip_transform_func,
                                                                                "tps")
 
     # get the actual transformation between the old and new target objects (just a translation for this test)
