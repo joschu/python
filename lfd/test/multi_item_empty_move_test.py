@@ -97,7 +97,7 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
 # returns a dictionary: { verb -> (test directory name, [list of demo names]) }
 def get_test_demos():
     abs_test_dir = osp.join(osp.dirname(osp.abspath(__file__)), TEST_DATA_DIR)
-    test_demo_dirs = os.listdir(abs_test_dir)
+    test_demo_dirs = [entry for entry in os.listdir(abs_test_dir) if osp.isdir(osp.join(abs_test_dir, entry))]
     test_demos = {}
     for test_demo_dir in test_demo_dirs:
         verb_data_accessor = multi_item_verbs.VerbDataAccessor(osp.join(abs_test_dir, test_demo_dir))
