@@ -77,13 +77,15 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
                                                                                    stage_num, prev_demo_info, prev_exp_pc,
                                                                                    verb_data_accessor, grip_to_world_transform_func, transform_type="tps_zrot")
 
+        
         yn = yes_or_no("continue?")
         if yn:
+            can_move_lower = (stage_num == 0)
             traj = warped_traj_resp.traj
             exec_verb_traj.exec_traj_do_work(traj.l_gripper_poses.poses, traj.l_gripper_angles,
                                              traj.r_gripper_poses.poses, traj.r_gripper_angles,
-                                             traj_ik_func=ik_functions.do_traj_ik_graph_search,
-                                             obj_cloud_xyz=cur_exp_pc, obj_name=cur_demo_info.item)
+                                             ik_functions.do_traj_ik_graph_search, cur_exp_pc,
+                                             cur_demo_info.item, can_move_lower)
 
         if stage_num < verb_data_accessor.get_num_stages(demo_name)-1:
             yn = yes_or_no("continue to next stage?")

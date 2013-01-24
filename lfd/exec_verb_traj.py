@@ -168,8 +168,28 @@ def get_lin_interp_poses(start_pos, end_pos, n_steps):
     xyzs = math_utils.linspace2d(xyz_start, xyz_end, n_steps)
     quats = [rave.quatSlerp(quat_start, quat_end, t) for t in np.linspace(0,1,n_steps)]
     hmats = [rave.matrixFromPose(np.r_[quat[3],quat[:3],xyz]) for (xyz, quat) in zip(xyzs, quats)]
-    gripper_poses = [juc.hmat_to_pose(hmat) for hmat in hmats]   
+    gripper_poses = np.array([juc.hmat_to_pose(hmat) for hmat in hmats])
     return gripper_poses
+
+# prepends linearly interpolated path from current_pos to the start of the current path
+def prepend_path_to_start(current_pos, gripper_poses, gripper_angles, n_steps):
+    before_traj = get_lin_interp_poses(current_pos, juc.pose_to_hmat(gripper_poses[0]), n_steps)
+    prepended_gripper_poses = np.concatenate((np.array(before_traj), gripper_poses))
+    updated_angles = np.concatenate((np.ones(n_steps) * gripper_angles[0], gripper_angles))
+    return prepended_gripper_poses, updated_angles
+    
+# remove poses lower than the current position at the beginning of the trajectory 
+def remove_lower_poses(current_pos, gripper_poses, gripper_angles):
+    xyz, quat = juc.hmat_to_trans_rot(current_pos)
+    z_floor = xyz[2]
+    low_index = 0
+    for pose in gripper_poses:
+        if pose.position.z >= z_floor:
+            break
+        low_index += 1
+    removed_lower_poses = gripper_poses[low_index:]
+    updated_angles = gripper_angles[low_index:]
+    return removed_lower_poses, updated_angles
 
 # wrapper for exec_traj_do_work which takes in a ros message
 def exec_traj(req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=None, obj_name=""):
@@ -185,25 +205,28 @@ def unwrap_angles(angles):
         angles[:, joint_num] = np.unwrap(angles[:, joint_num])
     return angles
 
-def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_gripper_angles, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_cloud_xyz=None, obj_name=""):
+def exec_traj_do_work(l_gripper_poses, l_gripper_angles, r_gripper_poses, r_gripper_angles, traj_ik_func, obj_cloud_xyz, obj_name, can_move_lower=True):
     del Globals.handles[1:]
     grab_obj_kinbody = setup_obj_rave(obj_cloud_xyz, obj_name) if obj_cloud_xyz is not None else None
-    n_steps = 15
     body_traj = {}
     for (lr, gripper_poses, gripper_angles) in zip("lr", [l_gripper_poses, r_gripper_poses], [l_gripper_angles, r_gripper_angles]):
         if len(gripper_poses) == 0: continue
 
-        # process gripper angles so grabbing objects works better
-        unprocessed_gripper_angles = np.array(gripper_angles)
-        gripper_angles_grabbing = process_gripper_angles_for_grabbing(lr, unprocessed_gripper_angles)
-        final_gripper_angles = np.concatenate((np.ones(n_steps)*gripper_angles_grabbing[0], gripper_angles_grabbing))
+        gripper_poses, gripper_angles = np.array(gripper_poses), np.array(gripper_angles)
 
-        # prepend gripper_poses with a trajectory to get from the current gripper position to the start of gripper_poses
+        gripper_angles_grabbing = process_gripper_angles_for_grabbing(lr, gripper_angles)
+
         Globals.pr2.update_rave()
         current_pos = Globals.pr2.robot.GetLink("%s_gripper_tool_frame"%lr).GetTransform()
-        before_traj = get_lin_interp_poses(current_pos, juc.pose_to_hmat(gripper_poses[0]), n_steps)
-        prepended_gripper_poses = np.concatenate((np.array(before_traj), gripper_poses))
-        final_gripper_poses = prepended_gripper_poses
+
+        if can_move_lower:
+            gripper_poses_remove, gripper_angles_remove = gripper_poses, gripper_angles_grabbing
+        else:
+            gripper_poses_remove, gripper_angles_remove = remove_lower_poses(current_pos, gripper_poses, gripper_angles_grabbing)
+
+        gripper_poses_prepend, gripper_angles_prepend = prepend_path_to_start(current_pos, gripper_poses_remove, gripper_angles_remove, 15)
+
+        final_gripper_poses, final_gripper_angles = gripper_poses_prepend, gripper_angles_prepend
 
         #do ik
         joint_positions = traj_ik_func(Globals.pr2, lr, final_gripper_poses)

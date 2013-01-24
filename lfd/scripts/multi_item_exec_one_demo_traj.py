@@ -95,18 +95,20 @@ def do_stage(demo_name, stage_num, prev_stage_info, prev_exp_pc2, cur_exp_pc2, v
         grip_to_world_transform_func = None
     else:
         grip_to_world_transform_func = multi_item_make_verb_traj.make_grip_to_world_transform_tf("%s_gripper_tool_frame" %
-                                                                                                     verb_data_accessor.get_stage_info(demo_name, stage_num).arms_used)
+                                                                                                 verb_data_accessor.get_stage_info(demo_name, stage_num).arms_used)
 
     make_resp = multi_item_make_verb_traj.make_traj_multi_stage(make_req, demo_name,
                                                                 stage_num, prev_stage_info,
                                                                 prev_exp_pc2, verb_data_accessor,
                                                                 "tps_zrot")
     
+    can_move_lower = (stage_num == 0)
     yn = yes_or_no("continue?")
     if yn:
         exec_req = ExecTrajectoryRequest()
         exec_req.traj = make_resp.traj
-        exec_verb_traj.exec_traj(exec_req, traj_ik_func=ik_functions.do_traj_ik_graph_search, obj_pc=cur_exp_pc2, obj_name=stage_info.item)
+        exec_verb_traj.exec_traj(exec_req, traj_ik_func=ik_functions.do_traj_ik_graph_search,
+                                 obj_pc=cur_exp_pc2, obj_name=stage_info.item, can_move_lower=can_move_lower)
 
 # do a full experiment using the specified stages (stages are from different demos)
 # demo base name is the verb and items without the index (e.g. the demo base name for demo pour-cup-bowl0 is pour-cup-bowl)
