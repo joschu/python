@@ -69,13 +69,13 @@ def do_empty_move(demo_name, exp_name, test_dir_name):
         cur_exp_pc = cur_exp_data["object_cloud"][cur_exp_info.item]["xyz"]
 
         if stage_num == 0:
-            grip_to_world_transform_func = None
+            world_to_grip_transform_func = None
         else:
-            grip_to_world_transform_func = multi_item_make_verb_traj.make_grip_to_world_transform_tf("%s_gripper_tool_frame" % cur_exp_info.arms_used)
+            world_to_grip_transform_func = multi_item_make_verb_traj.make_world_to_grip_transform_tf("%s_gripper_tool_frame" % cur_exp_info.arms_used)
 
         warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(demo_name, cur_exp_pc, "base_footprint",
                                                                                    stage_num, prev_demo_info, prev_exp_pc,
-                                                                                   verb_data_accessor, grip_to_world_transform_func, transform_type="tps_zrot")
+                                                                                   verb_data_accessor, world_to_grip_transform_func, transform_type="tps_zrot")
 
         
         yn = yes_or_no("continue?")

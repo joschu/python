@@ -216,7 +216,7 @@ class RvizWrapper:
         self.ids = set([])
         register_deletion()
 
-    def draw_traj_points(self, pose_array, rgba = (0,1,0,1), width = .05, ns = "default_ns", duration=0):
+    def draw_traj_points(self, pose_array, rgba = (0,1,0,1), arrow_scale = .05, ns = "default_ns", duration=0):
         marker_array = MarkerArray()
         for pose in pose_array.poses:
             marker = Marker(type=Marker.ARROW,action=Marker.ADD)
@@ -224,7 +224,7 @@ class RvizWrapper:
             marker.pose = pose
             marker.lifetime = rospy.Duration(0)
             marker.color = stdm.ColorRGBA(*rgba)
-            marker.scale = gm.Vector3(width,width,width)
+            marker.scale = gm.Vector3(arrow_scale, arrow_scale, arrow_scale)
             marker.id = self.get_unused_id()
             marker.ns = ns
             marker_array.markers.append(marker)

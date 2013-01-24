@@ -60,22 +60,15 @@ def apply_tps_transform_to_hmat(tps_transform, hmat):
     return juc.trans_rot_to_hmat(warped_xyz[0], juc.mat2quat(warped_mat[0]))
 
 # make a function that transforms a point from the frame of the gripper with the tool to the world frame using tf
-def make_grip_to_world_transform_tf(gripper_frame_name):
-    def grip_to_world_transform_tf(point, inverse):
-        if not inverse:
-            return ru.transform_points(np.array([point]), ru.get_tf_listener(), "base_footprint", gripper_frame_name)[0]
-        else:
-            return ru.transform_points(np.array([point]), ru.get_tf_listener(), gripper_frame_name, "base_footprint")[0]
+def make_world_to_grip_transform_tf(gripper_frame_name):
+    def grip_to_world_transform_tf(point):
+        return ru.transform_points(np.array([point]), ru.get_tf_listener(), gripper_frame_name, "base_footprint")[0]
     return grip_to_world_transform_tf
 
 # make a function that transforms a point from the frame of the gripper with the tool to the world frame the supplied hmat
-def make_grip_to_world_transform_hmat(grip_to_world_hmat):
-    world_to_grip_hmat = np.linalg.inv(grip_to_world_hmat)
-    def grip_to_world_transform_hmat(point, inverse):
-        if not inverse:
-            return apply_mat_transform_to_xyz(grip_to_world_hmat, point)
-        else:
-            return apply_mat_transform_to_xyz(world_to_grip_hmat, point)
+def make_world_to_grip_transform_hmat(world_to_grip_hmat):
+    def grip_to_world_transform_hmat(point):
+        return apply_mat_transform_to_xyz(world_to_grip_hmat, point)
     return grip_to_world_transform_hmat
 
 def print_hmat_info(hmat, title):
@@ -89,8 +82,8 @@ def get_demo_to_exp_tool_transform(verb_data_accessor, tool_stage_info, exp_tool
     demo_tool_cloud_down = voxel_downsample(demo_tool_cloud, .02)
     exp_tool_cloud_down = voxel_downsample(exp_tool_cloud, .02)
     demo_to_exp_tool_transform = get_warping_transform(demo_tool_cloud_down,
-                                                            exp_tool_cloud_down,
-                                                            transform_type)
+                                                       exp_tool_cloud_down,
+                                                       transform_type)
     return demo_to_exp_tool_transform
 
 # returns the warping transform for the target object of the current stage
@@ -109,10 +102,10 @@ def get_demo_grip_traj_mats(target_stage_data, arm):
     return demo_target_grip_traj_mats
 
 # applies the special point translation to a gripper trajectory
-def get_demo_spec_pt_traj_mats(demo_target_grip_traj_mats, spec_pt_grip):
-    if np.all(spec_pt_grip == np.zeros(3)):
+def get_demo_spec_pt_traj_mats(demo_target_grip_traj_mats, spec_pt_in_grip):
+    if np.all(spec_pt_in_grip == np.zeros(3)):
         return demo_target_grip_traj_mats
-    grip_to_spec_pt_trans = jut.translation_matrix(spec_pt_grip)
+    grip_to_spec_pt_trans = jut.translation_matrix(spec_pt_in_grip)
     demo_spec_pt_traj_mats = [np.dot(gripper_mat, grip_to_spec_pt_trans) for gripper_mat in demo_target_grip_traj_mats]
     return demo_spec_pt_traj_mats
 
@@ -127,18 +120,25 @@ def get_warped_spec_pt_traj_mats(demo_spec_pt_traj_mats, demo_to_exp_target_tran
     warped_spec_pt_traj_mats = [juc.trans_rot_to_hmat(warped_spec_pt_traj_xyz, juc.mat2quat(warped_spec_pt_traj_orien)) for warped_spec_pt_traj_xyz, warped_spec_pt_traj_orien in zip(warped_spec_pt_traj_xyzs, warped_spec_pt_traj_oriens)]
     return warped_spec_pt_traj_mats
 
+def get_demo_tool_grip_to_world_transform(tool_stage_data, arm):
+    gripper_data_key = "%s_gripper_tool_frame" % (arm)
+    demo_tool_grip_pos = tool_stage_data[gripper_data_key]["position"][-1]
+    demo_tool_grip_orien = tool_stage_data[gripper_data_key]["orientation"][-1]
+    demo_tool_grip_to_world_transform = juc.trans_rot_to_hmat(demo_tool_grip_pos, demo_tool_grip_orien)
+    return demo_tool_grip_to_world_transform
+
 # gets the new gripper trajectory from the warped special point trajectory
-# gripper name is {l,r}_gripper_tool_frame
-def get_warped_grip_traj_mats(warped_spec_pt_traj_mats, demo_to_exp_tool_transform, spec_pt_grip, grip_to_world_transform_func, gripper_name):
+def get_warped_grip_traj_mats(warped_spec_pt_traj_mats, tool_stage_data, demo_to_exp_tool_transform, spec_pt_in_grip, world_to_grip_transform_func, arm):
     if demo_to_exp_tool_transform is None:
-        grip_to_spec_pt_transform = np.linalg.inv(jut.translation_matrix(spec_pt_grip))
+        grip_to_spec_pt_transform = np.linalg.inv(jut.translation_matrix(spec_pt_in_grip))
     else:
-        spec_pt_in_world = grip_to_world_transform_func(spec_pt_grip, inverse=False)
-        spec_pt_in_world_frame = jut.translation_matrix(spec_pt_in_world)
+        demo_tool_grip_to_world_transform = get_demo_tool_grip_to_world_transform(tool_stage_data, arm)
+        demo_spec_pt_in_world = apply_mat_transform_to_xyz(demo_tool_grip_to_world_transform, spec_pt_in_grip)
+        demo_spec_pt_in_world_frame = jut.translation_matrix(demo_spec_pt_in_world)
         # find the transformation from the new special point to the gripper frame
-        warped_spec_pt_in_world_frame = apply_tps_transform_to_hmat(demo_to_exp_tool_transform, spec_pt_in_world_frame)
+        warped_spec_pt_in_world_frame = apply_tps_transform_to_hmat(demo_to_exp_tool_transform, demo_spec_pt_in_world_frame)
         warped_spec_pt_in_world_trans, warped_spec_pt_in_world_rot = juc.hmat_to_trans_rot(warped_spec_pt_in_world_frame)
-        warped_spec_pt_in_grip_trans = grip_to_world_transform_func(warped_spec_pt_in_world_trans, inverse=True)
+        warped_spec_pt_in_grip_trans = world_to_grip_transform_func(warped_spec_pt_in_world_trans)
         warped_spec_pt_in_grip_rot = warped_spec_pt_in_world_rot
         warped_spec_pt_in_grip_frame = juc.trans_rot_to_hmat(warped_spec_pt_in_grip_trans, warped_spec_pt_in_grip_rot)
         print_hmat_info(warped_spec_pt_in_grip_frame, "warped_spec_pt_in_grip_frame")
@@ -167,20 +167,20 @@ def make_traj_multi_stage(req, demo_name, stage_num, tool_stage_info, prev_exp_c
     exp_tool_cloud = None if stage_num == 0 else pc2xyzrgb(prev_exp_cloud_pc2)[0]
     exp_target_cloud = pc2xyzrgb(req.object_clouds[0])[0]
     clouds_frame_id = req.object_clouds[0].header.frame_id
-    grip_to_world_transform_func = make_grip_to_world_transform_tf("%s_gripper_tool_frame" % current_stage_info.arms_used)
+    world_to_grip_transform_func = make_world_to_grip_transform_tf("%s_gripper_tool_frame" % current_stage_info.arms_used)
     return make_traj_multi_stage_do_work(demo_name, exp_target_cloud, clouds_frame_id,
                                          stage_num, tool_stage_info, exp_tool_cloud,
-                                         verb_data_accessor, grip_to_world_transform_func, transform_type)
+                                         verb_data_accessor, world_to_grip_transform_func, transform_type)
 
 # make trajectory for a certain stage of a task
 # exp_target_cloud: the point cloud of the target object of the experiment scene in the world frame
 # frame_id: frame id to use for the poses returned in the trajectory
-# stage_num: current stage number; prev information and grip_to_world_transform_func is unused if this is zero
+# stage_num: current stage number; prev information and world_to_grip_transform_func is unused if this is zero
 # exp_tool_cloud: the point cloud of the tool object of the experiment scene in the world frame
-# grip_to_world_transform_func: transforms a point in the frame of the gripper holding the tool to one in the world frame must correspond to the gripper holding the tool; if no gripper is using a tool, this can be None
+# world_to_grip_transform_func: transforms a point in the frame of the gripper holding the tool to one in the world frame must correspond to the gripper holding the tool; if no gripper is using a tool, this can be None
 # clouds here should have already been processed into lists of xyzs
 # if a tool is used, only one arm must be used for the stage
-def make_traj_multi_stage_do_work(demo_name, exp_target_cloud, frame_id, stage_num, tool_stage_info, exp_tool_cloud, verb_data_accessor, grip_to_world_transform_func, transform_type):
+def make_traj_multi_stage_do_work(demo_name, exp_target_cloud, frame_id, stage_num, tool_stage_info, exp_tool_cloud, verb_data_accessor, world_to_grip_transform_func, transform_type):
     
     current_stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
     arms_used = current_stage_info.arms_used
@@ -189,15 +189,17 @@ def make_traj_multi_stage_do_work(demo_name, exp_target_cloud, frame_id, stage_n
     assert stage_num == 0 or (tool_stage_info.item == "none") or (arms_used in ['r', 'l'])
 
     if stage_num == 0 or tool_stage_info.item == "none":
+        tool_stage_data = None
         # don't do any extra transformation for the first stage
         demo_to_exp_tool_transform = None
         # no special point translation for first stage since no tool yet
-        spec_pt_grip = np.zeros(3)
+        spec_pt_in_grip = np.zeros(3)
     else:
+        tool_stage_data = verb_data_accessor.get_demo_stage_data(tool_stage_info.stage_name)
         # make sure that the tool stage only uses one arm (the one with the tool)
         demo_to_exp_tool_transform = get_demo_to_exp_tool_transform(verb_data_accessor, tool_stage_info,
-                                                                              exp_tool_cloud, transform_type)
-        spec_pt_grip = np.zeros(3) if tool_stage_info.special_point is None else tool_stage_info.special_point
+                                                                    exp_tool_cloud, transform_type)
+        spec_pt_in_grip = np.zeros(3) if tool_stage_info.special_point is None else tool_stage_info.special_point
 
     current_stage_data = verb_data_accessor.get_demo_stage_data(current_stage_info.stage_name)
 
@@ -218,17 +220,18 @@ def make_traj_multi_stage_do_work(demo_name, exp_target_cloud, frame_id, stage_n
         demo_target_grip_traj_mats = get_demo_grip_traj_mats(current_stage_data, arm)
 
         # get the demo special point trajectory by applying the special point translation
-        demo_spec_pt_traj_mats = get_demo_spec_pt_traj_mats(demo_target_grip_traj_mats, spec_pt_grip)
+        demo_spec_pt_traj_mats = get_demo_spec_pt_traj_mats(demo_target_grip_traj_mats, spec_pt_in_grip)
 
         # get the warped special point trajectory by applying the target warping transformation to the demo special point trajectory
         warped_spec_pt_traj_mats = get_warped_spec_pt_traj_mats(demo_spec_pt_traj_mats, demo_to_exp_target_transform)
 
         # get the warped trajectory for the gripper using the tool warping transformation
         warped_grip_traj_mats = get_warped_grip_traj_mats(warped_spec_pt_traj_mats,
+                                                          tool_stage_data,
                                                           demo_to_exp_tool_transform,
-                                                          spec_pt_grip,
-                                                          grip_to_world_transform_func,
-                                                          gripper_data_key)
+                                                          spec_pt_in_grip,
+                                                          world_to_grip_transform_func,
+                                                          arm)
 
         warped_transs, warped_rots = juc.hmats_to_transs_rots(warped_grip_traj_mats)
         warped_stage_data[gripper_data_key]["position"] = warped_transs
@@ -243,11 +246,27 @@ def make_traj_multi_stage_do_work(demo_name, exp_target_cloud, frame_id, stage_n
             exp_spec_pt_xyzs = juc.hmats_to_transs_rots(warped_spec_pt_traj_mats)[0]
 
     del Globals.handles[:]
+
+    current_spec_pt = current_stage_info.special_point
+    if stage_num == 0 and current_spec_pt is not None:
+        plot_demo_and_warped_tool_spec_pt(current_spec_pt, current_stage_data, demo_to_exp_target_transform, arms_used)
+
     plot_original_and_warped_demo_and_spec_pt(current_stage_data, warped_stage_data,
                                               demo_spec_pt_xyzs, exp_spec_pt_xyzs,
                                               arms_used)
 
     return resp
+
+# plots the special point of a tool for the tool grab stage
+def plot_demo_and_warped_tool_spec_pt(spec_pt_in_grip, tool_stage_data, demo_to_exp_tool_transform, arm):
+    demo_tool_grip_to_world_transform = get_demo_tool_grip_to_world_transform(tool_stage_data, arm)
+    demo_spec_pt_in_world = apply_mat_transform_to_xyz(demo_tool_grip_to_world_transform, spec_pt_in_grip)
+    demo_spec_pt_in_world_frame = jut.translation_matrix(demo_spec_pt_in_world)
+    plot_spec_pts(np.array([demo_spec_pt_in_world]), (1,1,0,1))
+
+    warped_spec_pt_in_world_frame = apply_tps_transform_to_hmat(demo_to_exp_tool_transform, demo_spec_pt_in_world_frame)
+    warped_spec_pt_in_world_trans, warped_spec_pt_in_world_rot = juc.hmat_to_trans_rot(warped_spec_pt_in_world_frame)
+    plot_spec_pts(np.array([warped_spec_pt_in_world_trans]), (1,1,0,1))
 
 # plots a trajectory in rviz; uses RvizWrapper function that displays arrows giving the orientation of the gripper(s)
 def plot_traj(xyzs, rgba, quats=None):
@@ -257,7 +276,7 @@ def plot_traj(xyzs, rgba, quats=None):
 # plots the special point trajectory; uses the RvizWrapper function that displays points
 def plot_spec_pts(xyzs, rgba):
     pose_array = juc.array_to_pose_array(asarray(xyzs), 'base_footprint')
-    Globals.handles.append(Globals.rviz.draw_curve(pose_array, rgba = rgba, ns = "multi_item_make_verb_traj_service"))
+    Globals.handles.append(Globals.rviz.draw_traj_points(pose_array, rgba = rgba, ns = "multi_item_make_verb_traj_service"))
 
 # plots the original and warped gripper trajectories; also plots the original and warped special point trajs
 def plot_original_and_warped_demo_and_spec_pt(best_demo, warped_demo, spec_pt_xyzs, warped_spec_pt_xyzs, arms_used):

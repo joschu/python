@@ -84,11 +84,15 @@ def test_translation(demo_name, exp_name, data_dir):
     # calculate the transformation from the world frame to the gripper frame
     prev_exp_gripper_pos = prev_exp_data[gripper_data_key]["position"][-1]
     prev_exp_gripper_orien = prev_exp_data[gripper_data_key]["orientation"][-1]
-    prev_grip_to_world_trans = juc.trans_rot_to_hmat(prev_exp_gripper_pos, prev_exp_gripper_orien)
+    prev_world_to_grip_trans = np.linalg.inv(juc.trans_rot_to_hmat(prev_exp_gripper_pos, prev_exp_gripper_orien))
 
-    grip_to_world_trans_func = multi_item_make_verb_traj.make_grip_to_world_transform_hmat(prev_grip_to_world_trans)
+    world_to_grip_transform_func = multi_item_make_verb_traj.make_world_to_grip_transform_hmat(prev_world_to_grip_trans)
 
-    warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(demo_name, cur_exp_pc, None, current_stage, prev_demo_info, prev_exp_pc, verb_data_accessor, grip_to_world_trans_func, "tps")
+    warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(demo_name, cur_exp_pc,
+                                                                               None, current_stage,
+                                                                               prev_demo_info, prev_exp_pc,
+                                                                               verb_data_accessor, grip_to_world_trans_func,
+                                                                               "tps")
 
     # get the actual transformation between the old and new target objects (just a translation for this test)
     params = get_test_params()
