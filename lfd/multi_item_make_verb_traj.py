@@ -185,10 +185,10 @@ def make_traj_multi_stage_do_work(demo_name, exp_target_cloud, frame_id, stage_n
     current_stage_info = verb_data_accessor.get_stage_info(demo_name, stage_num)
     arms_used = current_stage_info.arms_used
 
-    # make sure this is the first stage or there is no tool or there is a tool and only one arm is used
-    assert stage_num == 0 or (tool_stage_info.item == "none") or (arms_used in ['r', 'l'])
+    # make sure this is the first stage (no tool) or only one arm is being used with a tool
+    assert stage_num == 0 or or (arms_used in ['r', 'l'])
 
-    if stage_num == 0 or tool_stage_info.item == "none":
+    if stage_num == 0:
         tool_stage_data = None
         # don't do any extra transformation for the first stage
         demo_to_exp_tool_transform = None

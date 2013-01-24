@@ -74,13 +74,10 @@ def rename_bag_file(name_for_motion, n_tries):
 
 # gets a point cloud and records a trajectory for a certain stage
 def record_demo_stage(name_for_motion, item_name, data_dir):
-    if item_name != "none":
-        os.chdir(data_dir + "/images")
+    os.chdir(data_dir + "/images")
+    get_point_cloud(name_for_motion, item_name)
+    while not yes_or_no("Ready to continue?"):
         get_point_cloud(name_for_motion, item_name)
-        while not yes_or_no("Ready to continue?"):
-            get_point_cloud(name_for_motion, item_name)
-    else:
-        print colorize("no target to select for this stage", color="red", bold=True)
 
     os.chdir(data_dir + "/bags")
     record_trajectory(args.dry_run, name_for_motion)
