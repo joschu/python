@@ -178,18 +178,20 @@ def test_zrot2():
     xyz2 = xyz2[norms(xyz1,1) < 1]*.2
     from numpy import sin, cos, pi
     
-    f = registration.tps_rpm_zrot(xyz1, xyz2, plotting=1,reg_init=2,reg_final=.5,n_iter=8, verbose=False, cost_per_radian = 2)
+    f = registration.tps_rpm_zrot(xyz1, xyz2, plotting=1,reg_init=2,reg_final=.05,n_iter=8, verbose=False, cost_per_radian = 2)
 
-def test_pcs():
+def test_pcs(fname_src,fname_targ):
     import rospy
     if rospy.get_name() == "/unnamed": rospy.init_node('test_registration_3d',disable_signals=True)
-    demo_cup = np.loadtxt("test_pcs/demo_cup.pc")
-    demo_marker = np.loadtxt("test_pcs/demo_marker.pc")
-    exp_cup = np.loadtxt("test_pcs/exp_cup.pc")
-    exp_marker = np.loadtxt("test_pcs/exp_marker.pc")
-    f = registration.tps_rpm_zrot(demo_cup, exp_cup, plotting=1,reg_init=2,reg_final=.5,n_iter=8, verbose=False, dist2_per_pt_per_radian=1e-6)
-    f = registration.tps_rpm_zrot(demo_marker, exp_marker, plotting=1,reg_init=2,reg_final=.5,n_iter=8, verbose=False, dist2_per_pt_per_radian=1e-6)
     
+    src = np.loadtxt(fname_src)
+    targ = np.loadtxt(fname_targ)
+    
+    good_inds = targ[:,0].argsort()[:-3]
+    targ = targ[good_inds,:]
+    
+    f = registration.tps_rpm_zrot(src,targ, plotting=1,reg_init=2,reg_final=.5,n_iter=8, verbose=False, dist2_per_pt_per_radian=1e-6)
+
 
 if __name__ == "__main__":
-    test_pcs()
+    test_pcs("test_pcs/bluecup0.pc", "test_pcs/bluecup1.pc")

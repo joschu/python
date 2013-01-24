@@ -315,14 +315,14 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
 
 
         # seems like a reasonable goodness-of-fit measure
-        print "tps cost", f.cost, "rot cost", abs(a) * dist2_per_pt_per_radian
+        print "tps cost", f.cost/len(x_nd), "rot cost", abs(a) * dist2_per_pt_per_radian
         cost = f.cost/len(x_nd) + abs(a)*dist2_per_pt_per_radian
         costs.append(cost)
         fs.append(f)
 
     i_best = np.argmin(costs)
     print "best index", i_best
-    print "best angle", zrots[i_best]
+    print "best angle", zrots[i_best]*180/np.pi
 
     best_f = fs[i_best]
 

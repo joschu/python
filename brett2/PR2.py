@@ -208,7 +208,7 @@ class TrajectoryControllerWrapper(object):
         return np.array([msg.position[i] for i in self.ros_joint_inds])
 
 
-    def goto_joint_positions(self, positions_goal, unwrap = True):
+    def goto_joint_positions(self, positions_goal, unwrap = False):
 
         positions_cur = self.get_joint_positions()
         assert len(positions_goal) == len(positions_cur)
