@@ -155,6 +155,11 @@ def get_args():
     args = parser.parse_args()
     return args
 
+def find_closest_demo(verb, exp_clouds_pc2):
+    exp_clouds = [pc2xyzrgb(cloud)[0] for cloud in exp_clouds_pc2]
+    closest_demo_name = scene_diff.get_closest_demo(verb, exp_clouds)
+    return closest_demo_name
+
 # determines the type of experiment (single or full) to run based on the args
 # calls the corresponding function to do the actual experiment (do_single, do_multiple_single_demo, do_multiple_varied_demos)
 def run_exp(args, verb_data_accessor):
@@ -162,8 +167,8 @@ def run_exp(args, verb_data_accessor):
     print "using demo base", args.demo
     if args.verb is not None:
         exp_clouds_pc2 = get_all_clouds_pc2(verb_data_accessor.get_num_stages_for_verb(args.verb))
-        exp_clouds = [pc2xyzrgb(cloud)[0] for cloud in exp_clouds_pc2]
-        closest_demo_name = scene_diff.get_closest_demo(args.verb, exp_clouds)
+        closest_demo_name = find_closest_demo(args.verb, exp_clouds_pc2)
+        print "Closest demo is %s" % (closest_demo_name)
         do_multiple_single_demo(closest_demo_name, verb_data_accessor, exp_clouds_pc2)
     if args.single is not None:
         params = [int(num) for num in args.single.split(',')]
@@ -182,6 +187,8 @@ def run_exp(args, verb_data_accessor):
         if args.stages[0] == 'a':
             demo_name = "%s%s" % (demo_base_name, args.stages[1:])
             exp_clouds_pc2 = get_all_clouds_pc2(verb_data_accessor.get_num_stages(demo_name))
+            closest_demo_name = find_closest_demo(verb_data_accessor.get_verb_from_demo_name(demo_name), exp_clouds_pc2)
+            print "Closest demo is %s" % (closest_demo_name)
             do_multiple_single_demo(demo_name, verb_data_accessor, exp_clouds_pc2)
         else:
             stages = [int(stage) for stage in args.stages.split(",")]
