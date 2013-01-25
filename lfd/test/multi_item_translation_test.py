@@ -27,6 +27,7 @@ def get_test_params():
 def euclidean_dist(pt1, pt2):
     return (sum([(pt1[i]-pt2[i])**2 for i in range(len(pt1))]))**0.5
 
+# finds the difference between the quats and then returns euclidean distance from the identity quat
 def rot_distance(quat1, quat2):
     quat1_mat = jut.quaternion_matrix(quat1) 
     quat2_mat = jut.quaternion_matrix(quat2) 
@@ -52,25 +53,47 @@ def similar_trajectories(traj1, traj2):
             return False, error_msg
     return True, "matching"
 
-def test_cup_pour_init():
+# get the demo special point trajectory
+def get_demo_spec_pt_traj_mats(demo_target_data, gripper_data_key):
+    demo_grip_traj_xyzs = demo_target_data[gripper_data_key]["position"]
+    demo_grip_traj_oriens = demo_target_data[gripper_data_key]["orientation"]
+    demo_grip_traj_mats = [juc.trans_rot_to_hmat(trans, orien) for (trans, orien) in zip(demo_grip_traj_xyzs, demo_grip_traj_oriens)]
+    demo_tool_spec_pt_translation = jut.translation_matrix(np.array(demo_tool_info.special_point))
+    demo_spec_pt_traj_mats = [np.dot(traj_mat, demo_tool_spec_pt_translation) for traj_mat in demo_grip_traj_mats]
+    return demo_spec_pt_traj_mats
+
+# translates the expected special point trajectory to a gripper trajectory
+def get_expected_gripper_traj(special_point, expected_spec_pt_traj):
+    exp_tool_spec_pt_translation = jut.translation_matrix(np.array(exp_tool_info.special_point))
+    inv_exp_tool_spec_pt_translation = np.linalg.inv(exp_tool_spec_pt_translation)
+    expected_gripper_traj = [np.dot(traj_mat, inv_exp_tool_spec_pt_translation) for traj_mat in expected_spec_pt_traj]
+    return expected_gripper_traj
+
+def get_world_to_grip_exp_transform(exp_tool_data, gripper_data_key):
+    exp_gripper_pos = exp_tool_data[gripper_data_key]["position"][-1]
+    exp_gripper_orien = exp_tool_data[gripper_data_key]["orientation"][-1]
+    world_to_grip_transform = np.linalg.inv(juc.trans_rot_to_hmat(exp_gripper_pos, exp_gripper_orien))
+    return world_to_grip_transform
+
+def translation_test_init():
     multi_item_make_verb_traj.Globals.setup()
 
 # MAKE SURE THAT ROSCORE IS RUNNING FOR THIS TEST, BECAUSE MULTI_ITEM_MAKE_VERB_TRAJ DOES PLOTTING FOR RVIZ
 
 def test_translation(demo_name, exp_name, data_dir):
-    test_cup_pour_init()
+    translation_test_init()
 
     verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=osp.join("test", TEST_DATA_DIR, data_dir))
 
     current_stage = 1
 
-    # info and data for previous stage
+    # info and data for tool stage
     demo_tool_info = verb_data_accessor.get_stage_info(demo_name, current_stage-1)
     demo_tool_data = verb_data_accessor.get_demo_stage_data(demo_tool_info.stage_name)
     exp_tool_info = verb_data_accessor.get_stage_info(exp_name, current_stage-1)
     exp_tool_data = verb_data_accessor.get_demo_stage_data(exp_tool_info.stage_name)
 
-    # info and data for current stage
+    # info and data for target stage
     demo_target_info = verb_data_accessor.get_stage_info(demo_name, current_stage)
     demo_target_data = verb_data_accessor.get_demo_stage_data(demo_target_info.stage_name)
     exp_target_info = verb_data_accessor.get_stage_info(exp_name, current_stage)
@@ -82,12 +105,9 @@ def test_translation(demo_name, exp_name, data_dir):
     exp_tool_pc = exp_tool_data["object_cloud"][exp_tool_info.item]["xyz"]
     exp_target_pc = exp_target_data["object_cloud"][exp_target_info.item]["xyz"]
 
-    # calculate the transformation from the world frame to the gripper frame
-    exp_gripper_pos = exp_tool_data[gripper_data_key]["position"][-1]
-    exp_gripper_orien = exp_tool_data[gripper_data_key]["orientation"][-1]
-    world_to_grip_trans = np.linalg.inv(juc.trans_rot_to_hmat(exp_gripper_pos, exp_gripper_orien))
-
-    world_to_grip_transform_func = multi_item_make_verb_traj.make_world_to_grip_transform_hmat(world_to_grip_trans)
+    # calculate the transformation from the world frame to the gripper frame in the experiment scene
+    world_to_grip_transform = get_world_to_grip_exp_transform(exp_tool_data, gripper_data_key)
+    world_to_grip_transform_func = multi_item_make_verb_traj.make_world_to_grip_transform_hmat(world_to_grip_transform)
 
     warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(demo_name, exp_target_pc,
                                                                                None, current_stage,
@@ -95,27 +115,20 @@ def test_translation(demo_name, exp_name, data_dir):
                                                                                verb_data_accessor, world_to_grip_transform_func,
                                                                                "tps")
 
-    # get the actual transformation between the old and new target objects (just a translation for this test)
+    # assuming that the arms_used for the target stage is 'l' or 'r'
+    if demo_target_info.arms_used == 'l':
+        warped_grip_traj_mats = [juc.pose_to_hmat(pose) for pose in warped_traj_resp.traj.l_gripper_poses.poses]
+    elif demo_target_info.arms_used == 'r':
+        warped_grip_traj_mats = [juc.pose_to_hmat(pose) for pose in warped_traj_resp.traj.r_gripper_poses.poses]
+
+    # get the manually measured transformation between the old and new target objects (just a translation for this test)
     params = get_test_params()
-    translation = params['translation']
-    actual_target_translation_matrix = jut.translation_matrix(translation)
+    actual_target_translation = jut.translation_matrix(params["translation"])
 
-    # get the demo special point trajectory
-    demo_grip_traj_xyzs = demo_target_data[gripper_data_key]["position"]
-    demo_grip_traj_oriens = demo_target_data[gripper_data_key]["orientation"]
-    demo_grip_traj_mats = [juc.trans_rot_to_hmat(trans, orien) for (trans, orien) in zip(demo_grip_traj_xyzs, demo_grip_traj_oriens)]
-    demo_tool_spec_pt_translation = jut.translation_matrix(np.array(demo_tool_info.special_point))
-    demo_spec_pt_traj_mats = [np.dot(traj_mat, demo_tool_spec_pt_translation) for traj_mat in demo_grip_traj_mats]
-
-    # get the expected experiment special point trajectory
-    expected_spec_pt_traj = [np.dot(actual_target_translation_matrix, traj_mat) for traj_mat in demo_spec_pt_traj_mats]
-
-    # get the expected experiment gripper trajectory
-    exp_tool_spec_pt_translation = jut.translation_matrix(np.array(exp_tool_info.special_point))
-    inv_exp_tool_spec_pt_translation = np.linalg.inv(exp_tool_spec_pt_translation)
-    expected_gripper_traj = [np.dot(traj_mat, inv_exp_tool_spec_pt_translation) for traj_mat in expected_spec_pt_traj]
-
-    warped_grip_traj_mats = [juc.pose_to_hmat(pose) for pose in warped_traj_resp.traj.l_gripper_poses.poses]
+    # find the expected warped gripper trajectory using the manual translation measurement
+    demo_spec_pt_traj_mats = get_demo_spec_pt_traj_mats(demo_target_data, gripper_data_key)
+    expected_spec_pt_traj = [np.dot(actual_target_translation, traj_mat) for traj_mat in demo_spec_pt_traj_mats]
+    expected_gripper_traj = get_expected_gripper_traj(exp_tool_info.special_point, expected_spec_pt_traj)
 
     result = similar_trajectories(expected_gripper_traj, warped_grip_traj_mats)
     report(result)

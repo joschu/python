@@ -4,10 +4,11 @@ from lfd import multi_item_verbs, scene_diff
 import os
 import os.path as osp
 
+# script that uses scene_diff to find the closest demo to each of the test demos
+
 BASE_DATA_DIR = "multi_item/empty_move_data"
 
-#all, all for demo, single for demo
-
+# finds the closest scene to a single demo
 def get_closest_single_scene(data_dir, demo_name):
     verb_data_accessor = multi_item_verbs.VerbDataAccessor(test_info_dir=osp.join("test", BASE_DATA_DIR, data_dir))
     all_demo_info = verb_data_accessor.get_all_demo_info()
@@ -32,11 +33,13 @@ def get_closest_scenes(data_dir):
         closest[demo_name] = scene_diff_closest_name
     return closest
 
+# get a list of all demo directories in the test data directory
 def get_all_dirs():
     abs_base_dir = osp.join(osp.dirname(osp.abspath(__file__), BASE_DATA_DIR))
     all_dirs = [entry for entry in os.listdir(abs_base_dir) if osp.isdir(osp.join(abs_base_dir, entry))]
     return all_dirs
 
+# finds closest scenes for all demos for all test data
 def get_all_closest_scenes():
     all_closest = {}
     for data_dir in get_all_dirs():
@@ -59,16 +62,16 @@ if __name__ == "__main__":
     if len(sys.argv) == 1:
         print_usage()
     elif len(sys.argv) == 2:
-        if sys.argv[1] == "all":
+        if sys.argv[1] == "all": # find closest scenes for everything
             all_closest = get_all_closest_scenes()
             results = ""
             for data_dir, info in all_closest.items():
                 results += results_for_data_dir_as_str(data_dir, info)
-        else:
+        else: # find closest scenes for a certain test directory
             data_dir = sys.argv[1]
             closest = get_closest_scenes(data_dir)
             results = results_for_data_dir_as_str(data_dir, closest)
-    elif len(sys.argv) == 3:
+    elif len(sys.argv) == 3: # find closest scenes for a single demo
         data_dir, demo_name = sys.argv[1], sys.argv[2]
         closest_name = get_closest_single_scene(data_dir, demo_name)
         results = "%s:\n%s is closest to %s\n" % (data_dir, demo_name, closest_name)

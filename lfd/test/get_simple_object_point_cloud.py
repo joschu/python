@@ -6,6 +6,8 @@ from jds_image_proc.clouds import voxel_downsample
 import os
 import os.path as osp
 
+# script that extracts the desired point cloud out of the test data and saves it in the test_pcs directory as a numpy array
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("demo_dir")
