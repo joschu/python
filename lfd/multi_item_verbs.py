@@ -55,6 +55,9 @@ class VerbDataAccessor:
     def get_verb_info(self, verb):
         return [(name,info) for (name,info) in self.all_demo_info.items() if info["verb"] == verb]
 
+    def get_verb_from_demo_name(self, demo_name):
+        return self.get_demo_info(demo_name)["verb"]
+
     # returns a VerbStageInfo with information for a certain stage for a demo
     def get_stage_info(self, demo_name, stage_num):
         return self.get_stage_info_from_demo_info(self.get_demo_info(demo_name), stage_num)
