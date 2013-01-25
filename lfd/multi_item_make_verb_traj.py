@@ -1,12 +1,9 @@
 import rospy
-from brett2.ros_utils import RvizWrapper, Marker, pc2xyzrgb
-import brett2.ros_utils as ru
-import h5py
-from lfd import warping, registration, tps
 import roslib
 roslib.load_manifest("verb_msgs")
 from verb_msgs.srv import MakeTrajectoryRequest, MakeTrajectoryResponse
-from numpy import asarray
+import brett2.ros_utils as ru
+from lfd import registration
 import numpy as np
 from jds_image_proc.clouds import voxel_downsample
 import jds_utils.transformations as jut
@@ -18,7 +15,7 @@ class Globals:
     rviz = None
     @staticmethod
     def setup():
-        Globals.rviz = RvizWrapper.create()
+        Globals.rviz = ru.RvizWrapper.create()
 
 # get the warping transformation specified by transform_type for from_cloud to to_cloud
 def get_warping_transform(from_cloud, to_cloud, transform_type="tps"):
@@ -36,22 +33,12 @@ def get_warping_transform(from_cloud, to_cloud, transform_type="tps"):
         return warp
     else:
         raise Exception("transform type %s is not yet implemented" % transform_type)
-    
-# returns appends 1 to the end of the point so it can be applied to a 4x4 matrix
-def get_homog_coord(point):
-    homog = np.ones(4)
-    homog[:3] = point
-    return homog
 
-# gets the 3d point out of a homogeneous coordinate
-def get_array3(homog):
-    return homog[:3]
-    
 # applies a transformation specified by a 4x4 matrix to a 3d point
 # transform is a 4x4 matrix (np.array) and point is a 3-element vector (np.array)
 def apply_mat_transform_to_xyz(transform, point):
-    applied = np.dot(transform, get_homog_coord(point))
-    return get_array3(applied)
+    applied = np.dot(transform, np.array([point[0], point[1], point[2], 1]))
+    return applied[:3]
 
 # applies tps transformation to a frame specified by hmat
 def apply_tps_transform_to_hmat(tps_transform, hmat):
@@ -164,8 +151,8 @@ def set_traj_fields_for_response(warped_stage_data, resp, arm, frame_id):
 # wrapper around make_traj_multi_stage_do_work
 def make_traj_multi_stage(req, demo_name, stage_num, tool_stage_info, prev_exp_cloud_pc2, verb_data_accessor, transform_type):
     assert len(req.object_clouds) == 1
-    exp_tool_cloud = None if stage_num == 0 else pc2xyzrgb(prev_exp_cloud_pc2)[0]
-    exp_target_cloud = pc2xyzrgb(req.object_clouds[0])[0]
+    exp_tool_cloud = None if stage_num == 0 else ru.pc2xyzrgb(prev_exp_cloud_pc2)[0]
+    exp_target_cloud = ru.pc2xyzrgb(req.object_clouds[0])[0]
     clouds_frame_id = req.object_clouds[0].header.frame_id
     world_to_grip_transform_func = make_world_to_grip_transform_tf("%s_gripper_tool_frame" % current_stage_info.arms_used)
     return make_traj_multi_stage_do_work(demo_name, exp_target_cloud, clouds_frame_id,
@@ -226,12 +213,9 @@ def make_traj_multi_stage_do_work(demo_name, exp_target_cloud, frame_id, stage_n
         warped_spec_pt_traj_mats = get_warped_spec_pt_traj_mats(demo_spec_pt_traj_mats, demo_to_exp_target_transform)
 
         # get the warped trajectory for the gripper using the tool warping transformation
-        warped_grip_traj_mats = get_warped_grip_traj_mats(warped_spec_pt_traj_mats,
-                                                          tool_stage_data,
-                                                          demo_to_exp_tool_transform,
-                                                          spec_pt_in_grip,
-                                                          world_to_grip_transform_func,
-                                                          arm)
+        warped_grip_traj_mats = get_warped_grip_traj_mats(warped_spec_pt_traj_mats, tool_stage_data,
+                                                          demo_to_exp_tool_transform, spec_pt_in_grip,
+                                                          world_to_grip_transform_func, arm)
 
         warped_transs, warped_rots = juc.hmats_to_transs_rots(warped_grip_traj_mats)
         warped_stage_data[gripper_data_key]["position"] = warped_transs
@@ -247,10 +231,13 @@ def make_traj_multi_stage_do_work(demo_name, exp_target_cloud, frame_id, stage_n
 
     del Globals.handles[:]
 
+    # plot the demo and warped special points
     current_spec_pt = current_stage_info.special_point
-    if stage_num == 0 and current_spec_pt is not None:
+    # currently, don't know which arm grabbed the tool if both arms were used in a stage
+    if stage_num == 0 and current_spec_pt is not None and arms_used in ['l', 'r']:
         plot_demo_and_warped_tool_spec_pt(current_spec_pt, current_stage_data, demo_to_exp_target_transform, arms_used)
 
+    # plot the gripper and special point trajectories (red is demo, green is warped)
     plot_original_and_warped_demo_and_spec_pt(current_stage_data, warped_stage_data,
                                               demo_spec_pt_xyzs, exp_spec_pt_xyzs,
                                               arms_used)
@@ -270,31 +257,31 @@ def plot_demo_and_warped_tool_spec_pt(spec_pt_in_grip, tool_stage_data, demo_to_
 
 # plots a trajectory in rviz; uses RvizWrapper function that displays arrows giving the orientation of the gripper(s)
 def plot_traj(xyzs, rgba, quats=None):
-    pose_array = juc.array_to_pose_array(asarray(xyzs), 'base_footprint', quats)
+    pose_array = juc.array_to_pose_array(np.asarray(xyzs), 'base_footprint', quats)
     Globals.handles.append(Globals.rviz.draw_traj_points(pose_array, rgba = rgba, ns = "multi_item_make_verb_traj_service"))
 
 # plots the special point trajectory; uses the RvizWrapper function that displays points
 def plot_spec_pts(xyzs, rgba):
-    pose_array = juc.array_to_pose_array(asarray(xyzs), 'base_footprint')
+    pose_array = juc.array_to_pose_array(np.asarray(xyzs), 'base_footprint')
     Globals.handles.append(Globals.rviz.draw_traj_points(pose_array, rgba = rgba, ns = "multi_item_make_verb_traj_service"))
 
 # plots the original and warped gripper trajectories; also plots the original and warped special point trajs
 def plot_original_and_warped_demo_and_spec_pt(best_demo, warped_demo, spec_pt_xyzs, warped_spec_pt_xyzs, arms_used):
     if arms_used in "lb":
-        plot_traj(asarray(best_demo["l_gripper_tool_frame"]["position"]),
+        plot_traj(np.asarray(best_demo["l_gripper_tool_frame"]["position"]),
                   (1,0,0,1),
-                  asarray(best_demo["l_gripper_tool_frame"]["orientation"]))
-        plot_traj(asarray(warped_demo["l_gripper_tool_frame"]["position"]),
+                  np.asarray(best_demo["l_gripper_tool_frame"]["orientation"]))
+        plot_traj(np.asarray(warped_demo["l_gripper_tool_frame"]["position"]),
                   (0,1,0,1),
-                  asarray(warped_demo["l_gripper_tool_frame"]["orientation"]))
+                  np.asarray(warped_demo["l_gripper_tool_frame"]["orientation"]))
         
     if arms_used in "rb":
-        plot_traj(asarray(best_demo["r_gripper_tool_frame"]["position"]),
+        plot_traj(np.asarray(best_demo["r_gripper_tool_frame"]["position"]),
                   (1,0,0,1),
-                  asarray(best_demo["r_gripper_tool_frame"]["orientation"]))
-        plot_traj(asarray(warped_demo["r_gripper_tool_frame"]["position"]),
+                  np.asarray(best_demo["r_gripper_tool_frame"]["orientation"]))
+        plot_traj(np.asarray(warped_demo["r_gripper_tool_frame"]["position"]),
                   (0,1,0,1),
-                  asarray(warped_demo["r_gripper_tool_frame"]["orientation"]))
+                  np.asarray(warped_demo["r_gripper_tool_frame"]["orientation"]))
 
     plot_spec_pts(spec_pt_xyzs, (1,0.5,0.5,1))
     plot_spec_pts(warped_spec_pt_xyzs, (0.5,1,0.5,1))

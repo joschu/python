@@ -4,31 +4,22 @@ This file contains the function exec_traj that will execute a trajectory on the 
 
 from __future__ import division
 import rospy
-import itertools, os, lfd
-from numpy import asarray
 import numpy as np
 import roslib
 roslib.load_manifest("verb_msgs")
 from verb_msgs.srv import ExecTrajectoryRequest, ExecTrajectoryResponse, ExecTrajectory
-from brett2.ros_utils import RvizWrapper, Marker
+import brett2.ros_utils as ru
 from brett2 import PR2
-from brett2 import trajectories, ros_utils
 from jds_utils import conversions as juc
 import geometry_msgs.msg as gm
 from kinematics import kinbodies
-from point_clouds import tabletop
-from jds_utils.func_utils import once
 import sensor_msgs.msg as sm
 from lfd import lfd_traj as lt
 from jds_utils.yes_or_no import yes_or_no
-import kinematics.kinematics_utils as ku
-
 import scipy.spatial
 import openravepy as rave
 from jds_image_proc.clouds import voxel_downsample
-
 from lfd import ik_functions, math_utils
-
 roslib.load_manifest("bulletsim_msgs")
 from bulletsim_msgs.srv import PlanTraj, PlanTrajRequest, PlanTrajResponse
 
@@ -37,7 +28,7 @@ class Globals:
     pr2 = None
     rviz = None
     isinstance(pr2, PR2.PR2)
-    isinstance(rviz, ros_utils.RvizWrapper)
+    isinstance(rviz, ru.RvizWrapper)
     table_loaded = False
     
     def __init__(self): raise
@@ -45,7 +36,7 @@ class Globals:
     @staticmethod
     def setup():
         Globals.pr2 = PR2.PR2.create()
-        Globals.rviz = ros_utils.RvizWrapper.create()
+        Globals.rviz = ru.RvizWrapper.create()
         if not Globals.table_loaded:
             load_table()
             draw_table()
@@ -63,7 +54,7 @@ def draw_table():
     ps.header.frame_id = "base_footprint"
     ps.pose.position = gm.Point(*aabb.pos())
     ps.pose.orientation = gm.Quaternion(0,0,0,1)
-    Globals.handles.append(Globals.rviz.draw_marker(ps, type=Marker.CUBE, scale = aabb.extents()*2, id = 24019,rgba = (1,0,0,.25)))
+    Globals.handles.append(Globals.rviz.draw_marker(ps, type=ru.Marker.CUBE, scale = aabb.extents()*2, id = 24019,rgba = (1,0,0,.25)))
     
 # if the difference between two gripper angles is greater than this, then the gripper angle is "changing"
 GRIPPER_ANGLE_TOLERANCE = 0.0005

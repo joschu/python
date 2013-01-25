@@ -65,33 +65,33 @@ def test_translation(demo_name, exp_name, data_dir):
     current_stage = 1
 
     # info and data for previous stage
-    prev_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage-1)
-    prev_demo_data = verb_data_accessor.get_demo_stage_data(prev_demo_info.stage_name)
-    prev_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage-1)
-    prev_exp_data = verb_data_accessor.get_demo_stage_data(prev_exp_info.stage_name)
+    demo_tool_info = verb_data_accessor.get_stage_info(demo_name, current_stage-1)
+    demo_tool_data = verb_data_accessor.get_demo_stage_data(demo_tool_info.stage_name)
+    exp_tool_info = verb_data_accessor.get_stage_info(exp_name, current_stage-1)
+    exp_tool_data = verb_data_accessor.get_demo_stage_data(exp_tool_info.stage_name)
 
     # info and data for current stage
-    cur_demo_info = verb_data_accessor.get_stage_info(demo_name, current_stage)
-    cur_demo_data = verb_data_accessor.get_demo_stage_data(cur_demo_info.stage_name)
-    cur_exp_info = verb_data_accessor.get_stage_info(exp_name, current_stage)
-    cur_exp_data = verb_data_accessor.get_demo_stage_data(cur_exp_info.stage_name)
+    demo_target_info = verb_data_accessor.get_stage_info(demo_name, current_stage)
+    demo_target_data = verb_data_accessor.get_demo_stage_data(demo_target_info.stage_name)
+    exp_target_info = verb_data_accessor.get_stage_info(exp_name, current_stage)
+    exp_target_data = verb_data_accessor.get_demo_stage_data(exp_target_info.stage_name)
     
-    gripper_data_key = "%s_gripper_tool_frame" % cur_demo_info.arms_used
+    gripper_data_key = "%s_gripper_tool_frame" % demo_target_info.arms_used
 
     # point clouds of tool for demo and experiment
-    prev_exp_pc = prev_exp_data["object_cloud"][prev_exp_info.item]["xyz"]
-    cur_exp_pc = cur_exp_data["object_cloud"][cur_exp_info.item]["xyz"]
+    exp_tool_pc = exp_tool_data["object_cloud"][exp_tool_info.item]["xyz"]
+    exp_target_pc = exp_target_data["object_cloud"][exp_target_info.item]["xyz"]
 
     # calculate the transformation from the world frame to the gripper frame
-    prev_exp_gripper_pos = prev_exp_data[gripper_data_key]["position"][-1]
-    prev_exp_gripper_orien = prev_exp_data[gripper_data_key]["orientation"][-1]
-    prev_world_to_grip_trans = np.linalg.inv(juc.trans_rot_to_hmat(prev_exp_gripper_pos, prev_exp_gripper_orien))
+    exp_gripper_pos = exp_tool_data[gripper_data_key]["position"][-1]
+    exp_gripper_orien = exp_tool_data[gripper_data_key]["orientation"][-1]
+    world_to_grip_trans = np.linalg.inv(juc.trans_rot_to_hmat(exp_gripper_pos, exp_gripper_orien))
 
-    world_to_grip_transform_func = multi_item_make_verb_traj.make_world_to_grip_transform_hmat(prev_world_to_grip_trans)
+    world_to_grip_transform_func = multi_item_make_verb_traj.make_world_to_grip_transform_hmat(world_to_grip_trans)
 
-    warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(demo_name, cur_exp_pc,
+    warped_traj_resp = multi_item_make_verb_traj.make_traj_multi_stage_do_work(demo_name, exp_target_pc,
                                                                                None, current_stage,
-                                                                               prev_demo_info, prev_exp_pc,
+                                                                               demo_tool_info, exp_tool_pc,
                                                                                verb_data_accessor, world_to_grip_transform_func,
                                                                                "tps")
 
@@ -101,25 +101,24 @@ def test_translation(demo_name, exp_name, data_dir):
     actual_target_translation_matrix = jut.translation_matrix(translation)
 
     # get the demo special point trajectory
-    cur_demo_gripper_traj_xyzs = cur_demo_data[gripper_data_key]["position"]
-    cur_demo_gripper_traj_oriens = cur_demo_data[gripper_data_key]["orientation"]
-    cur_demo_gripper_traj_mats = [juc.trans_rot_to_hmat(trans, orien) for (trans, orien) in zip(cur_demo_gripper_traj_xyzs, cur_demo_gripper_traj_oriens)]
-    prev_demo_spec_pt_translation = jut.translation_matrix(np.array(prev_demo_info.special_point))
-    cur_demo_spec_pt_traj_as_mats = [np.dot(traj_mat, prev_demo_spec_pt_translation) for traj_mat in cur_demo_gripper_traj_mats]
+    demo_grip_traj_xyzs = demo_target_data[gripper_data_key]["position"]
+    demo_grip_traj_oriens = demo_target_data[gripper_data_key]["orientation"]
+    demo_grip_traj_mats = [juc.trans_rot_to_hmat(trans, orien) for (trans, orien) in zip(demo_grip_traj_xyzs, demo_grip_traj_oriens)]
+    demo_tool_spec_pt_translation = jut.translation_matrix(np.array(demo_tool_info.special_point))
+    demo_spec_pt_traj_mats = [np.dot(traj_mat, demo_tool_spec_pt_translation) for traj_mat in demo_grip_traj_mats]
 
     # get the expected experiment special point trajectory
-    expected_spec_pt_traj = [np.dot(actual_target_translation_matrix, traj_mat) for traj_mat in cur_demo_spec_pt_traj_as_mats]
+    expected_spec_pt_traj = [np.dot(actual_target_translation_matrix, traj_mat) for traj_mat in demo_spec_pt_traj_mats]
 
     # get the expected experiment gripper trajectory
-    prev_exp_spec_pt_translation = jut.translation_matrix(np.array(prev_exp_info.special_point))
-    inv_cur_exp_spec_pt_translation = np.linalg.inv(prev_exp_spec_pt_translation)
-    expected_gripper_traj = [np.dot(traj_mat, inv_cur_exp_spec_pt_translation) for traj_mat in expected_spec_pt_traj]
+    exp_tool_spec_pt_translation = jut.translation_matrix(np.array(exp_tool_info.special_point))
+    inv_exp_tool_spec_pt_translation = np.linalg.inv(exp_tool_spec_pt_translation)
+    expected_gripper_traj = [np.dot(traj_mat, inv_exp_tool_spec_pt_translation) for traj_mat in expected_spec_pt_traj]
 
-    # compare the expected new special point trajectory to the result of make_traj_multi_stage
-    result_traj = warped_traj_resp.traj
-    cur_exp_traj_as_mats = [juc.pose_to_hmat(pose) for pose in result_traj.l_gripper_poses.poses]
+    warped_grip_traj_mats = [juc.pose_to_hmat(pose) for pose in warped_traj_resp.traj.l_gripper_poses.poses]
 
-    report(similar_trajectories(expected_gripper_traj, cur_exp_traj_as_mats))
+    result = similar_trajectories(expected_gripper_traj, warped_grip_traj_mats)
+    report(result)
 
 if __name__ == "__main__":
     if rospy.get_name() == "/unnamed":
