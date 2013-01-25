@@ -30,4 +30,5 @@ def test_scene_diff(verb, exp_name, correct_closest_name, data_dir):
 
 if __name__ == "__main__":
     test_scene_diff("grab", "grab-marker00", "grab-marker450", "grab_marker_l")
-    test_scene_diff("grab", "grab-marker900", "grab-marker450", "grab_marker_l")
+    #test_scene_diff("grab", "grab-marker900", "grab-marker450", "grab_marker_l")
+    #test_scene_diff("place", "place-spoon-mediumgreen0", "place-spoon-mediumgreen1", "place_spoon_cup_l_l")

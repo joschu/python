@@ -1,11 +1,16 @@
 import os.path as osp
+from lfd import registration
 
 DATA_DIR = osp.join(osp.dirname(__file__), "data")
 
-# demo_clouds and exp_clouds are lists of point clouds, where the point clouds are a list of points
+# demo_clouds and exp_clouds are corresponding lists of point clouds of objects of a scene, where the point clouds are a list of points
 def get_scene_dist(demo_clouds, exp_clouds):
-    #TODO: fill this in
-    return 0
+    assert len(demo_clouds) == len(exp_clouds)
+    total_cost = 0
+    for demo_cloud, exp_cloud in zip(demo_clouds, exp_clouds):
+        warp_func = registration.tps_rpm_zrot(demo_cloud, exp_cloud, reg_init=2, reg_final=.5, n_iter=10, verbose=False)
+        total_cost += warp_func.cost
+    return total_cost
 
 def find_argmin(d):
     min_key = None
@@ -25,7 +30,6 @@ def get_clouds_for_demo(verb_data_accessor, demo_name):
         demo_clouds.append(demo_stage_data["object_cloud"][demo_stage_info.item]["xyz"])
     return demo_clouds
 
-# verb_info is a list of tuples with the demo_name and demo_info
 # exp_clouds is the list of point clouds for the new scene
 # ignore is a list of demos that shouldn't be returned
 # if return_dists is True, then return the costs mapping (without the ignored demos)
