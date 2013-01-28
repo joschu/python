@@ -1,0 +1,60 @@
+- name: block
+  base: block_smallstyro.pc
+  others:
+    - file: block_yellowsponge.pc
+      transform: [1.0,0.0,0.0,0.0,   0.0,2.27,0.0,0.01,   0.0,0.0,1.0,-0.04,   0.0,0.0,0.0,1.0]
+- name: bowl
+  base: bowl_largewhite.pc
+  others:
+    - file: bowl_smallblue.pc
+      transform: [0.7008,0.0,0.0,0.135,   0.0,0.7008,0.0,0.0,   0.0,0.0,1.0,0.0,   0.0,0.0,0.0,1.0]
+    - file: bowl_smallwhite.pc
+      transform: [0.7974,0.0,0.0,0.0768,   0.0,0.7974,0.0,0.0,   0.0,0.0,1.0,-0.02,   0.0,0.0,0.0,1.0]
+    - file: bowl_wavy.pc
+      transform: [1.0,0.0,0.0,-0.02,   0.0,1.0,0.0,0.0,   0.0,0.0,1.0,-0.03,   0.0,0.0,0.0,1.0]
+- name: cup
+  base: cup_green0.pc
+  others:
+    - file: cup_green1.pc
+      transform: [1.,0,0,0,   0,1,0,0,   0,0,1,0,   0,0,0,1] # yup it's actually the identity
+    - file: cup_largered.pc      
+- name: spoon
+  base: spoon0.pc
+  others:
+    - file: spoon1.pc
+      transform: [1.,0,0,0,   0,1,0,0,   0,0,1,0,   0,0,0,1]
+    - file: spoon2.pc
+      transform: [1.,0,0,0,   0,1,0,0,   0,0,1,0,   0,0,0,1]
+    - file: spoon3.pc
+      transform: [1.,0,0,0,   0,1,0,0,   0,0,1,0,   0,0,0,1]
+#- name: shelf
+#  base: shelf0.pc
+#  others:
+#    - file: shelf1.pc
+#      
+- name: mug
+  base: mug_largered.pc
+  others:
+    - file: mug_largeyellow.pc      
+    - file: mug_mediumwhite.pc      
+    - file: mug_slenderwhite.pc
+      
+- name: marker
+  base: marker0.pc
+  others:
+    #- file: marker45.pc      
+    - file: marker90.pc          
+    - file: marker_neg45.pc      
+- name: bottle
+  base: bottle_cola.pc
+  others:
+    - file: bottle_gatorade.pc      
+    - file: bottle_listerine.pc      
+    - file: bottle_odwalla.pc
+      
+- name: plate
+  base: plate_largered.pc
+  others:
+    - file: plate_mediumwhite.pc
+    - file: plate_largesquare.pc
+    - file: plate_smallbrown.pc

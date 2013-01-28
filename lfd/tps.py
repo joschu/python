@@ -4,8 +4,10 @@ import rospy
 import time
 import scipy.spatial.distance as ssd
 from jds_utils.colorize import colorize
+import scipy.optimize as opt
 
-
+VERBOSE = False
+ENABLE_SLOW_TESTS = True
 
 def nan2zero(x):
     np.putmask(x, np.isnan(x), 0)
@@ -29,7 +31,10 @@ def tps_grad(x_ma, lin_ag, trans_g, w_ng, x_na):
         grad_mga[:,:,a] = lin_ga[None,:,a] + np.dot(nan2zero(diffa_mn/dist_mn),w_ng)
     return grad_mga
     
-def tps_nonrigidity_grad(x_ma, lin_ag, trans_g, w_ng, x_na, return_tuple = False):
+def tps_nr_grad(x_ma, lin_ag, trans_g, w_ng, x_na, return_tuple = False):
+    """
+    gradient of green's strain
+    """
     N, D = x_na.shape
     M = x_ma.shape[0]
 
@@ -60,9 +65,10 @@ def tps_nonrigidity_grad(x_ma, lin_ag, trans_g, w_ng, x_na, return_tuple = False
         J = np.c_[Jl, Jt, Jw]
         return J
     
-    
-    
-def tps_nonrigidity(x_ma, lin_ag, trans_g, w_ng, x_na):
+def tps_nr_err(x_ma, lin_ag, trans_g, w_ng, x_na):
+    """
+    green's strain    
+    """
     M,D = x_ma.shape
 
     grad_mga = tps_grad(x_ma, lin_ag, trans_g, w_ng, x_na)
@@ -71,9 +77,12 @@ def tps_nonrigidity(x_ma, lin_ag, trans_g, w_ng, x_na):
         err_mab[m] = np.dot(grad_mga[m].T, grad_mga[m]) - np.eye(D)
     return err_mab.flatten()
 
-def tps_eval2(lin_ag, trans_g, w_ng, x_na, y_ng, bend_coef, K_nn=None, return_tuple=False):
+def tps_cost(lin_ag, trans_g, w_ng, x_na, y_ng, bend_coef, K_nn=None, return_tuple=False):
+    """
+    XXX doesn't include rotation cost
+    """
     D = lin_ag.shape[0]
-    K_nn = K_nn or ssd.squareform(ssd.pdist(x_na))
+    if K_nn is None: K_nn = ssd.squareform(ssd.pdist(x_na))
     ypred_ng = np.dot(K_nn, w_ng) + np.dot(x_na, lin_ag) + trans_g[None,:]
     res_cost = ((ypred_ng - y_ng)**2).sum()
     bend_cost = bend_coef * sum(np.dot(w_ng[:,g], np.dot(-K_nn, w_ng[:,g])) for g in xrange(D))
@@ -82,19 +91,19 @@ def tps_eval2(lin_ag, trans_g, w_ng, x_na, y_ng, bend_coef, K_nn=None, return_tu
     else:
         return res_cost + bend_cost
 
-def tps_nr_eval(lin_ag, trans_g, w_ng, x_na, y_ng, xnr_ma, bend_coef, nr_coef, K_nn = None, return_tuple=False):
+def tps_nr_cost_eval(lin_ag, trans_g, w_ng, x_na, y_ng, xnr_ma, bend_coef, nr_coef, K_nn = None, return_tuple=False):
     D = lin_ag.shape[0]
-    K_nn = K_nn or ssd.squareform(ssd.pdist(x_na))
+    if K_nn is None: K_nn = ssd.squareform(ssd.pdist(x_na))
     ypred_ng = np.dot(K_nn, w_ng) + np.dot(x_na, lin_ag) + trans_g[None,:]
     res_cost = ((ypred_ng - y_ng)**2).sum()
     bend_cost = bend_coef * sum(np.dot(w_ng[:,g], np.dot(-K_nn, w_ng[:,g])) for g in xrange(D))
-    nr_cost = nr_coef * (tps_nonrigidity(xnr_ma, lin_ag, trans_g, w_ng, x_na)**2).sum()
+    nr_cost = nr_coef * (tps_nr_err(xnr_ma, lin_ag, trans_g, w_ng, x_na)**2).sum()
     if return_tuple:
         return res_cost, bend_cost, nr_cost, res_cost + bend_cost + nr_cost
     else:
         return res_cost + bend_cost + nr_cost
 
-def tps_nr_eval_general(lin_ag, trans_g, w_eg, x_ea, y_ng, nr_ma, bend_coef, nr_coef, K_ee = None, return_tuple=True):
+def tps_nr_cost_eval_general(lin_ag, trans_g, w_eg, x_ea, y_ng, nr_ma, bend_coef, nr_coef, K_ee = None, return_tuple=True):
     E,D = x_ea.shape
     N = y_ng.shape[0]
     M = nr_ma.shape[0]
@@ -107,13 +116,12 @@ def tps_nr_eval_general(lin_ag, trans_g, w_eg, x_ea, y_ng, nr_ma, bend_coef, nr_
     ypred_ng = np.dot(K_ne, w_eg) + np.dot(x_na, lin_ag) + trans_g[None,:]
     res_cost = ((ypred_ng - y_ng)**2).sum()
     bend_cost = bend_coef * sum(np.dot(w_eg[:,g], np.dot(-K_ee, w_eg[:,g])) for g in xrange(D))
-    nr_cost = nr_coef * (tps_nonrigidity(nr_ma, lin_ag, trans_g, w_eg, x_ea)**2).sum()
+    nr_cost = nr_coef * (tps_nr_err(nr_ma, lin_ag, trans_g, w_eg, x_ea)**2).sum()
     if return_tuple:
         return res_cost, bend_cost, nr_cost, res_cost + bend_cost + nr_cost
     else:
         return res_cost + bend_cost + nr_cost    
 
-    
 
 def tps_fit(x_na, y_ng, bend_coef, rot_coef, wt_n=None):
     N,D = x_na.shape
@@ -144,7 +152,7 @@ def tps_fit(x_na, y_ng, bend_coef, rot_coef, wt_n=None):
 
 def tps_fit2(x_na, y_ng, bend_coef, rot_coef, wt_n=None):
     N,D = x_na.shape
-    _u,_s,_vh = np.linalg.svd(np.c_[x_na, np.ones((N,1))])
+    _u,_s,_vh = np.linalg.svd(np.c_[x_na, np.ones((N,1))], full_matrices=True)
     N_nq = _u[:,4:] # null of data
     K_nn = ssd.squareform(ssd.pdist(x_na))
     Q_nn = np.c_[x_na, np.ones((N,1)),K_nn.dot(N_nq)]
@@ -171,13 +179,13 @@ def tps_nr_fit(x_na, y_ng, bend_coef, nr_ma, nr_coef, method="newton"):
 
     ##for testing that it takes one step when nonrigidity cost is zero:
     #lin_ag, trans_g, w_ng = tps_fit(x_na, y_ng, bend_coef, 0)
-    #res_cost, bend_cost, nr_cost, fval = tps_nr_eval(lin_ag, trans_g, w_ng, x_na, nr_ma, bend_coef, nr_coef, return_tuple=True)
+    #res_cost, bend_cost, nr_cost, fval = tps_nr_cost_eval(lin_ag, trans_g, w_ng, x_na, nr_ma, bend_coef, nr_coef, return_tuple=True)
     #print "CORRECT COST, res,bend,nr,total = %.3e, %.3e, %.3e, %.3e"%(res_cost, bend_cost, nr_cost, fval)
     #lin_ag += np.random.randn(*lin_ag.shape)*5
-    #res_cost, bend_cost, nr_cost, fval = tps_nr_eval(lin_ag, trans_g, w_ng, x_na, nr_ma, bend_coef, nr_coef, return_tuple=True)
+    #res_cost, bend_cost, nr_cost, fval = tps_nr_cost_eval(lin_ag, trans_g, w_ng, x_na, nr_ma, bend_coef, nr_coef, return_tuple=True)
     #print "NOISE ADDED COST, res,bend,nr,total = %.ef, %.3e, %.3e, %.3e"%(res_cost, bend_cost, nr_cost, fval)
     
-    _u,_s,_vh = np.linalg.svd(np.c_[x_na, np.ones((N,1))])
+    _u,_s,_vh = np.linalg.svd(np.c_[x_na, np.ones((N,1))], full_matrices=True)
     N_nq = _u[:,4:] # null of data
     #w_ng = N_nq.dot(N_nq.T.dot(w_ng))
         
@@ -191,13 +199,13 @@ def tps_nr_fit(x_na, y_ng, bend_coef, nr_ma, nr_coef, method="newton"):
     for i in xrange(n_iter):
         X_ng = np.r_[lin_ag, trans_g[None,:], N_nq.T.dot(w_ng)]
 
-        res_cost, bend_cost, nr_cost, fval = tps_nr_eval(lin_ag, trans_g, w_ng, x_na, y_ng, nr_ma, bend_coef, nr_coef, return_tuple=True)
-        print colorize("iteration %i, cost %.3e"%(i, fval), 'red'),
-        print "= %.3e (res) + %.3e (bend) + %.3e (nr)"%(res_cost, bend_cost, nr_cost)
+        res_cost, bend_cost, nr_cost, fval = tps_nr_cost_eval(lin_ag, trans_g, w_ng, x_na, y_ng, nr_ma, bend_coef, nr_coef, return_tuple=True)
+        if VERBOSE: print colorize("iteration %i, cost %.3e"%(i, fval), 'red'),
+        if VERBOSE: print "= %.3e (res) + %.3e (bend) + %.3e (nr)"%(res_cost, bend_cost, nr_cost)
                 
         
-        Jl_zcg, Jt_zg, Jw_zng = tps_nonrigidity_grad(nr_ma, lin_ag, trans_g, w_ng, x_na, return_tuple=True)
-        nrerr_z = tps_nonrigidity(nr_ma, lin_ag, trans_g, w_ng, x_na)
+        Jl_zcg, Jt_zg, Jw_zng = tps_nr_grad(nr_ma, lin_ag, trans_g, w_ng, x_na, return_tuple=True)
+        nrerr_z = tps_nr_err(nr_ma, lin_ag, trans_g, w_ng, x_na)
         
         
         if method == "newton":
@@ -214,7 +222,7 @@ def tps_nr_fit(x_na, y_ng, bend_coef, nr_ma, nr_coef, method="newton"):
             def eval_partial(cand_X_ng):
                 cand_X_ng = cand_X_ng.reshape(-1,3)
                 cand_lin_ag, cand_trans_g, cand_w_ng = cand_X_ng[:D], cand_X_ng[D], N_nq.dot(cand_X_ng[D+1:])
-                fval_cand = tps_nr_eval(cand_lin_ag, cand_trans_g, cand_w_ng, x_na, y_ng, nr_ma, bend_coef, nr_coef)
+                fval_cand = tps_nr_cost_eval(cand_lin_ag, cand_trans_g, cand_w_ng, x_na, y_ng, nr_ma, bend_coef, nr_coef)
                 return fval_cand
             def eval_partial2(cand_X_ng):
                 return ((Q_nn.dot(X_ng) - y_ng)**2).sum()
@@ -244,13 +252,13 @@ def tps_nr_fit(x_na, y_ng, bend_coef, nr_ma, nr_coef, method="newton"):
         for stepsize in 3.**np.arange(0,-10,-1):
             cand_X_ng = X_ng + fullstep_ng*stepsize
             cand_lin_ag, cand_trans_g, cand_w_ng = cand_X_ng[:D], cand_X_ng[D], N_nq.dot(cand_X_ng[D+1:])
-            fval_cand = tps_nr_eval(cand_lin_ag, cand_trans_g, cand_w_ng, x_na, y_ng, nr_ma, bend_coef, nr_coef)
-            print "stepsize: %.1g, fval: %.3e"%(stepsize, fval_cand)
+            fval_cand = tps_nr_cost_eval(cand_lin_ag, cand_trans_g, cand_w_ng, x_na, y_ng, nr_ma, bend_coef, nr_coef)
+            if VERBOSE: print "stepsize: %.1g, fval: %.3e"%(stepsize, fval_cand)
             if fval_cand < fval:
                 cost_improved = True
                 break
         if not cost_improved:
-            print "couldn't improve objective"
+            if VERBOSE: print "couldn't improve objective"
             break
 
             
@@ -286,7 +294,7 @@ def tps_nr_fit_enhanced(x_na, y_ng, bend_coef, nr_ma, nr_coef, method="newton", 
     w_eg = np.r_[w_ng, np.zeros((4*M, D))]
 
     assert badsub_ex.shape[0] >= badsub_ex.shape[1]
-    _u,_s,_vh = np.linalg.svd(badsub_ex)
+    _u,_s,_vh = np.linalg.svd(badsub_ex, full_matrices=True)
     assert badsub_ex.shape[1] == _s.size
     N_eq = _u[:,badsub_ex.shape[1]:] # null of data
         
@@ -322,13 +330,13 @@ def tps_nr_fit_enhanced(x_na, y_ng, bend_coef, nr_ma, nr_coef, method="newton", 
                     trans_g[None,:], 
                     N_eq.T.dot(w_eg)]
 
-        res_cost, bend_cost, nr_cost, fval = tps_nr_eval_general(lin_ag, trans_g, w_eg, x_ea, y_ng, nr_ma, bend_coef, nr_coef, return_tuple=True)
-        print colorize("iteration %i, cost %.3e"%(i, fval), 'red'),
-        print "= %.3e (res) + %.3e (bend) + %.3e (nr)"%(res_cost, bend_cost, nr_cost)
+        res_cost, bend_cost, nr_cost, fval = tps_nr_cost_eval_general(lin_ag, trans_g, w_eg, x_ea, y_ng, nr_ma, bend_coef, nr_coef, return_tuple=True)
+        if VERBOSE: print colorize("iteration %i, cost %.3e"%(i, fval), 'red'),
+        if VERBOSE: print "= %.3e (res) + %.3e (bend) + %.3e (nr)"%(res_cost, bend_cost, nr_cost)
                 
         
-        Jl_zcg, Jt_zg, Jw_zeg = tps_nonrigidity_grad(nr_ma, lin_ag, trans_g, w_eg, x_ea, return_tuple=True)
-        nrerr_z = tps_nonrigidity(nr_ma, lin_ag, trans_g, w_eg, x_ea)        
+        Jl_zcg, Jt_zg, Jw_zeg = tps_nr_grad(nr_ma, lin_ag, trans_g, w_eg, x_ea, return_tuple=True)
+        nrerr_z = tps_nr_err(nr_ma, lin_ag, trans_g, w_eg, x_ea)        
         
         fullstep_fg = np.empty((F,D))
         for g in xrange(D):
@@ -343,13 +351,13 @@ def tps_nr_fit_enhanced(x_na, y_ng, bend_coef, nr_ma, nr_coef, method="newton", 
         for stepsize in 3.**np.arange(0,-10,-1):
             cand_X_fg = X_fg + fullstep_fg*stepsize
             cand_lin_ag, cand_trans_g, cand_w_eg = cand_X_fg[:D], cand_X_fg[D], N_eq.dot(cand_X_fg[D+1:])
-            fval_cand = tps_nr_eval_general(cand_lin_ag, cand_trans_g, cand_w_eg, x_ea, y_ng, nr_ma, bend_coef, nr_coef, return_tuple=False)
-            print "stepsize: %.1g, fval: %.3e"%(stepsize, fval_cand)
+            fval_cand = tps_nr_cost_eval_general(cand_lin_ag, cand_trans_g, cand_w_eg, x_ea, y_ng, nr_ma, bend_coef, nr_coef, return_tuple=False)
+            if VERBOSE: print "stepsize: %.1g, fval: %.3e"%(stepsize, fval_cand)
             if fval_cand < fval:
                 cost_improved = True
                 break
         if not cost_improved:
-            print "couldn't improve objective"
+            if VERBOSE: print "couldn't improve objective"
             break
 
             
@@ -359,83 +367,102 @@ def tps_nr_fit_enhanced(x_na, y_ng, bend_coef, nr_ma, nr_coef, method="newton", 
     return lin_ag, trans_g, w_eg, x_ea
 
 
-
-
-
-def test_nr_grad():
-    import numdifftools as ndt    
-    D = 3
-    pts0 = np.random.randn(10,D)
-    pts_eval = np.random.randn(3,D)
-    def err_partial(params):
-        lin_ag = params[0:9].reshape(3,3)
-        trans_g = params[9:12]
-        w_ng = params[12:].reshape(-1,3)
-        return tps_nonrigidity(pts_eval, lin_ag, trans_g, w_ng, pts0)    
-    lin_ag, trans_g, w_ng = np.random.randn(D,D), np.random.randn(D), np.random.randn(len(pts0), D)
-    J1 = tps_nonrigidity_grad(pts_eval, lin_ag, trans_g, w_ng, pts0)
-    J = ndt.Jacobian(err_partial)(np.r_[lin_ag.flatten(), trans_g.flatten(), w_ng.flatten()])
-    assert np.allclose(J1, J)
-def test_jacobian():
-    import numdifftools as ndt
-    D = 3
-    pts0 = np.random.randn(100,3)
-    pts_eval = np.random.randn(20,D)
-    lin_ag, trans_g, w_ng, x_na = np.random.randn(D,D), np.random.randn(D), np.random.randn(len(pts0), D), pts0    
-    def eval_partial(x_ma_flat):
-        x_ma = x_ma_flat.reshape(-1,3)
-        return tps_eval(x_ma, lin_ag, trans_g, w_ng, pts0)
-    for i in xrange(len(pts_eval)):
-        rots = ndt.Jacobian(eval_partial)(pts_eval[i])
-        rots1 = tps_grad(pts_eval[i:i+1], lin_ag, trans_g, w_ng, pts0)
-        assert np.allclose(rots1, rots)
-
-def test_tps_fit_equiv():
-    pts0 = np.random.randn(100,3)
-    pts1 = np.random.randn(100,3)
-    lin_ag, trans_g, w_ng = tps_fit(pts0, pts1, .01, 0)    
-    lin2_ag, trans2_g, w2_ng = tps_fit2(pts0, pts1, .01, 0)
+def tps_fit_fixedrot(x_na, y_ng, bend_coef, lin_ag, K_nn = None, wt_n=None):
+    """
+    minimize (Y-KA-XB-1C)'W(Y-KA-XB-1C) + tr(A'KA) + r(B)
+    """
     
-    assert np.allclose(lin_ag, lin2_ag)
-    assert np.allclose(trans_g, trans2_g)
-    assert np.allclose(w_ng, w2_ng)
+    N,D = x_na.shape
+    _u,_s,_vh = np.linalg.svd(np.c_[x_na, np.ones((N,1))], full_matrices=True)
+    N_nq = _u[:,4:] # null of data
+    K_nn = ssd.squareform(ssd.pdist(x_na))
 
-def test_fit_nr():
-    from jds_image_proc.clouds import voxel_downsample
-    from brett2.ros_utils import RvizWrapper    
-    import lfd.registration as lr
-    import lfd.warping as lw    
-    if rospy.get_name() == "/unnamed":
-        rospy.init_node("test_rigidity", disable_signals=True)
-        from time import sleep
-        sleep(1)
-    rviz = RvizWrapper.create()
+    Q_nn = np.c_[np.ones((N,1)),K_nn.dot(N_nq)]
+    QQ_nn = np.dot(Q_nn.T, Q_nn)
     
-    pts0 = np.loadtxt("test/rope_control_points.txt")
-    pts1 = np.loadtxt("test/bad_rope.txt")    
-    pts_rigid = voxel_downsample(pts0[:10], .02)
-    lr.Globals.setup()
-    np.seterr(all='ignore')
-    np.set_printoptions(suppress=True)
+    A = QQ_nn
+    A[1:, 1:] -= bend_coef * N_nq.T.dot(K_nn).dot(N_nq)
+    B = Q_nn.T.dot(y_ng-x_na.dot(lin_ag))
 
-    lin_ag, trans_g, w_eg, x_ea = tps_nr_fit_enhanced(pts0, pts1, 0.01, pts_rigid, 0.001, method="newton",plotting=1)
-    #lin_ag2, trans_g2, w_ng2 = tps_fit(pts0, pts1, .01, .01)
-    #assert np.allclose(w_ng, w_ng2)
-    def eval_partial(x_ma):
-        return tps_eval(x_ma, lin_ag, trans_g, w_eg, x_ea) 
-    lr.plot_orig_and_warped_clouds(eval_partial, pts0, pts1, res=.008)
-    #handles = lw.draw_grid(rviz, eval_partial, pts0.min(axis=0), pts0.max(axis=0), 'base_footprint')
+    X = np.linalg.solve(A,B)
 
-    grads = tps_grad(pts_rigid, lin_ag, trans_g, w_eg, x_ea)
-    print "worst violation:",np.max(np.abs([grad.T.dot(grad)-np.eye(3) for grad in grads]))
+    trans_g = X[0,:]    
+    w_ng = N_nq.dot(X[1:,:])
+    return trans_g, w_ng
+    
+
+def tps_fit_regrot(x_na, y_ng, bend_coef, rfunc, wt_n=None, max_iter = 10, inner_max_iter=100, rgrad=None, l_init=None):
+    """
+    minimize (Y-KA-XB-1C)' W (Y-KA-XB-1C) + tr(A'KA) + r(B)
+    subject to A'(X 1) = 0
+    """
+    
+    K_nn = ssd.squareform(ssd.pdist(x_na))
+    N,_ = x_na.shape
+    
+    xoffset_a = x_na.mean(axis=0)
+    yoffset_g = y_ng.mean(axis=0)
+    xc_na = x_na - xoffset_a
+    yc_ng = y_ng - yoffset_g
+    if wt_n is not None: print "warning: wt_n specified but not used"
+    # initialize with tps_fit and small rotation regularization
+    if l_init is None: 
+        lin_ag, trans_g, w_ng = tps_fit2(xc_na, yc_ng, bend_coef, .01, wt_n)
+    else:
+        lin_ag = l_init
+        if True: print "initializing rotation with\n ",lin_ag
+        trans_g, w_ng = tps_fit_fixedrot(xc_na, yc_ng, bend_coef, lin_ag, K_nn, wt_n)
+    #w_ng *= 0
+    for i in xrange(max_iter):
+        e_ng = yc_ng-tps_eval(xc_na, np.zeros((3,3)), trans_g, w_ng, xc_na) #err w/o linear part
+        xe_ag = xc_na.T.dot(e_ng)
+        xx_aa = xc_na.T.dot(xc_na)
+        ee_g = (e_ng**2).sum(axis=0)
+        def f(x): 
+            b_ag = x.reshape(3,3)
+            out = sum([b_ag[:,i].T.dot(xx_aa).dot(b_ag[:,i]) - 2*b_ag[:,i].T.dot(xe_ag[:,i]) + ee_g[i] for i in xrange(3)]) + rfunc(b_ag)
+            return out
+        x0 = lin_ag.flatten()
+        (soln, fopt,_,_,_,_,allsolns) = opt.fmin_powell(f, x0, maxiter=inner_max_iter, disp=bool(VERBOSE), retall=True, full_output=True)
+        if not np.isfinite(soln).all(): 
+            print "warning, optimization gave infinite result"
+            soln = allsolns[-2]
+        if not np.isfinite(fopt):
+            soln = lin_ag
+            print "warning, optimization gave fopt=infinity"
+        lin_ag = soln.reshape(3,3)
+        assert np.isfinite(lin_ag).all()
+        trans_g, w_ng = tps_fit_fixedrot(xc_na, yc_ng, bend_coef, lin_ag, K_nn, wt_n)
+    
+    origtrans_g = trans_g + yoffset_g - tps_eval(x_na, lin_ag, trans_g, w_ng, x_na).mean(axis=0)
+    if VERBOSE: print "rotation result", lin_ag
+    return lin_ag, origtrans_g, w_ng
+
+#def tps_fit_regrot2(x_na, y_ng, bend_coef, rfunc, wt_n=None, max_iter = 20):
+    #"""
+    #minimize (Y-KA-XB-1C)' W (Y-KA-XB-1C) + tr(A'KA) + r(B)
+    #subject to A'(X 1) = 0
+    #"""
+    #K_nn = ssd.squareform(ssd.pdist(x_na))
+    #N,_ = x_na.shape
+    #def f(x):
+        #x = x.reshape(N+4,3)
+        #lin_ag = x[:3]
+        #trans_g = x[3]
+        #w_ng = x[4:]
+        #return tps_cost_regrot(lin_ag, trans_g, w_ng, x_na, y_ng, bend_coef, rfunc, K_nn, wt_n)
+    #lin_ag, trans_g, w_ng = tps_fit2(x_na, y_ng, bend_coef, .01, wt_n)
+    #w_ng *= 0
+    #xopt = opt.fmin_powell(f, np.r_[lin_ag, trans_g[None,:], w_ng].flatten(), maxiter=max_iter)
+    #lin_ag = xopt[:3]
+    #trans_g = xopt[3]
+    #w_ng = xopt[4:]
+    #return lin_ag, trans_g, w_ng
 
 
-if __name__ == "__main__":
-    np.seterr(all='ignore')
-    print "test_jacobian"
-    test_jacobian()
-    print "test_tps_fit_equiv"
-    test_tps_fit_equiv()
-    print "test_nr_grad"
-    test_nr_grad()
-    test_fit_nr()    
+def tps_cost_regrot(lin_ag, trans_g, w_ng, x_na, y_ng, bend_coef, rfunc, K_nn = None, wt_n=None):
+    """
+    (Y-KA-XB-1C)' W (Y-KA-XB-1C) + tr(A'KA) + r(B)
+    subject to A'(X 1) = 0
+    """
+    return tps_cost(lin_ag, trans_g, w_ng, x_na, y_ng, bend_coef, K_nn) + rfunc(lin_ag)

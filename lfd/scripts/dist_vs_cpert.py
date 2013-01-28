@@ -27,7 +27,7 @@ def d_geodesic(curve_nk, pcurve_nk):
 def d_tpsrpm(curve, pcurve):
     f, info = registration.tps_rpm(curve, pcurve, return_full=True, verbose=False)
     bend_coef = 0.001
-    res_cost, bend_cost, total_cost = tps.tps_eval2(f.lin_ag, f.trans_g, f.w_ng, info['x_Nd'], info['targ_Nd'], bend_coef, return_tuple=True)
+    res_cost, bend_cost, total_cost = tps.tps_err_eval(f.lin_ag, f.trans_g, f.w_ng, info['x_Nd'], info['targ_Nd'], bend_coef, return_tuple=True)
     extra = {
         'bend_cost': bend_cost,
         'res_cost': res_cost

@@ -137,48 +137,26 @@ class CompositeTransformation(Transformation):
             x_md, rot_mdd = f.transform_frames(x_md, rot_mdd, orthogonalize)
         return x_md, rot_mdd
 
-class ThinPlateSplineFixedRot(ThinPlateSpline):
-    """same as ThinPlateSpline except during fitting, affine part is a fixed rotation around z axis"""
+class ThinPlateSplineRegularizedLinearPart(ThinPlateSpline):
+
+    def __init__(self, regfunc, d=3, reggrad = None):
+        ThinPlateSpline.__init__(self, d)
+        self.regfunc = regfunc
+        self.reggrad = reggrad
+        self.n_fit_iters = 10
 
     def fit(self, x_na, y_ng, wt_n=None, verbose=True, bend_coef=.1, rot_coef=None):
         """
         x_nd: source cloud
         y_nd: target cloud
-        smoothing: penalize non-affine part
-        angular_spring: penalize rotation
         wt_n: weight the points        
-        """
-
+        """        
         self.n, self.d = n,d = x_na.shape
+        l_init = self.lin_ag if hasattr(self, "lin_ag") else None
+        self.lin_ag, self.trans_g, self.w_ng = tps.tps_fit_regrot(x_na, y_ng, bend_coef, self.regfunc, wt_n, l_init = l_init, max_iter = self.n_fit_iters, rgrad = self.reggrad)
+        self.x_na = x_na        
+        
 
-        dists_tri = ssd.pdist(x_na)
-        K_nn = ssd.squareform(dists_tri)
-        if len(dists_tri) == 0: K_nn = np.zeros((0,0))
-
-        if wt_n is None:
-            wt_n = np.ones(n)
-
-        reg_nn = bend_coef * np.diag(1/(wt_n+1e-6))
-        A = np.r_[
-            np.c_[K_nn - reg_nn,       np.ones((n,1))],
-            np.c_[np.ones((1,n)),      0]]
-        b = np.r_[y_ng - x_na.dot(self.lin_ag), np.zeros((1,d))]
-
-
-        coeffs = np.linalg.lstsq(A, b)[0]
-        self.x_na = x_na
-        self.w_ng = coeffs[:n,:]
-        self.trans_g = coeffs[-1,:]
-        rotation_cost = 0
-
-        residual_cost = (wt_n[:,None] * ((y_ng - self.transform_points(x_na))**2).sum(axis=1)).sum()
-        curvature_cost = bend_coef * np.trace(np.dot(self.w_ng.T, np.dot(K_nn, self.w_ng)))
-        self.cost = residual_cost + curvature_cost + rotation_cost
-        self.residual_cost, self.curvature_cost, self.rotation_cost = residual_cost, curvature_cost, rotation_cost
-        if verbose:
-            print "cost = residual + curvature + rotation"
-            print " %.3g = %.3g + %.3g + %.3g"%(self.cost, residual_cost, curvature_cost, rotation_cost)
-            print "linear:", self.lin_ag, "translation: ", self.trans_g             
 
 def plot_warped_grid_2d(f, mins, maxes, grid_res=None, flipax = True):
     import matplotlib.pyplot as plt
@@ -242,7 +220,12 @@ class Globals:
             import time
             time.sleep(.2)
 
-def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None, return_full = False):
+def default_plot_callback(x_nd, y_md, targ_nd, corr_nm, wt_n, f):
+    plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)   
+    targ_pose_array = conversions.array_to_pose_array(targ_Nd, 'base_footprint')
+    Globals.handles.append(Globals.rviz.draw_curve(targ_pose_array,rgba=(1,1,0,1),type=Marker.CUBE_LIST))    
+
+def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None, return_full = False, plot_cb = None):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
     reg_init/reg_final: regularization on curvature
@@ -257,7 +240,8 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
     else:
         f = ThinPlateSpline(d)
         f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0)
-
+    if plot_cb is None:
+        plot_cb = default_plot_callback
     for i in xrange(n_iter):
         xwarped_nd = f.transform_points(x_nd)
         # targ_nd = find_targets(x_nd, y_md, corr_opts = dict(r = rads[i], p = .1))
@@ -268,14 +252,14 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
         goodn = wt_n > .1
 
         targ_Nd = np.dot(corr_nm[goodn, :]/wt_n[goodn][:,None], y_md)
-
-        f.fit(x_nd[goodn], targ_Nd, bend_coef = regs[i], wt_n = wt_n[goodn], rot_coef = 10*regs[i], verbose=verbose)
-        np.set_printoptions(precision=3)
-
+        
         if plotting and i%plotting==0:
-            plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)   
-            targ_pose_array = conversions.array_to_pose_array(targ_Nd, 'base_footprint')
-            Globals.handles.append(Globals.rviz.draw_curve(targ_pose_array,rgba=(1,1,0,1),type=Marker.CUBE_LIST))
+            plot_cb(x_nd, y_md, targ_Nd, corr_nm, wt_n, f)
+        
+        
+        x_Nd = x_nd[goodn]
+        f.fit(x_Nd, targ_Nd, bend_coef = regs[i], wt_n = wt_n[goodn], rot_coef = 10*regs[i], verbose=verbose)
+
 
     if return_full:
         info = {}
@@ -284,41 +268,78 @@ def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = 
         info["x_Nd"] = x_nd[goodn,:]
         info["targ_Nd"] = targ_Nd
         info["wt_N"] = wt_n[goodn]
-        info["cost"] = f.cost
+        info["cost"] = tps.tps_cost(f.lin_ag, f.trans_g, f.w_ng, x_Nd, targ_Nd, regs[-1])
         return f, info
     else:
         return f
 
-def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, dist2_per_pt_per_radian=1e-6):
+def logmap(m):
+    "http://en.wikipedia.org/wiki/Axis_angle#Log_map_from_SO.283.29_to_so.283.29"
+    theta = np.arccos(np.clip((np.trace(m) - 1)/2,-1,1))
+    return (1/(2*np.sin(theta))) * np.array([[m[2,1] - m[1,2], m[0,2]-m[2,0], m[1,0]-m[0,1]]]), theta
+
+def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, 
+                 verbose=True, rot_param=(.05, .05, .05), scale_param = .01, plot_cb = None):
     """
     Do tps_rpm algorithm for each z angle rotation
     Then don't reestimate affine part in tps optimization
+    
+    rot param: meters error per point per radian
+    scale param: meters error per log2 scaling
+    
     """
+    
+    n_initializations = 5
     
     n,d = x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
-    zrots = np.linspace(-np.pi/2, pi/2, 11)
+    zrots = np.linspace(-np.pi/2, pi/2, n_initializations)
 
     displacement = np.median(y_md,axis=0) - np.median(x_nd, axis=0) 
 
-    costs = []
+    costs,tpscosts,regcosts = [],[],[]
     fs = []
+    
+    # convert in to the right units: meters/pt -> meters*2
+    rot_coefs = np.array(rot_param)
+    scale_coef = scale_param
+    import fastmath
+    fastmath.set_coeffs(rot_coefs, scale_coef)
+    #def regfunc(b):        
+        #if np.linalg.det(b) < 0 or np.isnan(b).any(): return np.inf
+        #b = b.T
+        #u,s,vh = np.linalg.svd(b)
+        ##p = vh.T.dot(s.dot(vh))        
+        #return np.abs(np.log(s)).sum()*scale_coef + float(np.abs(logmap(u.dot(vh))).dot(rot_coefs))
+    regfunc = fastmath.rot_reg
+    reggrad = fastmath.rot_reg_grad
+    
     for a in zrots:
-        f_init = ThinPlateSplineFixedRot()
+        f_init = ThinPlateSplineRegularizedLinearPart(regfunc, reggrad=reggrad)
+        f_init.n_fit_iters = 2
         f_init.trans_g = displacement
         f_init.lin_ag[:2,:2] = np.array([[cos(a), sin(a)],[-sin(a), cos(a)]])
-        f, info = tps_rpm(x_nd, y_md, n_iter=n_iter, reg_init=reg_init, reg_final=reg_final, rad_init = rad_init, rad_final = rad_final, plotting=plotting, verbose=verbose, f_init=f_init, return_full=True)
+        f, info = tps_rpm(x_nd, y_md, n_iter=n_iter, reg_init=reg_init, reg_final=reg_final, rad_init = rad_init, rad_final = rad_final, plotting=plotting, verbose=verbose, f_init=f_init, return_full=True, plot_cb=plot_cb)
         ypred_ng = f.transform_points(x_nd)
         dists_nm = ssd.cdist(ypred_ng, y_md)
         # how many radians rotation is one mm average error reduction worth?
 
-
+        tpscost = info["cost"]
         # seems like a reasonable goodness-of-fit measure
-        print "tps cost", f.cost/len(x_nd), "rot cost", abs(a) * dist2_per_pt_per_radian
-        cost = f.cost/len(x_nd) + abs(a)*dist2_per_pt_per_radian
-        costs.append(cost)
-        fs.append(f)
+        regcost = regfunc(f.lin_ag)
+        tpscosts.append(dists_nm.min(axis=1).mean())
+        regcosts.append(regcost)
+        costs.append(tpscost + regcost)
+        fs.append(f)        
+        print "linear part", f.lin_ag
+        u,s,vh = np.linalg.svd(f.lin_ag)
+        print "angle-axis:",logmap(u.dot(vh))
+        print "scaling:", s
+        
+    print "zrot | tps | reg | total"
+    for i in xrange(len(zrots)):
+        print "%.5f | %.5f | %.5f | %.5f"%(zrots[i], tpscosts[i], regcosts[i], costs[i])
 
     i_best = np.argmin(costs)
     print "best index", i_best
@@ -400,7 +421,7 @@ def calc_correspondence_matrix(x_nd, y_md, r, p, n_iter=20):
     dist_nm = ssd.cdist(x_nd, y_md,'euclidean')
     prob_nm = np.exp(-dist_nm / r)
     for _ in xrange(n_iter):
-        prob_nm /= (p*(n/m) + prob_nm.sum(axis=0))[None,:]  # cols sum to n/m
+        prob_nm /= (p*((n+0.)/m) + prob_nm.sum(axis=0))[None,:]  # cols sum to n/m
         prob_nm /= (p + prob_nm.sum(axis=1))[:,None] # rows sum to 1
 
     #print "row sums:", prob_nm.sum(axis=1)

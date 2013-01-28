@@ -99,10 +99,10 @@ class TransformBroadcasterThread(Thread):
         while not rospy.is_shutdown() and not self.wants_exit:
             rot = quaternion_from_euler(*self.transform.R)
             trans = self.transform.T
-            self.br.sendTransform(trans, rot, rospy.Time.now(), "/camera_link", PARENT_FRAME)
+            self.br.sendTransform(trans, rot, rospy.Time.now(), "/camera2_link", PARENT_FRAME)
             ps = gm.PoseStamped()
             ps.pose = trans_rot_to_pose(trans,rot)
-            ps.header.frame_id = "/camera_link"
+            ps.header.frame_id = PARENT_FRAME
             ps.header.stamp = rospy.Time.now()
             self.pose_pub.publish(ps)
             rospy.sleep(.01)
