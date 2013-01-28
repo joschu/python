@@ -348,7 +348,7 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
     print "best scaling:", s
 
     if plotting:
-        plot_orig_and_warped_clouds(best_f.transform_points, x_nd, y_md)   
+        plot_cb(x_nd, y_md, None, None, None, f)
 
     return best_f
 

@@ -31,9 +31,11 @@ for group in grouplist:
     xyz_base = np.loadtxt(osp.join("../test/test_pcs",group["base"]))
     
     def plot_cb(x_nd, y_md, targ_nd, corr_nm, wt_n, f):
+        return
+        #return
         from mayavi import mlab
         fignum=0
-        fignum = mlab.figure()
+        fignum = mlab.figure(0)
         mlab.clf(figure=fignum)
         x,y,z = x_nd.T
         mlab.points3d(x,y,z, color=(1,0,0),scale_factor=.01,figure=fignum)
@@ -41,14 +43,13 @@ for group in grouplist:
         mlab.points3d(x,y,z, color=(0,1,0),scale_factor=.01,figure=fignum)
         x,y,z =  y_md.T
         mlab.points3d(x,y,z, color=(0,0,1),scale_factor=.01,figure=fignum)        
-        mlab.show()
-        
+        #raw_input()
     
     for other in group["others"]:
         xyz_other = np.loadtxt(osp.join("../test/test_pcs", other["file"]))
         f = registration.tps_rpm_zrot(xyz_base, xyz_other,reg_init=2,reg_final=.5,n_iter=9, 
-                                      verbose=True, rot_param = (.01,.01,.005),scale_param=.01, plot_cb = plot_cb, plotting=1)
-        T_calc = np.c_[ f.lin_ag.T, f.trans_g.reshape(3,1) ]
+                                      verbose=True, rot_param = (0.01,0.01,0.0025),scale_param=.01, plot_cb = plot_cb, plotting=1)
+        T_calc = np.c_[ f.lin_ag.T, f.trans_g.reshape(3,1) ] # (.01,.01,.005)
         print "result"
         print T_calc
         print "axis-angle:",
