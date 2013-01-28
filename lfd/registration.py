@@ -221,8 +221,9 @@ class Globals:
             time.sleep(.2)
 
 def default_plot_callback(x_nd, y_md, targ_nd, corr_nm, wt_n, f):
+    del Globals.handles[:]
     plot_orig_and_warped_clouds(f.transform_points, x_nd, y_md)   
-    targ_pose_array = conversions.array_to_pose_array(targ_Nd, 'base_footprint')
+    targ_pose_array = conversions.array_to_pose_array(targ_nd, 'base_footprint')
     Globals.handles.append(Globals.rviz.draw_curve(targ_pose_array,rgba=(1,1,0,1),type=Marker.CUBE_LIST))    
 
 def tps_rpm(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_init = .2, rad_final = .001, plotting = False, verbose=True, f_init = None, return_full = False, plot_cb = None):
@@ -296,8 +297,6 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
     rads = loglinspace(rad_init, rad_final, n_iter)
     zrots = np.linspace(-np.pi/2, pi/2, n_initializations)
 
-    displacement = np.median(y_md,axis=0) - np.median(x_nd, axis=0) 
-
     costs,tpscosts,regcosts = [],[],[]
     fs = []
     
@@ -318,8 +317,8 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
     for a in zrots:
         f_init = ThinPlateSplineRegularizedLinearPart(regfunc, reggrad=reggrad)
         f_init.n_fit_iters = 2
-        f_init.trans_g = displacement
         f_init.lin_ag[:2,:2] = np.array([[cos(a), sin(a)],[-sin(a), cos(a)]])
+        f_init.trans_g =  y_md.mean(axis=0) - f_init.transform_points(x_nd).mean(axis=0)
         f, info = tps_rpm(x_nd, y_md, n_iter=n_iter, reg_init=reg_init, reg_final=reg_final, rad_init = rad_init, rad_final = rad_final, plotting=plotting, verbose=verbose, f_init=f_init, return_full=True, plot_cb=plot_cb)
         ypred_ng = f.transform_points(x_nd)
         dists_nm = ssd.cdist(ypred_ng, y_md)
@@ -342,10 +341,11 @@ def tps_rpm_zrot(x_nd, y_md, n_iter = 5, reg_init = .1, reg_final = .001, rad_in
         print "%.5f | %.5f | %.5f | %.5f"%(zrots[i], tpscosts[i], regcosts[i], costs[i])
 
     i_best = np.argmin(costs)
-    print "best index", i_best
-    print "best angle", zrots[i_best]*180/np.pi
-
     best_f = fs[i_best]
+    print "best initialization angle", zrots[i_best]*180/np.pi
+    u,s,vh = np.linalg.svd(best_f.lin_ag)
+    print "best rotation axis,angle:",logmap(u.dot(vh))
+    print "best scaling:", s
 
     if plotting:
         plot_orig_and_warped_clouds(best_f.transform_points, x_nd, y_md)   
@@ -402,7 +402,7 @@ def plot_orig_and_warped_clouds(f, x_nd, y_md, res=.1, d=3):
         maxes = x_nd.max(axis=0)
         mins -= np.array([.1, .1, .01])
         maxes += np.array([.1, .1, .01])
-        Globals.handles = warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res, zres=-1)
+        Globals.handles.extend(warping.draw_grid(Globals.rviz, f, mins, maxes, 'base_footprint', xres=res, yres=res, zres=-1))
         draw_orig_new_warped_pcs(x_nd, y_md, f(x_nd))
 
 def find_targets(x_md, y_nd, corr_opts):
