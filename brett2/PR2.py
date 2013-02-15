@@ -94,20 +94,6 @@ class PR2(object):
         self.env.Load("robots/pr2-beta-static.zae") # todo: use up-to-date urdf
         self.robot = self.env.GetRobots()[0]
 
-        # set up arm ik solvers (discretization level, etc.)
-        for manip in [self.robot.GetManipulator("leftarm"), self.robot.GetManipulator("rightarm")]:
-            self.robot.SetActiveManipulator(manip)
-            ikmodel = rave.databases.inversekinematics.InverseKinematicsModel(
-                self.robot,
-                iktype=rave.IkParameterization.Type.Transform6D,
-                freeindices=[manip.GetArmIndices()[2]],
-                forceikfast=True
-            )
-            if not ikmodel.load():
-                ikmodel.autogenerate()
-            #if not ikmodel.setrobot(freeinc=[0.1]):
-            #    raise RuntimeError('failed to load ik')
-
         if not rave_only:
             self.joint_listener = TopicListener("/joint_states", sm.JointState)
             self.tf_listener = ros_utils.get_tf_listener()
