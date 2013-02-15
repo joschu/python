@@ -56,22 +56,23 @@ class Environment(tr.HasTraits):
         self.env = env
         bodies = env.GetBodies()
         for body in bodies:
-            self.add_trait(body.GetName(), KinBody(body))
+            print "adding ",body.GetName()
+            self.add_trait(body.GetName()[:3], KinBody(body))
         tr.HasTraits.__init__(self)
 
     def default_traits_view(self):
         items = []
         for body in env.GetBodies():
-            items.append(trui.Item(name=body.GetName(),style='simple'))
+            items.append(trui.Item(name=body.GetName()[:3],style='simple'))
         return trui.View(trui.Group(*items))
     
         
 if __name__ == "__main__":
     env = rave.Environment()
 
-    env.Load('/home/joschu/Proj/trajoptrave/data/pr2-door.env.xml')
-    robot = env.GetRobots()[0]
-    robot.SetActiveDOFs(robot.GetManipulator("rightarm").GetArmJoints(), rave.DOFAffine.X|rave.DOFAffine.Y|rave.DOFAffine.Z|rave.DOFAffine.RotationAxis, [0,0,1])
+    #env.Load('/home/joschu/Proj/trajoptrave/data/pr2-door.env.xml')
+    env.Load("data/wamtest1.env.xml")
+    #robot.SetActiveDOFs(robot.GetManipulator("rightarm").GetArmJoints(), rave.DOFAffine.X|rave.DOFAffine.Y|rave.DOFAffine.Z|rave.DOFAffine.RotationAxis, [0,0,1])
     #env.Load('/home/joschu/Proj/drc/gfe.xml')
     #env.Load('/home/joschu/Proj/trajoptrave/data/drclogs.env.xml')
     env.StopSimulation()
@@ -87,5 +88,4 @@ if __name__ == "__main__":
     plot_thread = Thread(target=plot_loop)
     plot_thread.start()
     Environment(env).configure_traits()
-    #KinBody(robot).configure_traits()
     plot_thread.join()
