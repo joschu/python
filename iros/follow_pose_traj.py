@@ -4,21 +4,31 @@ parser.add_argument("mode", choices=["openrave", "gazebo", "reality"])
 args = parser.parse_args()
 
 import trajoptpy
+from lfd import bag_proc as bp
 import openravepy
 import numpy as np
 import json
 import trajoptpy.math_utils as mu
 import trajoptpy.kin_utils as ku
 import trajoptpy.make_kinbodies as mk
+from jds_utils.colorize import colorize
 
 import functools as ft
 
 import os
 import os.path as osp
-from glob import glob    
+from glob import glob
+import subprocess, sys
+
+import rosbag
+import geometry_msgs.msg as gm
+import sensor_msgs.msg as sm
+
+import roslib; roslib.load_manifest('filter_cloud_color')
+from filter_cloud_color.srv import PointDir
 
 #########################
-## Set up
+###### Set up
 #########################
 
 if args.mode == "openrave":
@@ -33,7 +43,7 @@ if args.mode == "openrave":
 else:
     import rospy
     from brett2.PR2 import PR2
-    rospy.init_node("follow_pose_traj",disable_signals=True)
+    rospy.init_node("follow_pose_traj", disable_signals=True)
     brett = PR2()
     env = brett.env
     robot = brett.robot
@@ -51,12 +61,23 @@ else:
         
 #######################
 
+from collections import namedtuple
+TrajSegment = namedtuple("TrajSegment", "larm_traj rarm_traj lgrip_angle rgrip_angle") # class to describe trajectory segments
+
+PARTNUM = 0
+OPEN_ANGLE = .08
+CLOSED_ANGLE = 0
+
+
+def call_and_print(cmd,color='green'):
+    print colorize(cmd, color, bold=True)
+    subprocess.check_call(cmd, shell=True)
 
 
 def adaptive_resample(x, tol, max_change=None, min_steps=3):
     """
-    resample original signal it with a small number of waypoints so that the the sparsely sampled function, when linearly interpolated, 
-    deviates from the original function by less than tol at every time
+    resample original signal with a small number of waypoints so that the the sparsely sampled function, 
+    when linearly interpolated, deviates from the original function by less than tol at every time
     
     input:
     x: 2D array in R^(t x k)  where t is the number of timesteps
@@ -113,34 +134,11 @@ def adaptive_resample(x, tol, max_change=None, min_steps=3):
             l1 = np.union1d(l1, (l1[bi] + l1[bi+1]) / 2 )
         
             
-    raise Exception("couldn't subdivide enough. something funny is going on. check oyur input data")
+    raise Exception("couldn't subdivide enough. something funny is going on. check your input data")
         
-        
-###################################
-###### Load demonstration files
-###################################
-
-
-IROS_DATA_DIR = os.getenv("IROS_DATA_DIR") 
-def keyfunc(fname): return int(osp.basename(fname).split("_")[0][2:]) # sort files with names like pt1_larm.npy
-lgrip_files, rgrip_files, larm_files, rarm_files = [sorted(glob(osp.join(IROS_DATA_DIR, "InterruptedSutureTrajectories/pt*%s.npy"%partname)), 
-                                                           key = keyfunc)
-                                                         for partname in ("lgrip", "rgrip", "larm", "rarm")]
-
-
-######################################
-
-from collections import namedtuple
-TrajSegment = namedtuple("TrajSegment", "larm_traj rarm_traj lgrip_angle rgrip_angle") # class to describe trajectory segments
-
-
-
-OPEN_ANGLE = .08
-CLOSED_ANGLE = 0
-
 
 def segment_trajectory(larm, rarm, lgrip, rgrip):
-    
+  
     thresh = .04 # open/close threshold
     
     n_steps = len(larm)
@@ -154,13 +152,14 @@ def segment_trajectory(larm, rarm, lgrip, rgrip):
     l_closings = np.flatnonzero((lgrip[1:] < thresh) & (lgrip[:-1] >= thresh))
     r_closings = np.flatnonzero((rgrip[1:] < thresh) & (rgrip[:-1] >= thresh))
 
+    #raw_input("Press enter to continue...")   
+
     before_transitions = np.r_[l_openings, r_openings, l_closings, r_closings]
     after_transitions = before_transitions+1
-    seg_starts = np.unique1d(np.r_[0, after_transitions])
-    seg_ends = np.unique1d(np.r_[before_transitions, n_steps])
+    seg_starts = np.unique(np.r_[0, after_transitions])
+    seg_ends = np.unique(np.r_[before_transitions, n_steps])
     
-    
-    
+        
     def binarize_gripper(angle):
         if angle > thresh: return OPEN_ANGLE
         else: return CLOSED_ANGLE
@@ -169,50 +168,116 @@ def segment_trajectory(larm, rarm, lgrip, rgrip):
     for (i_start, i_end) in zip(seg_starts, seg_ends):
         l_angle = binarize_gripper(lgrip[i_start])
         r_angle = binarize_gripper(rgrip[i_start])
-        traj_segments.append(TrajSegment( larm[i_start:i_end], rarm[i_start:i_end], l_angle, r_angle))
-    #import IPython
-    #IPython.embed()
-    return traj_segments
+        traj_segments.append(TrajSegment( larm[i_start:i_end], rarm[i_start:i_end], l_angle, r_angle ))
 
-PARTNUM = 0
-segments = segment_trajectory(
-    np.load(larm_files[PARTNUM]),
-    np.load(rarm_files[PARTNUM]),
-    np.load(lgrip_files[PARTNUM]),
-    np.load(rgrip_files[PARTNUM]))
+    return traj_segments
+ 
+ 
+#######################################
+###### Load demo from np files
+#######################################
+
+
+IROS_DATA_DIR = os.getenv("IROS_DATA_DIR")
+traj_data_dir = IROS_DATA_DIR + "/joint_trajectories"
+    
+def keyfunc(fname): 
+    return int(osp.basename(fname).split("_")[0][2:]) # sort files with names like pt1_larm.npy
+
+lgrip_files, rgrip_files, larm_files, rarm_files = [sorted(glob(osp.join(traj_data_dir, "InterruptedSuture2/pt*%s.npy"%partname)), 
+                                                          key = keyfunc)
+                                                          for partname in ("lgrip", "rgrip", "larm", "rarm")]
+
+
+segments = segment_trajectory( np.load(larm_files[PARTNUM]),
+                               np.load(rarm_files[PARTNUM]),
+                               np.load(lgrip_files[PARTNUM]),
+                               np.load(rgrip_files[PARTNUM]))
+
+
+########################################
+
 
 print "trajectory broken into %i segments by gripper transitions"%len(segments)
 
+### iterate through each segment in the trajectory; for each segment:
+### downsample
+### find cartestian coordinates for trajectory
+### transform cartestian trajectory
+### do ik to find new joint space trajectory (left arm first, then right arm)
+### execute new trajectory
+
+imaging = False
+find_needle = False
+
+if imaging:
+    print 'waiting for service'
+    # find line
+    rospy.wait_for_service("/getCutLine")
+    print 'found service getCutLine'
+
+    try:
+        cutline = rospy.ServiceProxy("/getCutLine", PointDir)
+        flapLoc = cutline(1)
+    except rospy.ServiceException, e:
+        print "error when calling getCutLine: %s"%e
+        sys.exit(1)
+
+    print 'getCutLine flap location point', flapLoc.point
+    print 'getCutLine flap location dir', flapLoc.dir
+
+    # find holes
+    rospy.wait_for_service("/getHoleNormal")
+    print 'found service getHoleNormal'
+
+    try:
+        hole = rospy.ServiceProxy("/getHoleNormal", PointDir)
+        hole1Loc = hole(1)
+        hole2Loc = hole(2)
+    except rospy.ServiceException, e:
+        print "error when calling getHoleNormal: %s"%e
+        sys.exit(1)
+
+    print 'getHoleNormal hole1 location point', hole1Loc.point
+    print 'getHoleNormal hole1 location dir', hole1Loc.dir
+
+    print 'getHoleNormal hole2 location point', hole2Loc.point
+    print 'getHoleNormal hole2 location dir', hole2Loc.dir
+    
+    raw_input("press enter to continue")
+
+    
 for (i,segment) in enumerate(segments):
     print "trajectory segment %i"%i
     
     full_traj = np.c_[segment.larm_traj, segment.rarm_traj]
     full_traj = mu.remove_duplicate_rows(full_traj)
     orig_times = np.arange(len(full_traj))
+    
+    ### downsample the trajectory
     ds_times, ds_traj =  adaptive_resample(full_traj, tol=.025, max_change=.1) # about 2.5 degrees, 10 degrees
     n_steps = len(ds_traj)
     
-    
-    ####################
-    ### This part just gets the cartesian trajectory
-    ####################
+    ################################################
+    ### This part gets the cartesian trajectory
+    ################################################
     
     robot.SetActiveDOFs(np.r_[robot.GetManipulator("leftarm").GetArmIndices(), robot.GetManipulator("rightarm").GetArmIndices()])
     # let's get cartesian trajectory
     left_hmats = []
     right_hmats = []
+    
     for row in ds_traj:
         robot.SetActiveDOFValues(row)
         left_hmats.append(robot.GetLink("l_gripper_tool_frame").GetTransform())
         right_hmats.append(robot.GetLink("r_gripper_tool_frame").GetTransform())
-    
-    
+      
     # now let's shift it a little
     for i in xrange(n_steps):
         left_hmats[i][0,3] -= 0
         right_hmats[i][0,3] -= 0
     
-    ###################
+    ################################################
     
     
     POSTURE_COEFF = 1
@@ -227,15 +292,17 @@ for (i,segment) in enumerate(segments):
             joint_diff[i] %= 2*np.pi
             if joint_diff[i] > np.pi: joint_diff[i] -= np.pi
         return 1000*robot.GetEnv().CheckCollision(robot) + POSTURE_COEFF * np.linalg.norm(joint_diff)
+   
     def left_ikfunc(hmat):
-        return ku.ik_for_link(hmat, robot.GetManipulator("leftarm"), "l_gripper_tool_frame", return_all_solns=True, filter_options = 1+2+16) # env collisions, no self / ee collisions
+        return ku.ik_for_link(hmat, robot.GetManipulator("leftarm"), "l_gripper_tool_frame", return_all_solns=True, filter_options = 1+2+16) 
+        # env collisions, no self / ee collisions
+   
     def unwrapped_squared_dist(x_nk,y_mk):
         "pairwise squared distance between rows of matrices x and y, but mod 2pi on continuous joints"
         diffs_nmk = np.abs(x_nk[:,None,:] - y_mk[None,:,:])
         diffs_nmk[:,:,[2,4,6]] %= 2*np.pi
         return (diffs_nmk**2).sum(axis=2)
-    
-    
+     
     left_paths, left_costs, timesteps = ku.traj_cart2joint(left_hmats, 
         ikfunc = left_ikfunc,
         nodecost=ft.partial(nodecost, robot.GetManipulator("leftarm")),
@@ -251,9 +318,9 @@ for (i,segment) in enumerate(segments):
     
     
     def right_ikfunc(hmat):
-        return ku.ik_for_link(hmat, robot.GetManipulator("rightarm"), "r_gripper_tool_frame", return_all_solns=True, filter_options = 1+16) # env collisions + self collisions
-    
-    
+        return ku.ik_for_link(hmat, robot.GetManipulator("rightarm"), "r_gripper_tool_frame", return_all_solns=True, filter_options = 1+16)
+        # env collisions + self collisions
+        
     right_paths, right_costs, timesteps = ku.traj_cart2joint(right_hmats, 
         ikfunc = right_ikfunc,
         nodecost=ft.partial(nodecost, robot.GetManipulator("rightarm")),
@@ -261,17 +328,17 @@ for (i,segment) in enumerate(segments):
     
     print "rightarm: IK succeeded on %s/%s timesteps. cost: %.2f"%(len(timesteps), len(right_hmats), np.min(right_costs))
     best_right_path_before_interp = right_paths[np.argmin(right_costs)]
+  
     if len(timesteps) < n_steps:
         print "linearly interpolating the points with no soln"
         best_right_path = mu.interp2d(np.arange(n_steps), timesteps, best_right_path_before_interp)
     else: best_right_path = best_right_path_before_interp
     
+       
     
-    
-    
-    ##################################
-    #### Now view/execute the trajectory
-    ##################################
+    ######################################
+    ### Now view/execute the trajectory
+    ######################################
     
     if args.mode == "openrave":
         viewer = trajoptpy.GetViewer(env)
