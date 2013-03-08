@@ -274,7 +274,7 @@ for s in range(SEGNUM):
 
     print "trajectory segment", str(s), "broken into %i mini-segment(s) by gripper transitions"%len(mini_segments[s])
 
-raw_input("press enter to execute")
+#raw_input("press enter to execute")
 #######################################
 
 ### iterate through each 'look' segment; for each segment:
@@ -373,6 +373,11 @@ for s in range(SEGNUM):
     f = registration.ThinPlateSpline()
     #f.fit(demopoints_m3, newpoints_m3, 10,10)
     f.fit(demopoints_m3, newpoints_m3, bend_coef=10,rot_coef=.01)
+    np.set_printoptions(precision=3)
+    print "nonlinear part", f.w_ng
+    print "affine part", f.lin_ag
+    print "translation part", f.trans_g
+    print "residual", f.transform_points(demopoints_m3) - newpoints_m3
 
 
     for (i,mini_segment) in enumerate(mini_segments[s]):
@@ -383,7 +388,7 @@ for s in range(SEGNUM):
         orig_times = np.arange(len(full_traj))
 
         ### downsample the trajectory
-        ds_times, ds_traj =  adaptive_resample(full_traj, tol=.025, max_change=.1) # about 2.5 degrees, 10 degrees
+        ds_times, ds_traj =  adaptive_resample(full_traj, tol=.01, max_change=.1) # about 2.5 degrees, 10 degrees
         n_steps = len(ds_traj)
 
         ################################################
@@ -443,7 +448,9 @@ for s in range(SEGNUM):
         def unwrapped_squared_dist(x_nk,y_mk):
             "pairwise squared distance between rows of matrices x and y, but mod 2pi on continuous joints"
             diffs_nmk = np.abs(x_nk[:,None,:] - y_mk[None,:,:])
-            diffs_nmk[:,:,[2,4,6]] %= 2*np.pi
+            diffs_nmk[:,:,2] %= 2*np.pi
+            diffs_nmk[:,:,4] %= 2*np.pi
+            diffs_nmk[:,:,6] %= 2*np.pi
             return (diffs_nmk**2).sum(axis=2)
 
         left_paths, left_costs, timesteps = ku.traj_cart2joint(left_hmats, 
@@ -453,6 +460,16 @@ for s in range(SEGNUM):
 
         print "leftarm: IK succeeded on %s/%s timesteps. cost: %.2f"%(len(timesteps), n_steps, np.min(left_costs))
         best_left_path_before_interp = left_paths[np.argmin(left_costs)]
+        
+        def unwind_arm_traj(x_nk):
+            out_nk = x_nk.copy()
+            for i in [2,4,6]:
+                out_nk[:,i] = np.unwrap(out_nk[:,i])
+            return out_nk
+        
+        best_left_path_before_interp = unwind_arm_traj(best_left_path_before_interp)
+
+
 
         if len(timesteps) < n_steps:
             print "linearly interpolating the points with no soln"
@@ -471,12 +488,17 @@ for s in range(SEGNUM):
 
         print "rightarm: IK succeeded on %s/%s timesteps. cost: %.2f"%(len(timesteps), len(right_hmats), np.min(right_costs))
         best_right_path_before_interp = right_paths[np.argmin(right_costs)]
+        best_right_path_before_interp = unwind_arm_traj(best_right_path_before_interp)
 
         if len(timesteps) < n_steps:
             print "linearly interpolating the points with no soln"
             best_right_path = mu.interp2d(np.arange(n_steps), timesteps, best_right_path_before_interp)
         else: best_right_path = best_right_path_before_interp
 
+        left_diffs = np.abs(best_left_path[1:] - best_left_path[:-1])        
+        right_diffs = np.abs(best_right_path[1:] - best_right_path[:-1])        
+        print "max joint discontinuities in left arm:", left_diffs.max(), "per joint: ", left_diffs.max(axis=0)
+        print "max joint discontinuities in right arm:", right_diffs.max(), "per joint: ", right_diffs.max(axis=0)
 
         raw_input(colorize("look at markers in rviz. red=demo, blue=new. press enter to continue","red"))
 
@@ -504,4 +526,4 @@ for s in range(SEGNUM):
             brett.join_all()
             bodypart2traj["l_arm"] = best_left_path
             bodypart2traj["r_arm"] = best_right_path
-            trajectories.follow_body_traj2(brett, bodypart2traj)
+            trajectories.follow_body_traj2(brett, bodypart2traj, speed_factor=.5)
