@@ -116,6 +116,49 @@ def adaptive_resample(x, tol, max_change=None, min_steps=3):
     raise Exception("couldn't subdivide enough. something funny is going on. check oyur input data")
         
         
+def follow_traj_request(robot, manip_name, new_hmats, old_joints):
+    n_steps = len(new_hmats)
+    assert len(old_joints) == n_steps
+    request = {
+        "basic_info" : {
+            "n_steps" : n_steps,
+            "manip" : manip_name,
+            "start_fixed" : True
+        },
+        "costs" : [
+        {
+            "type" : "joint_vel",
+            "params": {"coeffs" : [1]}
+        },
+        {
+            "type" : "collision",
+            "params" : {"coeffs" : [10],"dist_pen" : [0.025]}
+        }                
+        ],
+        "constraints" : [
+        ],
+        "init_info" : {
+            "type":"given_traj",
+            "data":[x.tolist() for x in old_joints]
+        }
+    }
+
+    poses = [openravepy.poseFromMatrix(hmat) for hmat in new_hmats]
+    for (i_step,pose) in enumerate(poses):
+        request["costs"].append(
+            {"type":"pose",
+             "params":{
+                "xyz":pose[4:7].tolist(),
+                "wxyz":pose[0:4].tolist(),
+                "link":"%s_gripper_tool_frame"%manip_name[0],
+                "timestep":i_step
+             }
+            })
+
+
+    
+    return request        
+        
 ###################################
 ###### Load demonstration files
 ###################################
@@ -183,6 +226,9 @@ segments = segment_trajectory(
 
 print "trajectory broken into %i segments by gripper transitions"%len(segments)
 
+robot.SetDOFValues(segments[0].larm_traj[0], robot.GetManipulator("leftarm").GetArmIndices())
+robot.SetDOFValues(segments[0].rarm_traj[0], robot.GetManipulator("rightarm").GetArmIndices())
+
 for (i,segment) in enumerate(segments):
     print "trajectory segment %i"%i
     
@@ -191,6 +237,7 @@ for (i,segment) in enumerate(segments):
     orig_times = np.arange(len(full_traj))
     ds_times, ds_traj =  adaptive_resample(full_traj, tol=.025, max_change=.1) # about 2.5 degrees, 10 degrees
     n_steps = len(ds_traj)
+
     
     
     ####################
@@ -201,84 +248,127 @@ for (i,segment) in enumerate(segments):
     # let's get cartesian trajectory
     left_hmats = []
     right_hmats = []
+    saver = openravepy.RobotStateSaver(robot)
     for row in ds_traj:
         robot.SetActiveDOFValues(row)
         left_hmats.append(robot.GetLink("l_gripper_tool_frame").GetTransform())
         right_hmats.append(robot.GetLink("r_gripper_tool_frame").GetTransform())
-    
+    saver.Restore()
+    saver.Release()
     
     # now let's shift it a little
     for i in xrange(n_steps):
-        left_hmats[i][0,3] -= 0
-        right_hmats[i][0,3] -= 0
+        left_hmats[i][0,3] -= .02
+        right_hmats[i][0,3] -= .02
     
     ###################
     
     
     POSTURE_COEFF = 1
-    
-    def nodecost(manip, joints, step):
-        robot = manip.GetRobot()
-        saver = openravepy.Robot.RobotStateSaver(robot)
-        robot.SetDOFValues(joints, manip.GetArmJoints(), False)
-        old_joints = ds_traj[step, :7] if manip.GetName() == "leftarm" else ds_traj[step, 7:]
-        joint_diff = old_joints - joints
-        for i in [2,4,6]: 
-            joint_diff[i] %= 2*np.pi
-            if joint_diff[i] > np.pi: joint_diff[i] -= np.pi
-        return 1000*robot.GetEnv().CheckCollision(robot) + POSTURE_COEFF * np.linalg.norm(joint_diff)
-    def left_ikfunc(hmat):
-        return ku.ik_for_link(hmat, robot.GetManipulator("leftarm"), "l_gripper_tool_frame", return_all_solns=True, filter_options = 1+2+16) # env collisions, no self / ee collisions
-    def unwrapped_squared_dist(x_nk,y_mk):
-        "pairwise squared distance between rows of matrices x and y, but mod 2pi on continuous joints"
-        diffs_nmk = np.abs(x_nk[:,None,:] - y_mk[None,:,:])
-        diffs_nmk[:,:,[2,4,6]] %= 2*np.pi
-        return (diffs_nmk**2).sum(axis=2)
-    
-    
-    left_paths, left_costs, timesteps = ku.traj_cart2joint(left_hmats, 
-        ikfunc = left_ikfunc,
-        nodecost=ft.partial(nodecost, robot.GetManipulator("leftarm")),
-        edgecost = unwrapped_squared_dist)
-    
-    print "leftarm: IK succeeded on %s/%s timesteps. cost: %.2f"%(len(timesteps), n_steps, np.min(left_costs))
-    best_left_path_before_interp = left_paths[np.argmin(left_costs)]
-    
-    if len(timesteps) < n_steps:
-        print "linearly interpolating the points with no soln"
-        best_left_path = mu.interp2d(np.arange(n_steps), timesteps, best_left_path_before_interp)
-    else: best_left_path = best_left_path_before_interp
+    trajoptpy.SetInteractive(False)
+    #def nodecost(manip, joints, step):
+        #robot = manip.GetRobot()
+        #saver = openravepy.Robot.RobotStateSaver(robot)
+        #robot.SetDOFValues(joints, manip.GetArmJoints(), False)
+        #old_joints = ds_traj[step, :7] if manip.GetName() == "leftarm" else ds_traj[step, 7:]
+        #joint_diff = old_joints - joints
+        #for i in [2,4,6]: 
+            #joint_diff[i] %= 2*np.pi
+            #if joint_diff[i] > np.pi: joint_diff[i] -= np.pi
+        #return 1000*robot.GetEnv().CheckCollision(robot) + POSTURE_COEFF * np.linalg.norm(joint_diff)
+    #def left_ikfunc(hmat):
+        #return ku.ik_for_link(hmat, robot.GetManipulator("leftarm"), "l_gripper_tool_frame", return_all_solns=True, filter_options = 1+2+16) # env collisions, no self / ee collisions
+    #def unwrapped_squared_dist(x_nk,y_mk):
+        #"pairwise squared distance between rows of matrices x and y, but mod 2pi on continuous joints"
+        #diffs_nmk = np.abs(x_nk[:,None,:] - y_mk[None,:,:])
+        #diffs_nmk[:,:,2] = diffs_nmk[:,:,2] % 2*np.pi
+        #diffs_nmk[:,:,4] = diffs_nmk[:,:,4] % 2*np.pi
+        #diffs_nmk[:,:,6] = diffs_nmk[:,:,6] % 2*np.pi
+        #return (diffs_nmk**2).sum(axis=2)
     
     
-    def right_ikfunc(hmat):
-        return ku.ik_for_link(hmat, robot.GetManipulator("rightarm"), "r_gripper_tool_frame", return_all_solns=True, filter_options = 1+16) # env collisions + self collisions
+    #left_paths, left_costs, timesteps = ku.traj_cart2joint(left_hmats, 
+        #ikfunc = left_ikfunc,
+        #nodecost=ft.partial(nodecost, robot.GetManipulator("leftarm")),
+        #edgecost = unwrapped_squared_dist)
+    
+    #print "leftarm: IK succeeded on %s/%s timesteps. cost: %.2f"%(len(timesteps), n_steps, np.min(left_costs))
+    #def unwind_arm_traj(x_nk):
+        #out_nk = x_nk.copy()
+        #for i in [2,4,6]:
+            #out_nk[:,i] = np.unwrap(out_nk[:,i])
+        #return out_nk    
+    #best_left_path_before_interp = left_paths[np.argmin(left_costs)]
+    #best_left_path_before_interp = unwind_arm_traj(best_left_path_before_interp)
+    
+    #if len(timesteps) < n_steps:
+        #print "linearly interpolating the points with no soln"
+        #best_left_path = mu.interp2d(np.arange(n_steps), timesteps, best_left_path_before_interp)
+    #else: best_left_path = best_left_path_before_interp
+    
+    init_traj = ds_traj[:,:7].copy()
+    init_traj[0] = robot.GetDOFValues(robot.GetManipulator("leftarm").GetArmIndices())
+    req = follow_traj_request(robot, "leftarm", left_hmats, init_traj)
+    s = json.dumps(req)
+    prob = trajoptpy.ConstructProblem(s, env) # create object that stores optimization problem
+    result = trajoptpy.OptimizeProblem(prob) # do optimization
+    best_left_path = result.GetTraj()
+    
+
+
+    
+    #def right_ikfunc(hmat):
+        #return ku.ik_for_link(hmat, robot.GetManipulator("rightarm"), "r_gripper_tool_frame", return_all_solns=True, filter_options = 1+16) # env collisions + self collisions
     
     
-    right_paths, right_costs, timesteps = ku.traj_cart2joint(right_hmats, 
-        ikfunc = right_ikfunc,
-        nodecost=ft.partial(nodecost, robot.GetManipulator("rightarm")),
-        edgecost = unwrapped_squared_dist)
+    #right_paths, right_costs, timesteps = ku.traj_cart2joint(right_hmats, 
+        #ikfunc = right_ikfunc,
+        #nodecost=ft.partial(nodecost, robot.GetManipulator("rightarm")),
+        #edgecost = unwrapped_squared_dist)
     
-    print "rightarm: IK succeeded on %s/%s timesteps. cost: %.2f"%(len(timesteps), len(right_hmats), np.min(right_costs))
-    best_right_path_before_interp = right_paths[np.argmin(right_costs)]
-    if len(timesteps) < n_steps:
-        print "linearly interpolating the points with no soln"
-        best_right_path = mu.interp2d(np.arange(n_steps), timesteps, best_right_path_before_interp)
-    else: best_right_path = best_right_path_before_interp
+    #print "rightarm: IK succeeded on %s/%s timesteps. cost: %.2f"%(len(timesteps), len(right_hmats), np.min(right_costs))
+    #best_right_path_before_interp = right_paths[np.argmin(right_costs)]
+    #best_left_path_before_interp = unwind_arm_traj(best_right_path_before_interp)
+    #if len(timesteps) < n_steps:
+        #print "linearly interpolating the points with no soln"
+        #best_right_path = mu.interp2d(np.arange(n_steps), timesteps, best_right_path_before_interp)
+    #else: best_right_path = best_right_path_before_interp
+    
+    #im = np.zeros((len(left_hmats), 61), bool)
+    #for (i_step,hmat) in enumerate(left_hmats):
+        #solns = left_ikfunc(hmat)
+        #if len(solns) > 0:
+            #im[i_step,:][  (10*np.array(solns)[:,2]+3).astype('int') ] = 1
+    #import matplotlib.pyplot as plt
+    #plt.imshow(im)
+    #plt.show()
     
     
+    init_traj = ds_traj[:,7:14].copy()
+    init_traj[0] = robot.GetDOFValues(robot.GetManipulator("rightarm").GetArmIndices())
+    req = follow_traj_request(robot, "rightarm", right_hmats, init_traj)
+    s = json.dumps(req)
+    prob = trajoptpy.ConstructProblem(s, env) # create object that stores optimization problem
+    result = trajoptpy.OptimizeProblem(prob) # do optimization
+    best_right_path = result.GetTraj()
     
+    
+    left_diffs = np.abs(best_left_path[1:] - best_left_path[:-1])        
+    right_diffs = np.abs(best_right_path[1:] - best_right_path[:-1])        
+    print "max joint discontinuities in left arm:", left_diffs.max(), "per joint: ", left_diffs.max(axis=0)
+    print "max joint discontinuities in right arm:", right_diffs.max(), "per joint: ", right_diffs.max(axis=0)    
     
     ##################################
     #### Now view/execute the trajectory
     ##################################
     
     if args.mode == "openrave":
+        robot.SetActiveDOFs(np.r_[robot.GetManipulator("leftarm").GetArmIndices(), robot.GetManipulator("rightarm").GetArmIndices()])
         viewer = trajoptpy.GetViewer(env)
         joint_traj = np.c_[best_left_path, best_right_path]
         # *5 factor is due to an openrave oddity
         robot.SetDOFValues([segment.lgrip_angle*5, segment.rgrip_angle*5], [robot.GetJoint("l_gripper_l_finger_joint").GetDOFIndex(), robot.GetJoint("r_gripper_l_finger_joint").GetDOFIndex()], False)
-        for (i,row) in enumerate(ds_traj):
+        for (i,row) in enumerate(joint_traj):
             print "step",i
             robot.SetActiveDOFValues(row)
             lhandle = env.drawarrow(robot.GetLink("l_gripper_tool_frame").GetTransform()[:3,3], left_hmats[i][:3,3])
