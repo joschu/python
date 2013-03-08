@@ -1,31 +1,9 @@
-#import argparse
-#parser = argparse.ArgumentParser()
-#parser.add_argument("--mode", choices=["live","test"], default="live")
-#parser.add_argument("--plot3d", action="store_true")
-#args = parser.parse_args()
-
-"""
-# how to get a pcd file
-# plug asus into local computer
-import cloudprocpy # my homemade pcl python bindings. built with trajopt if BUILD_CLOUDPROC enabled
-grabber=cloudprocpy.CloudGrabber()
-xyzrgb = grabber.getXYZRGB()
-xyzrgb.save("pr2_suture_scene.pcd")
-"""
-
 #import cv2
 #import numpy as np
 #import rospy
 #import geometry_msgs.msg as gm
 #import sensor_msgs.msg as sm
 #import sys
-
-#rospy.init_node("image_gui", disable_signals = True)
-#rospy.init_node("image_gui")
-
-#xyz = []
-#xyz_tf = []
-#rgb = []
 
 
 #if args.mode == "test":
@@ -87,13 +65,12 @@ xyzrgb.save("pr2_suture_scene.pcd")
 
 #raw_input("Press enter to continue...")   
 
-
+import cv
 import cv2
 import math
 import numpy as np
 from jds_image_proc.pcd_io import load_xyzrgb
-
-cv2.namedWindow("rgb")
+from jds_utils.colorize import colorize
 
 class GetClick:
     xy = None      
@@ -107,11 +84,36 @@ class GetClick:
 
 xyz, rgb = load_xyzrgb("suture_scene(findholescut)0.pcd")  
 
-#orig = cv2.imread("c.jpg")
-#img = orig.copy()
 img = rgb.copy()
 
+d_red = cv2.cv.RGB(150, 55, 65)
+l_red = cv2.cv.RGB(250, 200, 200)
+d_blue = cv2.cv.RGB(65, 55, 150)
+
+#minRadius = 21
+#maxRadius = 33
+#storage = cv.CreateMat(w, 1, cv.CV_32FC3)
+#cv2.HoughCircles(image, method, dp, minDist[, circles[, param1[, param2[, minRadius[, maxRadius]]]]]) 
+#cv.HoughCircles(processed, storage, cv.CV_HOUGH_GRADIENT, 2, 32.0, HIGH, LOW)
+#for i in range(0,len(np.asarray(storage))):
+#    cv.Circle(gray_img, ( int(np.asarray(storage)[i][0][0]), int(np.asarray(storage)[i][0][1]) ), int(np.asarray(storage)[i][0][2]), cv.CV_RGB(255, 0, 0), 2, 8, 0 )
+#cv2.HoughCircles(gray_img, int(np.asarray(storage)), cv.CV_HOUGH_GRADIENT, 1, 42, minRadius, maxRadius)
+
+#for i in range(0, len(np.asarray(storage))):
+#    print "circle #%d" %i
+#    radius = int(np.asarray(storage)[i][0][2])
+#    x = int(np.asarray(storage)[i][0][0])
+#    y = int(np.asarray(storage)[i][0][1])
+#    center = (x, y)
+#    print 'radius', radius
+
+#raw_input("Press enter to continue...")
+
+
+cv2.namedWindow("rgb")
 rect_corners = []
+
+print colorize("click at the corners of the relevant area", 'red')
 
 for i in xrange(2):
     gc = GetClick()
@@ -130,20 +132,11 @@ cv2.waitKey(100)
 colmin, rowmin = xy_tl
 colmax, rowmax = xy_br
 
-h, w = img.shape[:2]
-#print 'h,w', h, w
 new_img = img[rowmin:rowmax , colmin:colmax]
-new_img2 = cv2.cvtColor(new_img, cv2.COLOR_BGR2GRAY)
-cv2.namedWindow("rgb2")
-cv2.imshow("rgb2", new_img)
-
-#raw_input("Press enter to continue...")
-
-d_red = cv2.cv.RGB(150, 55, 65)
-l_red = cv2.cv.RGB(250, 200, 200)
+gray_img = cv2.cvtColor(new_img, cv2.COLOR_BGR2GRAY)
 
 detector = cv2.FeatureDetector_create('MSER')
-fs = detector.detect(new_img2)
+fs = detector.detect(gray_img)
 fs.sort(key = lambda x: -x.size)
 
 def supress(x):
@@ -151,32 +144,23 @@ def supress(x):
         distx = f.pt[0] - x.pt[0]
         disty = f.pt[1] - x.pt[1]
         dist = math.sqrt(distx*distx + disty*disty)
-        print 'f.size', f.size
-        print 'x.size', x.size
-        print 'dist', dist        
-        if (f.size > x.size) and (dist < f.size/2):  
-            print 'f.size', f.size
-            print 'x.size', x.size
-            print 'dist', dist            
+        if (f.size > x.size) and (dist < f.size/2):
             return True
 
 
 sfs = [x for x in fs if not supress(x)]
+print 'num circles', len(sfs)
 
 
 for f in sfs:
-    cv2.circle(new_img, (int(f.pt[0]), int(f.pt[1])), int(f.size/2), d_red, 2, cv2.CV_AA)
-    cv2.circle(new_img, (int(f.pt[0]), int(f.pt[1])), int(f.size/2), l_red, 1, cv2.CV_AA)
+    #cv2.circle(new_img, (int(f.pt[0]), int(f.pt[1])), int(f.size/2), d_red, 2, cv2.CV_AA)
+    #cv2.circle(new_img, (int(f.pt[0]), int(f.pt[1])), int(f.size/2), l_red, 1, cv2.CV_AA)
+    if (f.size > 21) and (f.size < 33):
+        cv2.circle(new_img, (int(f.pt[0]), int(f.pt[1])), int(f.size/2), d_red, 2, cv2.CV_AA)
+        cv2.circle(new_img, (int(f.pt[0]), int(f.pt[1])), int(f.size/2), d_blue, 1, cv2.CV_AA)
 
-h, w = new_img.shape[:2]
-#vis = np.zeros((h, w*2+5), np.uint8)
-vis = np.zeros((h, w), np.uint8)
-vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
-vis[:h, :w] = new_img
-#vis[:h, w+5:w*2+5] = new_img
-
-cv2.imshow("image", vis)
-#cv2.imwrite("c_o.jpg", vis)
+cv2.namedWindow("rgb with circles")
+cv2.imshow("rgb with circles", new_img)
 cv2.waitKey()
 cv2.destroyAllWindows()
 
