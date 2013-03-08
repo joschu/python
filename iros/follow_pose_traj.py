@@ -116,9 +116,15 @@ def adaptive_resample(x, tol, max_change=None, min_steps=3):
     raise Exception("couldn't subdivide enough. something funny is going on. check oyur input data")
         
         
-def follow_traj_request(robot, manip_name, new_hmats, old_joints):
+def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
+
     n_steps = len(new_hmats)
-    assert len(old_joints) == n_steps
+    assert old_traj.shape[0] == n_steps
+    assert old_traj.shape[1] == 7
+    
+    init_traj = old_traj.copy()
+    init_traj[0] = robot.GetDOFValues(robot.GetManipulator(manip_name).GetArmIndices())
+
     request = {
         "basic_info" : {
             "n_steps" : n_steps,
@@ -139,7 +145,7 @@ def follow_traj_request(robot, manip_name, new_hmats, old_joints):
         ],
         "init_info" : {
             "type":"given_traj",
-            "data":[x.tolist() for x in old_joints]
+            "data":[x.tolist() for x in init_traj]
         }
     }
 
@@ -156,8 +162,14 @@ def follow_traj_request(robot, manip_name, new_hmats, old_joints):
             })
 
 
+    s = json.dumps(request)
+    prob = trajoptpy.ConstructProblem(s, env) # create object that stores optimization problem
+    result = trajoptpy.OptimizeProblem(prob) # do optimization
+    traj = result.GetTraj()    
+        
+
     
-    return request        
+    return traj 
         
 ###################################
 ###### Load demonstration files
@@ -264,93 +276,11 @@ for (i,segment) in enumerate(segments):
     ###################
     
     
-    POSTURE_COEFF = 1
     trajoptpy.SetInteractive(False)
-    #def nodecost(manip, joints, step):
-        #robot = manip.GetRobot()
-        #saver = openravepy.Robot.RobotStateSaver(robot)
-        #robot.SetDOFValues(joints, manip.GetArmJoints(), False)
-        #old_joints = ds_traj[step, :7] if manip.GetName() == "leftarm" else ds_traj[step, 7:]
-        #joint_diff = old_joints - joints
-        #for i in [2,4,6]: 
-            #joint_diff[i] %= 2*np.pi
-            #if joint_diff[i] > np.pi: joint_diff[i] -= np.pi
-        #return 1000*robot.GetEnv().CheckCollision(robot) + POSTURE_COEFF * np.linalg.norm(joint_diff)
-    #def left_ikfunc(hmat):
-        #return ku.ik_for_link(hmat, robot.GetManipulator("leftarm"), "l_gripper_tool_frame", return_all_solns=True, filter_options = 1+2+16) # env collisions, no self / ee collisions
-    #def unwrapped_squared_dist(x_nk,y_mk):
-        #"pairwise squared distance between rows of matrices x and y, but mod 2pi on continuous joints"
-        #diffs_nmk = np.abs(x_nk[:,None,:] - y_mk[None,:,:])
-        #diffs_nmk[:,:,2] = diffs_nmk[:,:,2] % 2*np.pi
-        #diffs_nmk[:,:,4] = diffs_nmk[:,:,4] % 2*np.pi
-        #diffs_nmk[:,:,6] = diffs_nmk[:,:,6] % 2*np.pi
-        #return (diffs_nmk**2).sum(axis=2)
-    
-    
-    #left_paths, left_costs, timesteps = ku.traj_cart2joint(left_hmats, 
-        #ikfunc = left_ikfunc,
-        #nodecost=ft.partial(nodecost, robot.GetManipulator("leftarm")),
-        #edgecost = unwrapped_squared_dist)
-    
-    #print "leftarm: IK succeeded on %s/%s timesteps. cost: %.2f"%(len(timesteps), n_steps, np.min(left_costs))
-    #def unwind_arm_traj(x_nk):
-        #out_nk = x_nk.copy()
-        #for i in [2,4,6]:
-            #out_nk[:,i] = np.unwrap(out_nk[:,i])
-        #return out_nk    
-    #best_left_path_before_interp = left_paths[np.argmin(left_costs)]
-    #best_left_path_before_interp = unwind_arm_traj(best_left_path_before_interp)
-    
-    #if len(timesteps) < n_steps:
-        #print "linearly interpolating the points with no soln"
-        #best_left_path = mu.interp2d(np.arange(n_steps), timesteps, best_left_path_before_interp)
-    #else: best_left_path = best_left_path_before_interp
-    
-    init_traj = ds_traj[:,:7].copy()
-    init_traj[0] = robot.GetDOFValues(robot.GetManipulator("leftarm").GetArmIndices())
-    req = follow_traj_request(robot, "leftarm", left_hmats, init_traj)
-    s = json.dumps(req)
-    prob = trajoptpy.ConstructProblem(s, env) # create object that stores optimization problem
-    result = trajoptpy.OptimizeProblem(prob) # do optimization
-    best_left_path = result.GetTraj()
-    
-
 
     
-    #def right_ikfunc(hmat):
-        #return ku.ik_for_link(hmat, robot.GetManipulator("rightarm"), "r_gripper_tool_frame", return_all_solns=True, filter_options = 1+16) # env collisions + self collisions
-    
-    
-    #right_paths, right_costs, timesteps = ku.traj_cart2joint(right_hmats, 
-        #ikfunc = right_ikfunc,
-        #nodecost=ft.partial(nodecost, robot.GetManipulator("rightarm")),
-        #edgecost = unwrapped_squared_dist)
-    
-    #print "rightarm: IK succeeded on %s/%s timesteps. cost: %.2f"%(len(timesteps), len(right_hmats), np.min(right_costs))
-    #best_right_path_before_interp = right_paths[np.argmin(right_costs)]
-    #best_left_path_before_interp = unwind_arm_traj(best_right_path_before_interp)
-    #if len(timesteps) < n_steps:
-        #print "linearly interpolating the points with no soln"
-        #best_right_path = mu.interp2d(np.arange(n_steps), timesteps, best_right_path_before_interp)
-    #else: best_right_path = best_right_path_before_interp
-    
-    #im = np.zeros((len(left_hmats), 61), bool)
-    #for (i_step,hmat) in enumerate(left_hmats):
-        #solns = left_ikfunc(hmat)
-        #if len(solns) > 0:
-            #im[i_step,:][  (10*np.array(solns)[:,2]+3).astype('int') ] = 1
-    #import matplotlib.pyplot as plt
-    #plt.imshow(im)
-    #plt.show()
-    
-    
-    init_traj = ds_traj[:,7:14].copy()
-    init_traj[0] = robot.GetDOFValues(robot.GetManipulator("rightarm").GetArmIndices())
-    req = follow_traj_request(robot, "rightarm", right_hmats, init_traj)
-    s = json.dumps(req)
-    prob = trajoptpy.ConstructProblem(s, env) # create object that stores optimization problem
-    result = trajoptpy.OptimizeProblem(prob) # do optimization
-    best_right_path = result.GetTraj()
+    best_left_path = plan_follow_traj(robot, "rightarm", left_hmats, ds_traj[:,:7])
+    best_right_path = plan_follow_traj(robot, "rightarm", right_hmats, ds_traj[:,7:])
     
     
     left_diffs = np.abs(best_left_path[1:] - best_left_path[:-1])        
