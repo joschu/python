@@ -200,8 +200,6 @@ def segment_trajectory(larm, rarm, lgrip, rgrip):
     return traj_segments
 
 def get_holes_cut_cloud(listener):
-    print colorize("Key points from demo are: Holes and Cut. Looking for Holes and Cut now...", 'green', bold=True)
-
     print "waiting for messages on cloud topic %s"%args.cloud_topic
     msg = rospy.wait_for_message(args.cloud_topic, sm.PointCloud2)
     print "got msg!"
@@ -227,8 +225,6 @@ def get_holes_cut_cloud(listener):
     return xyz_tf, rgb_plot
 
 def get_needle_clouds(listener):
-    print colorize("Key points from demo are: Needle. Looking for Needle now...", 'green', bold=True)
-
     xyz_tfs = []
     rgb_plots = []
     num_clouds = 30
@@ -245,7 +241,7 @@ def get_needle_clouds(listener):
         if (xyz.shape[0] == 1 or xyz.shape[1] == 1): raise Exception("needs to be an organized point cloud")
 
         xyz_tf = ru.transform_points(xyz, listener, "base_footprint", "/camera_rgb_optical_frame")        
-        xyz_tf[np.isnan(xyz_tf)] = -2
+        #xyz_tf[np.isnan(xyz_tf)] = -2
     
         xyz_tfs.append(xyz_tf)
         rgb_plots.append(rgb)
@@ -301,66 +297,77 @@ for s in range(SEGNUM):
     num_kps = len(demo_keypts_names[s])
     exec_keypts = []
     
-    if num_kps != 1:
-        print 'number of keypoints yet not supported! aborting...'
-        sys.exit(1)    
-
     for k in range(num_kps):
-        if demo_keypts_names[s][k] == 'holes_and_cut':
+        print colorize("Key point from demo is: " + demo_keypts_names[s][k] + ". Looking for this key point now...", 'green', bold=True)
+        
+        if demo_keypts_names[s][k] in ['left_hole', 'right_hole']:
             if args.cloud_topic == 'test':
-                xyz_tf = np.load(pcf + 'seg%s_xyz_tf.npy'%s)
-                rgb_plot = np.load(pcf + 'seg%s_rgb_plot.npy'%s)
+                if demo_keypts_names[s][k] == 'left_hole':
+                    xyz_tf = np.load(pcf + 'seg%s_lh_xyz_tf.npy'%s)
+                    rgb_plot = np.load(pcf + 'seg%s_lh_rgb_pl.npy'%s)
+                else: 
+                    xyz_tf = np.load(pcf + 'seg%s_rh_xyz_tf.npy'%s)
+                    rgb_plot = np.load(pcf + 'seg%s_rh_rgb_pl.npy'%s)                    
             else:
                 xyz_tf, rgb_plot = get_holes_cut_cloud(listener)      
                 
-            hole1_loc, hole2_loc, tcut_loc, mcut_loc, bcut_loc = sc.find_holes_cut(xyz_tf, rgb_plot, window_name)
-            
-            exec_keypts.append(hole1_loc) 
-            exec_keypts.append(hole2_loc)
+            hole_loc = sc.find_hole(demo_keypts_names[s][k], xyz_tf, rgb_plot, window_name)
+            exec_keypts.append(hole_loc) 
+
+        elif demo_keypts_names[s][k] == 'cut':
+            if args.cloud_topic == 'test':
+                xyz_tf = np.load(pcf + 'seg%s_ct_xyz_tf.npy'%s)
+                rgb_plot = np.load(pcf + 'seg%s_ct_rgb_pl.npy'%s)
+            else:
+                xyz_tf, rgb_plot = get_holes_cut_cloud(listener)      
+                
+            tcut_loc, mcut_loc, bcut_loc = sc.find_cut(xyz_tf, rgb_plot, window_name)
             exec_keypts.append(tcut_loc)
             exec_keypts.append(mcut_loc)
             exec_keypts.append(bcut_loc)
             
         elif demo_keypts_names[s][k] == 'needle_end':
             if args.cloud_topic == 'test':
-                xyz_tfs = np.load(pcf + 'seg%s_xyz_tfs.npy'%s)
-                rgb_plots = np.load(pcf + 'seg%s_rgb_plots.npy'%s)
+                xyz_tfs = np.load(pcf + 'seg%s_ne_xyz_tfs.npy'%s)
+                rgb_plots = np.load(pcf + 'seg%s_ne_rgb_pls.npy'%s)
             else:            
                 xyz_tfs, rgb_plots = get_needle_clouds(listener)        
+            
             nl = sc.find_needle_end(xyz_tfs, rgb_plots, window_name)          
             exec_keypts.append(nl)
 
-        elif demo_keypts_names[s][k] == 'needle_tip':
-            if args.cloud_topic == 'test':
-                xyz_tfs = np.load(pcf + 'seg%s_xyz_tfs.npy'%s)
-                rgb_plots = np.load(pcf + 'seg%s_rgb_plots.npy'%s)            
-            else:
-                xyz_tfs, rgb_plots = get_needle_clouds(listener)
-            nl = sc.find_needle_tip(xyz_tfs, rgb_plots, window_name)          
-            exec_keypts.append(nl)
+        elif demo_keypts_names[s][k] in ['needle_tip', 'empty']:
 
-        elif demo_keypts_names[s][k] == 'empty':
             if args.cloud_topic == 'test':
-                xyz_tfs = np.load(pcf + 'seg%s_xyz_tfs.npy'%s)
-                rgb_plots = np.load(pcf + 'seg%s_rgb_plots.npy'%s)
+                if demo_keypts_names[s][k] == 'needle_tip':            
+                    xyz_tfs = np.load(pcf + 'seg%s_nt_xyz_tfs.npy'%s)
+                    rgb_plots = np.load(pcf + 'seg%s_nt_rgb_pls.npy'%s)
+                else:
+                    xyz_tfs = np.load(pcf + 'seg%s_ntt_xyz_tfs.npy'%s)
+                    rgb_plots = np.load(pcf + 'seg%s_ntt_rgb_pls.npy'%s)                    
             else:
                 xyz_tfs, rgb_plots = get_needle_clouds(listener)
-            exec_needle_tip_loc = sc.find_needle_tip(xyz_tfs, rgb_plots, window_name)
-            exec_keypts.append((0,0,0))
+            
+            nl = sc.find_needle_tip(xyz_tfs, rgb_plots, window_name)
+            
+            if demo_keypts_names[s][k] == 'empty':
+                exec_needle_tip_loc = nl
+                exec_keypts.append((0,0,0))
+            else:
+                exec_keypts.append(nl)
    
-
     #print 'exec_keypts', exec_keypts
 
     demopoints_m3 = np.array(demo_keypts[s])
     newpoints_m3 = np.array(exec_keypts)
+    del exec_keypts
+    
     if args.mode in ["gazebo", "reality"]:
         handles = []
-        pose_array = conversions.array_to_pose_array(demopoints_m3, '/base_footprint')    
+        pose_array = conversions.array_to_pose_array(demopoints_m3, 'base_footprint')    
         handles.append(rviz.draw_curve(pose_array, rgba = (1,0,0,1),width=.02,type=ru.Marker.CUBE_LIST))
-        pose_array = conversions.array_to_pose_array(newpoints_m3, '/base_footprint')    
+        pose_array = conversions.array_to_pose_array(newpoints_m3, 'base_footprint')    
         handles.append(rviz.draw_curve(pose_array, rgba = (0,0,1,1),width=.02,type=ru.Marker.CUBE_LIST))
-        
-    del exec_keypts
 
     from lfd import registration
     f = registration.ThinPlateSpline()
@@ -400,14 +407,14 @@ for s in range(SEGNUM):
 
 
         if args.mode in ["gazebo", "reality"]:
-            pose_array = conversions.array_to_pose_array(np.array(left_hmats_old)[:,:3,3], '/base_footprint')    
+            pose_array = conversions.array_to_pose_array(np.array(left_hmats_old)[:,:3,3], 'base_footprint')    
             handles.append(rviz.draw_curve(pose_array, rgba = (1,0,0,1),width=.005,type=ru.Marker.LINE_STRIP))
-            pose_array = conversions.array_to_pose_array(np.array(right_hmats_old)[:,:3,3], '/base_footprint')    
+            pose_array = conversions.array_to_pose_array(np.array(right_hmats_old)[:,:3,3], 'base_footprint')    
             handles.append(rviz.draw_curve(pose_array, rgba = (1,0,0,1),width=.005,type=ru.Marker.LINE_STRIP))
 
-            pose_array = conversions.array_to_pose_array(np.array(left_hmats)[:,:3,3], '/base_footprint')    
+            pose_array = conversions.array_to_pose_array(np.array(left_hmats)[:,:3,3], 'base_footprint')    
             handles.append(rviz.draw_curve(pose_array, rgba = (0,0,1,1),width=.005,type=ru.Marker.LINE_STRIP))
-            pose_array = conversions.array_to_pose_array(np.array(right_hmats)[:,:3,3], '/base_footprint')    
+            pose_array = conversions.array_to_pose_array(np.array(right_hmats)[:,:3,3], 'base_footprint')    
             handles.append(rviz.draw_curve(pose_array, rgba = (0,0,1,1),width=.005,type=ru.Marker.LINE_STRIP))
 
 
