@@ -448,9 +448,9 @@ for s in range(SEGNUM):
         def unwrapped_squared_dist(x_nk,y_mk):
             "pairwise squared distance between rows of matrices x and y, but mod 2pi on continuous joints"
             diffs_nmk = np.abs(x_nk[:,None,:] - y_mk[None,:,:])
-            diffs_nmk[:,:,2] %= 2*np.pi
-            diffs_nmk[:,:,4] %= 2*np.pi
-            diffs_nmk[:,:,6] %= 2*np.pi
+            diffs_nmk[:,:,2] = diffs_nmk[:,:,2] % 2*np.pi
+            diffs_nmk[:,:,4] = diffs_nmk[:,:,4] % 2*np.pi
+            diffs_nmk[:,:,6] = diffs_nmk[:,:,6] % 2*np.pi
             return (diffs_nmk**2).sum(axis=2)
 
         left_paths, left_costs, timesteps = ku.traj_cart2joint(left_hmats, 
