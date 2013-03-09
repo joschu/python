@@ -40,7 +40,7 @@ cv2.namedWindow(window_name)
 
 IROS_DATA_DIR = os.getenv("IROS_DATA_DIR")
 
-task_file = osp.join(IROS_DATA_DIR, "suture_demos.yaml")
+task_file = osp.join(IROS_DATA_DIR, "suture_demos_old.yaml")
 
 with open(osp.join(IROS_DATA_DIR,task_file),"r") as fh:
     task_info = yaml.load(fh)
@@ -506,6 +506,7 @@ for s in range(SEGNUM):
         trajoptpy.SetInteractive(False)
 
         best_left_path = plan_follow_traj(robot, "leftarm", left_hmats, remove_winding(ds_traj[:,:7], robot.GetDOFValues(leftarm_inds)))
+
         best_right_path = plan_follow_traj(robot, "rightarm", right_hmats, remove_winding(ds_traj[:,7:], robot.GetDOFValues(rightarm_inds)))
 
 

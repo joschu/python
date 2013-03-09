@@ -164,8 +164,8 @@ for n in range(len(kpts_names2)):
 print 'rgb1 kps', kps1
 print 'rgb2 kps', kps2
 
-cv2.imshow("rgb1", rgb1)
-cv2.waitKey(100)
+#cv2.imshow("rgb1", rgb1)
+#cv2.waitKey(100)
 
-cv2.imshow("rgb2", rgb2)
-cv2.waitKey(100)
+#cv2.imshow("rgb2", rgb2)
+#cv2.waitKey(100)
