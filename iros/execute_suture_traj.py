@@ -248,7 +248,7 @@ def get_needle_clouds(listener):
 
     return xyz_tfs, rgb_plots
 
-def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
+def plan_follow_traj(robot, manip_name, new_hmats, old_traj, other_manip_name = None, other_manip_traj = None):
 
     n_steps = len(new_hmats)
     assert old_traj.shape[0] == n_steps
@@ -280,6 +280,10 @@ def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
             "data":[x.tolist() for x in init_traj]
         }
     }
+    if other_manip_name is not None:
+        request["scene_states"] = []
+        other_dof_inds = robot.GetManipulator(other_manip_name).GetArmIndices()
+        
 
     poses = [openravepy.poseFromMatrix(hmat) for hmat in new_hmats]
     for (i_step,pose) in enumerate(poses):
@@ -292,6 +296,9 @@ def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
                 "timestep":i_step
              }
             })
+        if other_manip_name is not None:
+            request["scene_states"].append(
+                {"timestep": i_step, "obj_states": [{"name": "pr2", "dof_vals":other_manip_traj[i], "dof_inds":other_dof_inds}] })
 
 
     s = json.dumps(request)
@@ -311,6 +318,9 @@ def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
 demo_keypts = np.load(osp.join(IROS_DATA_DIR, kpf + "_keypoints.npy"))
 demo_keypts_names = np.load(osp.join(IROS_DATA_DIR, kpf + "_keypoints_names.npy"))
 demo_needle_tip_loc = np.load(osp.join(IROS_DATA_DIR, kpf + "_needle_world_loc.npy"))
+
+needletip = openravepy.RaveCreateKinBody(env, "")
+needletip.SetName("needletip")
 
 def keyfunc(fname): 
     return int(osp.basename(fname).split("_")[0][6:]) # sort files with names like pt1_larm.npy
