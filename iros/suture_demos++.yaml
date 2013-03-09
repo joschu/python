@@ -1,0 +1,72 @@
+#segment#:
+#    hole1 center:  (x y z)
+#    hole2 center:  (x y z)
+#    top of cut:    (x y z)
+#    middle of cut: (x y z)
+#    bottom of cut: (x y z)
+#    needle tip:    (x y z)
+
+InterruptedSuture1:
+    pierce:
+        demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg1.bag
+        db_file: pierce.hd5
+        pt_num: 0
+        seg_num: 8
+
+InterruptedSuture2:
+    pierce:
+        demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg2.bag
+        db_file: pierce.hd5
+        pt_num: 0
+        seg_num: 9
+        
+InterruptedSuture3:
+    pierce:
+        demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg3.bag
+        db_file: pierce.hd5
+        pt_num: 0
+        seg_num: 7
+        
+InterruptedSuture4:
+    pierce:
+        demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg4.bag
+        db_file: pierce.hd5
+        pt_num: 0
+        seg_num: 7
+        
+InterruptedSuture5:
+    pierce:
+        demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg5.bag
+        db_file: pierce.hd5
+        pt_num: 0
+        seg_num: 
+        
+InterruptedSuture6:
+#    pierce:
+#        demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg6.bag
+#        db_file: pierce.hd5
+#        pt_num: 0
+#        seg_num: 8
+        
+    - part_name: pierce
+      segments:
+      - description: grab needle
+      - description 
+      - kp_depends: x y z
+        kp_extract: a b c
+        left_ee: asdf
+      - kp_depends: x y z
+        kp_extract: a b c
+        left_ee: asdf
+      - kp_depends: x y z
+        kp_extract: a b c
+        left_ee: asdf
+      - kp_depends: x y z
+        kp_extract: a b c
+        left_ee: asdf
+      - kp_depends: x y z
+        kp_extract: a b c
+        left_ee: asdf
+        
+
+    - part_name: two_loop_knot

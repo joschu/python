@@ -104,6 +104,10 @@ def transform_hmats(f, hmats):
     tf_hmats[:,:3,3] = newpts_mg
     return tf_hmats
 
+def translation_matrix(xyz):
+    out = np.eye(4)
+    out[:3,3] = xyz
+
 def adaptive_resample(x, tol, max_change=None, min_steps=3):
     """
     resample original signal with a small number of waypoints so that the the sparsely sampled function, 
@@ -248,7 +252,7 @@ def get_needle_clouds(listener):
 
     return xyz_tfs, rgb_plots
 
-def plan_follow_traj(robot, manip_name, new_hmats, old_traj, other_manip_name = None, other_manip_traj = None):
+def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, other_manip_name = None, other_manip_traj = None):
 
     n_steps = len(new_hmats)
     assert old_traj.shape[0] == n_steps
@@ -292,7 +296,7 @@ def plan_follow_traj(robot, manip_name, new_hmats, old_traj, other_manip_name = 
              "params":{
                 "xyz":pose[4:7].tolist(),
                 "wxyz":pose[0:4].tolist(),
-                "link":"%s_gripper_tool_frame"%manip_name[0],
+                "link":ee_link,
                 "timestep":i_step
              }
             })
@@ -362,6 +366,11 @@ for s in range(SEGNUM):
     num_kps = len(demo_keypts_names[s])
     exec_keypts = []
     
+    # this is the frame whose trajectory we'll adapt to the new situation
+    # in some segments it's the needle tip
+    left_ee_link = "l_gripper_tool_frame"
+    right_ee_link = "r_gripper_tool_frame"
+    
     for k in range(num_kps):
         print colorize("Key point from demo is: " + demo_keypts_names[s][k] + ". Looking for this key point now...", 'green', bold=True)
         
@@ -415,9 +424,11 @@ for s in range(SEGNUM):
             
             nl = sc.find_needle_tip(xyz_tfs, rgb_plots, window_name)
             
-            if demo_keypts_names[s][k] == 'empty':
+            if demo_keypts_names[s][k] == 'empty': # this is segment where robot looks for tip
                 exec_needle_tip_loc = nl
                 exec_keypts.append((0,0,0))
+                needletip.SetTransform(translation_matrix(nl))
+                robot.Grab(needletip)
             else:
                 exec_keypts.append(nl)
    
@@ -467,8 +478,8 @@ for s in range(SEGNUM):
 
         for row in ds_traj:
             robot.SetActiveDOFValues(row)
-            left_hmats.append(robot.GetLink("l_gripper_tool_frame").GetTransform())
-            right_hmats.append(robot.GetLink("r_gripper_tool_frame").GetTransform())
+            left_hmats.append(robot.GetLink(left_ee_link).GetTransform())
+            right_hmats.append(robot.GetLink(right_ee_link).GetTransform())
 
         left_hmats_old = left_hmats
         left_hmats = transform_hmats(f, left_hmats)
@@ -529,8 +540,8 @@ for s in range(SEGNUM):
             for (i,row) in enumerate(joint_traj):
                 print "step",i
                 robot.SetActiveDOFValues(row)
-                lhandle = env.drawarrow(robot.GetLink("l_gripper_tool_frame").GetTransform()[:3,3], left_hmats[i][:3,3])
-                rhandle = env.drawarrow(robot.GetLink("r_gripper_tool_frame").GetTransform()[:3,3], right_hmats[i][:3,3])
+                lhandle = env.drawarrow(robot.GetLink(left_ee_link).GetTransform()[:3,3], left_hmats[i][:3,3])
+                rhandle = env.drawarrow(robot.GetLink(right_ee_link).GetTransform()[:3,3], right_hmats[i][:3,3])
                 viewer.Idle()
         else:
             from brett2 import trajectories

@@ -140,6 +140,9 @@ task2 = 'InterruptedSuture6'
 pcf1 = osp.join(IROS_DATA_DIR, 'point_clouds', task1, 'pt0seg2_lh_rgb_pl.npy')
 pcf2 = osp.join(IROS_DATA_DIR, 'point_clouds', task2, 'pt0seg2_lh_rgb_pl.npy')
 
+xyz1 = osp.join(IROS_DATA_DIR, 'point_clouds', task1, 'pt0seg2_lh_xyz_tf.npy')
+xyz2 = osp.join(IROS_DATA_DIR, 'point_clouds', task2, 'pt0seg2_lh_xyz_tf.npy')
+
 kpf1 = osp.join(IROS_DATA_DIR, 'key_points', task1)
 kpf2 = osp.join(IROS_DATA_DIR, 'key_points', task2)
 
