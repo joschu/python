@@ -2,6 +2,8 @@ import cv
 import cv2
 import math
 import numpy as np
+import os
+import os.path as osp
 #from jds_image_proc.pcd_io import load_xyzrgb
 
 def automatic_find_holes(img, task):
@@ -127,3 +129,43 @@ def automatic_find_cut(img):
     cut_line = vert_line[0]
      
     return cut_line
+
+
+#########################################
+### feature matching
+#########################################
+IROS_DATA_DIR = os.getenv("IROS_DATA_DIR")
+task1 = 'InterruptedSuture5'
+task2 = 'InterruptedSuture6'
+pcf1 = osp.join(IROS_DATA_DIR, 'point_clouds', task1, 'pt0seg2_lh_rgb_pl.npy')
+pcf2 = osp.join(IROS_DATA_DIR, 'point_clouds', task2, 'pt0seg2_lh_rgb_pl.npy')
+
+kpf1 = osp.join(IROS_DATA_DIR, 'key_points', task1)
+kpf2 = osp.join(IROS_DATA_DIR, 'key_points', task2)
+
+rgb1 = np.load(pcf1)
+rgb2 = np.load(pcf2)
+
+kpts1 = np.load(kpf1 + '/pt0_keypoints.npy')
+kpts2 = np.load(kpf2 + '/pt0_keypoints.npy')
+kpts_names1 = np.load(kpf1 + '/pt0_keypoints_names.npy')
+kpts_names2 = np.load(kpf2 + '/pt0_keypoints_names.npy')
+
+for n in range(len(kpts_names1)):
+    if kpts_names1[n] == ['left_hole', 'right_hole', 'cut']:
+        kps1 = kpts1[n]
+        break
+
+for n in range(len(kpts_names2)):
+    if kpts_names2[n] == ['left_hole', 'right_hole', 'cut']:
+        kps2 = kpts2[n]
+        break
+        
+print 'rgb1 kps', kps1
+print 'rgb2 kps', kps2
+
+cv2.imshow("rgb1", rgb1)
+cv2.waitKey(100)
+
+cv2.imshow("rgb2", rgb2)
+cv2.waitKey(100)
