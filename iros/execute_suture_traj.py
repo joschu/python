@@ -319,6 +319,9 @@ demo_keypts = np.load(osp.join(IROS_DATA_DIR, kpf + "_keypoints.npy"))
 demo_keypts_names = np.load(osp.join(IROS_DATA_DIR, kpf + "_keypoints_names.npy"))
 demo_needle_tip_loc = np.load(osp.join(IROS_DATA_DIR, kpf + "_needle_world_loc.npy"))
 
+needletip = openravepy.RaveCreateKinBody(env, "")
+needletip.SetName("needletip")
+
 def keyfunc(fname): 
     return int(osp.basename(fname).split("_")[0][6:]) # sort files with names like pt1_larm.npy
 
@@ -397,7 +400,6 @@ for s in range(SEGNUM):
             
             nl = sc.find_needle_end(xyz_tfs, rgb_plots, window_name)          
             exec_keypts.append(nl)
-            T_g_n = np.linalg.inv(T_w_g).dot(T_w_n)
 
         elif demo_keypts_names[s][k] in ['needle_tip', 'empty']:
 
