@@ -22,6 +22,7 @@ import h5py
 import numpy as np
 import cv2
 import simple_clicker as sc
+import feature_utils as fu
 
 # find data files, files to save to
 SAVE_TRAJ = False
@@ -135,16 +136,9 @@ if SAVE_TRAJ == True:
 # determine which keypoints matter for each segment based on user input
 print 'getting all look_time point clouds...'
 look_clouds = bp.get_transformed_clouds(bag, look_times)
-print 'saving look_time point clouds...'
-import cloudprocpy 
-#grabber=cloudprocpy.CloudGrabber()
-#for i in range(SEGNUM):
-    #xyzrgb = look_clouds[i].getXYZRGB()
-    #look_clouds[i].save("suture_scene(look_cloud%s).pcd"%i)
-#raw_input("saved point clouds. press enter to continue")
 
 window_name = "Find Keypoints"
-
+keypt_list = ['lh','rh','ct', 'ne', 'nt', 'ntt', 'auto']
 keypoints_locations = []
 keypoints_names = []
 
@@ -155,90 +149,124 @@ for s in range(SEGNUM):
 
     while (True):
         sc.show_pointclouds(look_clouds[s], window_name)
-        kp = raw_input('which key points are important for this segment? choices are: {hc, ne, nt, ntt}. (please only enter one key point at a time): ')
+        kp = raw_input("which key points are important for this segment? choices are: " + str(keypt_list) + ". (please only enter one key point at a time): ")
         
-        if kp not in ['hc', 'ne', 'nt', 'ntt']:
+        if kp not in keypt_list:
             print 'incorrect input. try again!'
             continue  
-  
-        elif kp == 'hc':
-            look_for_holecut_times = []
-            look_for_holecut_times.append(look_times[s])
-            print colorize("Looking for Holes and Cut...", 'green', bold=True)
+        
+        elif kp == 'auto':
+            print colorize("Looking for Holes and Cut automatically...", 'green', bold=True)
+
+            xyz_tf = look_clouds[s][0].copy()
+            rgb_plot = look_clouds[s][1].copy()
+            xyz_tf[np.isnan(xyz_tf)] = -2
+            
+            holes = fu.automatic_find_holes(rgb_plot, args.task)
+            
+        elif kp == 'lh':
+            print colorize("Looking for Left Hole...", 'green', bold=True)
             
             xyz_tf = look_clouds[s][0].copy()
             rgb_plot = look_clouds[s][1].copy()
-            np.save(pcf + 'seg%s_xyz_tf.npy'%s, xyz_tf)
-            np.save(pcf + 'seg%s_rgb_plot.npy'%s, rgb_plot)
+            xyz_tf[np.isnan(xyz_tf)] = -2 
+            np.save(pcf + 'seg%s_lh_xyz_tf.npy'%s, xyz_tf)
+            np.save(pcf + 'seg%s_lh_rgb_pl.npy'%s, rgb_plot)
+
+            hole_loc = sc.find_hole('left_hole', xyz_tf, rgb_plot, window_name)
+            keypt_locs.append(hole_loc) 
+            keypt_names.append('left_hole')
+  
+        elif kp == 'rh':
+            print colorize("Looking for Right Hole...", 'green', bold=True)
+            
+            xyz_tf = look_clouds[s][0].copy()
+            rgb_plot = look_clouds[s][1].copy()
+            xyz_tf[np.isnan(xyz_tf)] = -2 
+            np.save(pcf + 'seg%s_rh_xyz_tf.npy'%s, xyz_tf)
+            np.save(pcf + 'seg%s_rh_rgb_pl.npy'%s, rgb_plot)
     
-            hole1_loc, hole2_loc, tcut_loc, mcut_loc, bcut_loc = sc.find_holes_cut(xyz_tf, rgb_plot, window_name)
-            keypt_locs.append(hole1_loc) 
-            keypt_locs.append(hole2_loc)
+            hole_loc = sc.find_hole('right_hole', xyz_tf, rgb_plot, window_name)
+            keypt_locs.append(hole_loc) 
+            keypt_names.append('right_hole')
+            
+        elif kp == 'ct':
+            print colorize("Looking for Cut...", 'green', bold=True)
+            
+            xyz_tf = look_clouds[s][0].copy()
+            rgb_plot = look_clouds[s][1].copy()
+            xyz_tf[np.isnan(xyz_tf)] = -2 
+            np.save(pcf + 'seg%s_ct_xyz_tf.npy'%s, xyz_tf)
+            np.save(pcf + 'seg%s_ct_rgb_pl.npy'%s, rgb_plot)
+    
+            tcut_loc, mcut_loc, bcut_loc = sc.find_cut(xyz_tf, rgb_plot, window_name)
             keypt_locs.append(tcut_loc)
             keypt_locs.append(mcut_loc)
             keypt_locs.append(bcut_loc)
-            keypt_names.append('holes_and_cut')
-            
-            del look_for_holecut_times
+            keypt_names.append('cut')       
             
         elif kp == 'ne':
             xyz_tfs = []
             rgb_plots = []
-            look_for_needle_times = []            
+            needle_look_times = []            
             num_clouds = 15
             
             for t in range(num_clouds):
-                look_for_needle_times.append(look_times[s] + t)
+                needle_look_times.append(look_times[s] + t)
                 
             print colorize("Looking for Needle End...", 'green', bold=True)          
             print 'getting the needle point clouds...'
-            needle_clouds = bp.get_transformed_clouds(bag, look_for_needle_times)
+            needle_clouds = bp.get_transformed_clouds(bag, needle_look_times)
 
             for i in range(num_clouds):
                 xyz_tfs.append(needle_clouds[i][0].copy())
                 rgb_plots.append(needle_clouds[i][1].copy())
-            np.save(pcf + 'seg%s_xyz_tfs.npy'%s, xyz_tfs)
-            np.save(pcf + 'seg%s_rgb_plots.npy'%s, rgb_plots)                
+                xyz_tfs[i][np.isnan(xyz_tfs[i])] = -2 
+            np.save(pcf + 'seg%s_ne_xyz_tfs.npy'%s, xyz_tfs)
+            np.save(pcf + 'seg%s_ne_rgb_pls.npy'%s, rgb_plots)                
                 
             needle_loc = sc.find_needle_end(xyz_tfs, rgb_plots, window_name)
             
             keypt_locs.append(needle_loc)
             keypt_names.append('needle_end')            
             
-            del look_for_needle_times
+            del needle_look_times
             del xyz_tfs
             del rgb_plots
             
         elif kp in ['nt', 'ntt']:
             xyz_tfs = []
             rgb_plots = []
-            look_for_needle_times = []            
-            num_clouds = 10
+            needle_look_times = []            
+            num_clouds = 15
             
             for t in range(num_clouds):
-                look_for_needle_times.append(look_times[s] + t)
+                needle_look_times.append(look_times[s] + t)
                 
             print colorize("Looking for Needle Tip...", 'green', bold=True)          
             print 'getting the needle point clouds...'
-            needle_clouds = bp.get_transformed_clouds(bag, look_for_needle_times)
+            needle_clouds = bp.get_transformed_clouds(bag, needle_look_times)
 
             for i in range(num_clouds):
                 xyz_tfs.append(needle_clouds[i][0].copy())
                 rgb_plots.append(needle_clouds[i][1].copy())
-            np.save(pcf + 'seg%s_xyz_tfs.npy'%s, xyz_tfs)
-            np.save(pcf + 'seg%s_rgb_plots.npy'%s, rgb_plots)             
+                xyz_tfs[i][np.isnan(xyz_tfs[i])] = -2 
                 
             needle_loc = sc.find_needle_tip(xyz_tfs, rgb_plots, window_name)
             
             if kp == 'nt':
                 keypt_locs.append(needle_loc)
-                keypt_names.append('needle_tip')            
+                keypt_names.append('needle_tip')      
+                np.save(pcf + 'seg%s_nt_xyz_tfs.npy'%s, xyz_tfs)
+                np.save(pcf + 'seg%s_nt_rgb_pls.npy'%s, rgb_plots)                             
             else:
                 keypt_locs.append((0,0,0))
                 keypt_names.append('empty')                
                 np.save(kpf + '_needle_world_loc.npy', needle_loc)
-                
-            del look_for_needle_times
+                np.save(pcf + 'seg%s_ntt_xyz_tfs.npy'%s, xyz_tfs)
+                np.save(pcf + 'seg%s_ntt_rgb_pls.npy'%s, rgb_plots)                             
+            
+            del needle_look_times
             del xyz_tfs
             del rgb_plots                  
             

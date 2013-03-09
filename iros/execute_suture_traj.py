@@ -227,7 +227,7 @@ def get_holes_cut_cloud(listener):
 def get_needle_clouds(listener):
     xyz_tfs = []
     rgb_plots = []
-    num_clouds = 30
+    num_clouds = 10
     
     if args.cloud_topic == 'test': num_clouds = 5
     
@@ -479,10 +479,24 @@ for s in range(SEGNUM):
 
 
         ################################################
+        brett.update_rave()
+        
+        leftarm_inds = robot.GetManipulator("leftarm").GetArmIndices()
+        rightarm_inds = robot.GetManipulator("rightarm").GetArmIndices()
+        
+        def remove_winding(arm_traj, current_arm_vals):   
+            arm_traj = arm_traj.copy()
+            for i in [2,4,6]:
+                dof_jump = current_arm_vals[i] - arm_traj[0,i]
+                winds = np.round(dof_jump / (2*np.pi))
+                if winds > 0: print "unwound joint %i by 2pi*%i"%(i,winds)
+                arm_traj[:,i] += winds * 2 * np.pi               
+            return arm_traj
 
+        trajoptpy.SetInteractive(False)
 
-        best_left_path = plan_follow_traj(robot, "rightarm", left_hmats, ds_traj[:,:7])
-        best_right_path = plan_follow_traj(robot, "rightarm", right_hmats, ds_traj[:,7:])
+        best_left_path = plan_follow_traj(robot, "leftarm", left_hmats, remove_winding(ds_traj[:,:7], robot.GetDOFValues(leftarm_inds)))
+        best_right_path = plan_follow_traj(robot, "rightarm", right_hmats, remove_winding(ds_traj[:,7:], robot.GetDOFValues(rightarm_inds)))
 
 
         left_diffs = np.abs(best_left_path[1:] - best_left_path[:-1])        

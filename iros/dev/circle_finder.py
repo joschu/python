@@ -82,10 +82,13 @@ class GetClick:
             self.xy = (x,y)
             self.done = True
 
-xyz, rgb = load_xyzrgb("suture_scene(holes).pcd")  
+#xyz, rgb = load_xyzrgb("suture_scene(holes).pcd")  
+#xyz, rgb = load_xyzrgb("suture_scene(findholescut)0.pcd")
+xyz, rgb = load_xyzrgb("suture_scene(findneedle)0.pcd")
 img = rgb.copy()
+img2 = rgb.copy()
 
-d_red = cv2.cv.RGB(150, 55, 65)
+d_red = cv2.cv.RGB(250, 55, 65)
 l_red = cv2.cv.RGB(250, 200, 200)
 d_blue = cv2.cv.RGB(40, 55, 200)
 
@@ -93,35 +96,17 @@ cv2.namedWindow("rgb")
 cv2.imshow("rgb", img)
 cv2.waitKey(10)
 
-#rect_corners = []
-
-#print colorize("click at the corners of the relevant area", 'red')
-
-#for i in xrange(2):
-    #gc = GetClick()
-    #cv2.setMouseCallback("rgb", gc.callback)
-    #while not gc.done:
-        #cv2.imshow("rgb", img)
-        #cv2.waitKey(10)
-    #rect_corners.append(gc.xy)
-
-#xy_tl = np.array(rect_corners).min(axis=0)
-#xy_br = np.array(rect_corners).max(axis=0)
-#cv2.rectangle(img, tuple(xy_tl), tuple(xy_br), (0, 255, 0)) 
-#cv2.imshow("rgb", img)
-#cv2.waitKey(100)
-
-#colmin, rowmin = xy_tl
-#colmax, rowmax = xy_br
-#print 'colmin,colmax', colmin, colmax
-
-SIZEMIN = 21
+SIZEMIN = 20
 SIZEMAX = 33
 
 COLMIN = 200
 COLMAX = 500
 
 gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+#########################################
+### MSER Detector Implementation
+#########################################
 
 detector = cv2.FeatureDetector_create('MSER')
 fs = detector.detect(gray_img)
@@ -158,35 +143,56 @@ for i in range(len(horiz_pairs)-1):
     diag_pairs[i].append(horiz_pairs[i][1])
     diag_pairs[i].append(horiz_pairs[i+1][0])
       
-print 'num circles', len(circles)
-print 'num horiz_pairs', len(horiz_pairs)
-print 'num diag_pairs', len(diag_pairs)
+#print 'num circles', len(circles)
+#print 'num horiz_pairs', len(horiz_pairs)
+#print 'num diag_pairs', len(diag_pairs)
 
-cv2.namedWindow("rgb with circles")
-cv2.imshow("rgb with circles", img)
+cv2.namedWindow("rgb with MSER circles")
+cv2.imshow("rgb with MSER circles", img)
 cv2.waitKey(100)
 
-#n = 0
-#for p in range(len(horiz_pairs)):
-    #for c in horiz_pairs[p]:
-        #n += 1
+n = 0
+for p in range(len(horiz_pairs)):
+    for c in horiz_pairs[p]:
+        n += 1
+        cv2.circle(img, (int(c.pt[0]), int(c.pt[1])), int(c.size/2), d_red, 2, cv2.CV_AA)
+        cv2.circle(img, (int(c.pt[0]), int(c.pt[1])), int(c.size/2), d_blue, 1, cv2.CV_AA)   
+        cv2.imshow("rgb with MSER circles", img)
+        cv2.waitKey(10)         
+        #raw_input("Circle %i. Press enter to continue..."%n)  
+        
+#d = 0
+#for p in range(len(diag_pairs)):
+    #for c in diag_pairs[p]:
+        #d += 1
         #cv2.circle(img, (int(c.pt[0]), int(c.pt[1])), int(c.size/2), d_red, 2, cv2.CV_AA)
         #cv2.circle(img, (int(c.pt[0]), int(c.pt[1])), int(c.size/2), d_blue, 1, cv2.CV_AA)   
         #cv2.imshow("rgb with circles", img)
         #cv2.waitKey(10)         
-        #raw_input("Circle %i. Press enter to continue..."%n)  
-        
-d = 0
-for p in range(len(diag_pairs)):
-    for c in diag_pairs[p]:
-        d += 1
-        cv2.circle(img, (int(c.pt[0]), int(c.pt[1])), int(c.size/2), d_red, 2, cv2.CV_AA)
-        cv2.circle(img, (int(c.pt[0]), int(c.pt[1])), int(c.size/2), d_blue, 1, cv2.CV_AA)   
-        cv2.imshow("rgb with circles", img)
-        cv2.waitKey(10)         
-        raw_input("Circle %i. Press enter to continue..."%d) 
+        #raw_input("Circle %i. Press enter to continue..."%d) 
 
-cv2.imshow("rgb with circles", img)
+
+#########################################
+### Hough Transform Implementation
+#########################################
+#cv2.HoughCircles(image, method, dp, minDist[, circles[, param1[, param2[, minRadius[, maxRadius]]]]]) 
+#circles = cv2.HoughCircles(img,cv2.cv.CV_HOUGH_GRADIENT,1,10,param1=100,param2=30,minRadius=5,maxRadius=20)
+#for i in circles[0,:]:
+        #cv2.circle(cimg,(i[0],i[1]),i[2],(0,255,0),1)
+        
+circles = cv2.HoughCircles(gray_img, cv.CV_HOUGH_GRADIENT, 1, 50, param1=240, param2=20, minRadius=10, maxRadius=30)
+circles = np.uint16(np.around(circles))
+
+for c in circles[0,:]:
+    cv2.circle(img2, (c[0], c[1]), c[2], d_red, 2, cv2.CV_AA)
+    cv2.circle(img2, (c[0], c[1]), c[2], d_blue, 1, cv2.CV_AA)   
+
+cv2.namedWindow("rgb with hough circles")    
+cv2.imshow("rgb with hough circles", img2)
+cv2.waitKey(100)   
+
+
+cv2.imshow("rgb with hough circles", img2)
 cv2.waitKey(100)
 raw_input("Press enter to finish...")    
 cv2.destroyAllWindows()
