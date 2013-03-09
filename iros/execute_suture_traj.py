@@ -248,7 +248,7 @@ def get_needle_clouds(listener):
 
     return xyz_tfs, rgb_plots
 
-def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
+def plan_follow_traj(robot, manip_name, new_hmats, old_traj, other_manip_name = None, other_manip_traj = None):
 
     n_steps = len(new_hmats)
     assert old_traj.shape[0] == n_steps
@@ -280,6 +280,10 @@ def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
             "data":[x.tolist() for x in init_traj]
         }
     }
+    if other_manip_name is not None:
+        request["scene_states"] = []
+        other_dof_inds = robot.GetManipulator(other_manip_name).GetArmIndices()
+        
 
     poses = [openravepy.poseFromMatrix(hmat) for hmat in new_hmats]
     for (i_step,pose) in enumerate(poses):
@@ -292,6 +296,9 @@ def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
                 "timestep":i_step
              }
             })
+        if other_manip_name is not None:
+            request["scene_states"].append(
+                {"timestep": i_step, "obj_states": [{"name": "pr2", "dof_vals":other_manip_traj[i], "dof_inds":other_dof_inds}] })
 
 
     s = json.dumps(request)
@@ -390,6 +397,7 @@ for s in range(SEGNUM):
             
             nl = sc.find_needle_end(xyz_tfs, rgb_plots, window_name)          
             exec_keypts.append(nl)
+            T_g_n = np.linalg.inv(T_w_g).dot(T_w_n)
 
         elif demo_keypts_names[s][k] in ['needle_tip', 'empty']:
 
@@ -481,8 +489,8 @@ for s in range(SEGNUM):
         ################################################
 
 
-        best_left_path = plan_follow_traj(robot, "rightarm", left_hmats, ds_traj[:,:7])
-        best_right_path = plan_follow_traj(robot, "rightarm", right_hmats, ds_traj[:,7:])
+        best_left_path = plan_follow_traj(robot, "leftarm", left_hmats, ds_traj[:,:7])
+        best_right_path = plan_follow_traj(robot, "rightarm", right_hmats, ds_traj[:,7:], "leftarm", best_left_path)
 
 
         left_diffs = np.abs(best_left_path[1:] - best_left_path[:-1])        

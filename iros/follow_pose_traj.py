@@ -148,6 +148,7 @@ def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
             "data":[x.tolist() for x in init_traj]
         }
     }
+    
 
     poses = [openravepy.poseFromMatrix(hmat) for hmat in new_hmats]
     for (i_step,pose) in enumerate(poses):
