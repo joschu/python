@@ -173,6 +173,7 @@ kps2 = kpts2[SEG_NUM]
 print 'rgb1 kps', kps1
 print 'rgb2 kps', kps2
 
+
 def xyz2rc(xyz, xyz_img):
     diffs_rc = ((xyz_img - xyz)**2).sum(axis=2)
     diffs_rc[np.isnan(diffs_rc)] = 1e100

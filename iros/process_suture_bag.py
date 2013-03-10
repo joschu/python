@@ -3,7 +3,7 @@
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("task")
-parser.add_argument("part_name")
+parser.add_argument("part_index",type=int)
 args = parser.parse_args()
 
 
@@ -22,7 +22,7 @@ import h5py
 import numpy as np
 import cv2
 import simple_clicker as sc
-import feature_utils as fu
+#import feature_utils as fu
 
 # find data files, files to save to
 SAVE_TRAJ = False
@@ -33,12 +33,13 @@ task_file = osp.join(IROS_DATA_DIR, "suture_demos.yaml")
 with open(osp.join(IROS_DATA_DIR,task_file),"r") as fh:
     task_info = yaml.load(fh)
 
-bag = task_info[args.task][args.part_name]["demo_bag"]
+#bag = task_info[args.task][args.part_index]["demo_bag"]
+bag = '/mnt/storage/mtayfred/data/bags/pierce_w_startstopseg7.bag'
 bag = rosbag.Bag(bag)
 
-jtf = osp.join(IROS_DATA_DIR, 'joint_trajectories', args.task, 'pt' + str(task_info[args.task][args.part_name]["pt_num"]))
-kpf = osp.join(IROS_DATA_DIR, 'key_points', args.task, 'pt' + str(task_info[args.task][args.part_name]["pt_num"]))
-pcf = osp.join(IROS_DATA_DIR, 'point_clouds', args.task, 'pt' + str(task_info[args.task][args.part_name]["pt_num"]))
+jtf = osp.join(IROS_DATA_DIR, 'joint_trajectories', args.task, 'pt' + str(args.part_index))
+kpf = osp.join(IROS_DATA_DIR, 'key_points', args.task, 'pt' + str(args.part_index))
+pcf = osp.join(IROS_DATA_DIR, 'point_clouds', args.task, 'pt' + str(args.part_index))
 
 ### extract kinematics info from bag
 def extract_kinematics(np_file, info):
@@ -138,7 +139,7 @@ print 'getting all look_time point clouds...'
 look_clouds = bp.get_transformed_clouds(bag, look_times)
 
 window_name = "Find Keypoints"
-keypt_list = ['lh','rh','ct', 'ne', 'nt', 'ntt', 'auto']
+keypt_list = ['lh','rh','ct', 'ne', 'nt', 'ntt']
 keypoints_locations = []
 keypoints_names = []
 
@@ -154,16 +155,7 @@ for s in range(SEGNUM):
         if kp not in keypt_list:
             print 'incorrect input. try again!'
             continue  
-        
-        elif kp == 'auto':
-            print colorize("Looking for Holes and Cut automatically...", 'green', bold=True)
-
-            xyz_tf = look_clouds[s][0].copy()
-            rgb_plot = look_clouds[s][1].copy()
-            xyz_tf[np.isnan(xyz_tf)] = -2
-            
-            holes = fu.automatic_find_holes(rgb_plot, args.task)
-            
+                 
         elif kp == 'lh':
             print colorize("Looking for Left Hole...", 'green', bold=True)
             

@@ -1,0 +1,47 @@
+InterruptedSuture6:      
+    - part_name: pierce
+      demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg6.bag
+      segments:
+      - description: grab needle from stand
+      - description: look at needle tip
+        extra_info: [left_grab]
+      - description: grab flap
+      - description: pierce 
+        left_end_effector: needle_tip
+      - description: push needle through
+      - description: grab needle with right hand     
+
+    - part_name: two_loop_knot
+    
+InterruptedSuture7:  #includes look time for after needle grab with right hand    
+    - part_name: pierce
+      demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg7.bag
+      segments:
+      - description: grab needle from stand
+      - description: look at needle tip
+        extra_info: [left_grab]
+      - description: grab flap
+      - description: pierce 
+        left_end_effector: needle_tip
+      - description: push needle through
+      - description: grab needle with right hand
+      - description: pass needle back to left hand
+      - description: pull thread 
+      - description: pull thread, put needle back in stand
+
+    - part_name: two_loop_knot
+
+InterruptedSuture8: #includes additional look time for after passing the needle back to the left hand ##NOT processed yet    
+    - part_name: pierce
+      demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg8.bag
+      segments:
+      - description: grab needle from stand
+      - description: look at needle tip
+        extra_info: [left_grab]
+      - description: grab flap
+      - description: pierce 
+        left_end_effector: needle_tip
+      - description: push needle through
+      - description: grab needle with right hand      
+
+    - part_name: two_loop_knot

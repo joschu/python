@@ -40,7 +40,7 @@ cv2.namedWindow(window_name)
 
 IROS_DATA_DIR = os.getenv("IROS_DATA_DIR")
 
-task_file = osp.join(IROS_DATA_DIR, "suture_demos.yaml")
+task_file = osp.join(IROS_DATA_DIR, "suture_demos_old.yaml")
 
 with open(osp.join(IROS_DATA_DIR,task_file),"r") as fh:
     task_info = yaml.load(fh)
@@ -517,6 +517,7 @@ for s in range(SEGNUM):
         trajoptpy.SetInteractive(False)
 
         best_left_path = plan_follow_traj(robot, "leftarm", left_hmats, remove_winding(ds_traj[:,:7], robot.GetDOFValues(leftarm_inds)))
+
         best_right_path = plan_follow_traj(robot, "rightarm", right_hmats, remove_winding(ds_traj[:,7:], robot.GetDOFValues(rightarm_inds)))
 
 
@@ -545,10 +546,14 @@ for s in range(SEGNUM):
         else:
             from brett2 import trajectories
             #def follow_body_traj2(pr2, bodypart2traj, times=None, wait=True, base_frame = "/base_footprint"):
-            bodypart2traj = {}
             brett.lgrip.set_angle(mini_segment.lgrip_angle)
             brett.rgrip.set_angle(mini_segment.rgrip_angle)
             brett.join_all()
-            bodypart2traj["l_arm"] = best_left_path
-            bodypart2traj["r_arm"] = best_right_path
-            trajectories.follow_body_traj2(brett, bodypart2traj, speed_factor=.5)
+            
+            i_split = int(.9*len(best_left_path))
+            
+            bodypart2traj = {}
+            for (start,stop,speed) in [(0,i_split,1), (i_split, None,.25)]:
+                bodypart2traj["l_arm"] = best_left_path[start:stop]
+                bodypart2traj["r_arm"] = best_right_path[start:stop]
+                trajectories.follow_body_traj2(brett, bodypart2traj, speed_factor=speed)
