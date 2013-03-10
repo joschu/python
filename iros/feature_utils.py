@@ -4,6 +4,7 @@ import math
 import numpy as np
 import os
 import os.path as osp
+import scipy.ndimage as ndi
 #from jds_image_proc.pcd_io import load_xyzrgb
 
 def automatic_find_holes(img, task):
@@ -134,41 +135,99 @@ def automatic_find_cut(img):
 #########################################
 ### feature matching
 #########################################
-IROS_DATA_DIR = os.getenv("IROS_DATA_DIR")
-task1 = 'InterruptedSuture5'
-task2 = 'InterruptedSuture6'
-pcf1 = osp.join(IROS_DATA_DIR, 'point_clouds', task1, 'pt0seg2_lh_rgb_pl.npy')
-pcf2 = osp.join(IROS_DATA_DIR, 'point_clouds', task2, 'pt0seg2_lh_rgb_pl.npy')
+from glob import glob
+PART_NUM = 0
+SEG_NUM = 2
 
-xyz1 = osp.join(IROS_DATA_DIR, 'point_clouds', task1, 'pt0seg2_lh_xyz_tf.npy')
-xyz2 = osp.join(IROS_DATA_DIR, 'point_clouds', task2, 'pt0seg2_lh_xyz_tf.npy')
+IROS_DATA_DIR = os.getenv("IROS_DATA_DIR")
+task1 = 'InterruptedSuture6'
+task2 = 'InterruptedSuture7'
+pcf1 = glob(osp.join(IROS_DATA_DIR, 'point_clouds', task1, 'pt%iseg%i_*_rgb_*.npy'%(PART_NUM, SEG_NUM)))[0]
+pcf2 = glob(osp.join(IROS_DATA_DIR, 'point_clouds', task2, 'pt%iseg%i_*_rgb_*.npy'%(PART_NUM, SEG_NUM)))[0]
+
+xyzfile1 = glob(osp.join(IROS_DATA_DIR, 'point_clouds', task1, 'pt%iseg%i_*_xyz_tf*.npy'%(PART_NUM, SEG_NUM)))[0]
+xyzfile2 = glob(osp.join(IROS_DATA_DIR, 'point_clouds', task2, 'pt%iseg%i_*_xyz_tf*.npy'%(PART_NUM, SEG_NUM)))[0]
 
 kpf1 = osp.join(IROS_DATA_DIR, 'key_points', task1)
 kpf2 = osp.join(IROS_DATA_DIR, 'key_points', task2)
 
 rgb1 = np.load(pcf1)
 rgb2 = np.load(pcf2)
+xyz1 = np.load(xyzfile1)
+xyz2 = np.load(xyzfile2)
+if xyz1.ndim == 4: xyz1 = xyz1[0]
+if xyz2.ndim == 4: xyz2 = xyz2[0]
+if rgb1.ndim == 4: rgb1 = rgb1[0]
+if rgb2.ndim == 4: rgb2 = rgb2[0]
 
-kpts1 = np.load(kpf1 + '/pt0_keypoints.npy')
-kpts2 = np.load(kpf2 + '/pt0_keypoints.npy')
-kpts_names1 = np.load(kpf1 + '/pt0_keypoints_names.npy')
-kpts_names2 = np.load(kpf2 + '/pt0_keypoints_names.npy')
+kpts1 = np.load(kpf1 + '/pt%i_keypoints.npy'%PART_NUM)
+kpts2 = np.load(kpf2 + '/pt%i_keypoints.npy'%PART_NUM)
+kpts_names1 = np.load(kpf1 + '/pt%i_keypoints_names.npy'%PART_NUM)
+kpts_names2 = np.load(kpf2 + '/pt%i_keypoints_names.npy'%PART_NUM)
 
-for n in range(len(kpts_names1)):
-    if kpts_names1[n] == ['left_hole', 'right_hole', 'cut']:
-        kps1 = kpts1[n]
-        break
 
-for n in range(len(kpts_names2)):
-    if kpts_names2[n] == ['left_hole', 'right_hole', 'cut']:
-        kps2 = kpts2[n]
-        break
+kps1 = kpts1[SEG_NUM]
+kps2 = kpts2[SEG_NUM]
+        
         
 print 'rgb1 kps', kps1
 print 'rgb2 kps', kps2
 
-cv2.imshow("rgb1", rgb1)
+def xyz2rc(xyz, xyz_img):
+    diffs_rc = ((xyz_img - xyz)**2).sum(axis=2)
+    diffs_rc[np.isnan(diffs_rc)] = 1e100
+    mindist = diffs_rc.min()
+    if mindist > 1e-4: 
+        print "warning: nonzero minimum distance:",mindist
+    return np.unravel_index(diffs_rc.argmin(), diffs_rc.shape)
+
+
+RED = (0,0,255)
+GREEN = (0,255,0)
+BLUE = (255,0,0)
+YELLOW = (0,255,255)
+
+rcs1 = [xyz2rc(xyz, xyz1) for xyz in kps1]
+rcs2 = [xyz2rc(xyz, xyz2) for xyz in kps2]
+
+font = cv.InitFont(cv.CV_FONT_HERSHEY_SIMPLEX, 1, 1, 0, 3, 8) 
+
+rgb1_plot = rgb1.copy()
+rgb2_plot = rgb2.copy()
+
+import image_registration as ir
+
+pred_rcs2 = ir.register_images(rgb1, rgb2, [(c,r) for (r,c) in rcs1])
+
+for (i_kp, (r,c)) in enumerate(rcs1):
+    cv2.putText(rgb1_plot, str(i_kp), (c,r), cv2.FONT_HERSHEY_PLAIN, 1.0, RED, thickness = 2)
+    
+    _xys, _vs = ir.get_matches(rgb1, (c,r), rgb2, max_num_matches=1)
+    (cpredlocal, rpredlocal) = _xys[0]
+    rgroundtruth, cgroundtruth = rcs2[i_kp]
+
+    cv2.putText(rgb2_plot, str(i_kp), (c,r), cv2.FONT_HERSHEY_PLAIN, 1.0, RED, thickness = 2)
+    cv2.putText(rgb2_plot, str(i_kp), (cgroundtruth,rgroundtruth), cv2.FONT_HERSHEY_PLAIN, 1.0, BLUE, thickness = 2)    
+    cv2.putText(rgb2_plot, str(i_kp), (cpredlocal,rpredlocal), cv2.FONT_HERSHEY_PLAIN, 1.0, GREEN, thickness = 2)
+
+    cpredglobal, rpredglobal = pred_rcs2[i_kp]
+    cv2.putText(rgb2_plot, str(i_kp), (cpredglobal,rpredglobal), cv2.FONT_HERSHEY_PLAIN, 1.0, YELLOW, thickness = 2)    
+
+    
+    
+
+cv2.imshow("rgb1", rgb1_plot)
 cv2.waitKey(100)
 
-cv2.imshow("rgb2", rgb2)
+cv2.imshow("rgb2", rgb2_plot)
 cv2.waitKey(100)
+
+
+cv2.startWindowThread()
+
+print """
+Red: original coordinates of keypoints in rgb1
+Blue: ground truth (human labeling) of keypoints
+Green: keypoint prediction using only NCC (local)
+Yellow: keypoint prediction using NCC + dynamic programming
+"""
