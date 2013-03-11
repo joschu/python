@@ -10,9 +10,9 @@ args = parser.parse_args()
 import cloudprocpy # my homemade pcl python bindings. built with trajopt if BUILD_CLOUDPROC enabled
 grabber=cloudprocpy.CloudGrabber()
 xyzrgb = grabber.getXYZRGB()
-xyzrgb.save("suture_scene(holes).pcd")
+xyzrgb.save("suture_scene1.pcd")
 
-raw_input("got pcd. Press enter to continue...")   
+raw_input("got pcd. Press enter to continue...")
 
 
 

@@ -52,7 +52,7 @@ def make_joint_traj(xyzs, quats, manip, ref_frame, targ_frame, filter_options = 
 
 
 
-def follow_body_traj2(pr2, bodypart2traj, times=None, wait=True, base_frame = "/base_footprint"):    
+def follow_body_traj2(pr2, bodypart2traj, times=None, wait=True, base_frame = "/base_footprint", speed_factor=1):    
 
     rospy.loginfo("following trajectory with bodyparts %s", " ".join(bodypart2traj.keys()))
     trajectories = []
@@ -79,8 +79,8 @@ def follow_body_traj2(pr2, bodypart2traj, times=None, wait=True, base_frame = "/
                         
     trajectories = np.concatenate(trajectories, 1)
     
-    vel_limits = np.array(vel_limits)
-    acc_limits = np.array(acc_limits)
+    vel_limits = np.array(vel_limits)*speed_factor
+    
 
     times = retiming.retime_with_vel_limits(trajectories, vel_limits)
     times_up = np.arange(0,times[-1]+1e-4,.1)

@@ -3,7 +3,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("mode", choices=["openrave", "gazebo", "reality"])
 parser.add_argument("cloud_topic", default="/drop/points")
 parser.add_argument("task")
-parser.add_argument("part_name")
+parser.add_argument("part_index",type=int)
+parser.add_argument("--segment_index", type=int, default=0)
+parser.add_argument("--interactive",action="store_true")
 args = parser.parse_args()
 
 import numpy as np
@@ -29,7 +31,7 @@ from glob import glob
 import subprocess, sys
 import sensor_msgs.msg as sm
 
-
+from time import sleep
 
 window_name = "Find Keypoints"
 cv2.namedWindow(window_name)
@@ -40,14 +42,16 @@ cv2.namedWindow(window_name)
 
 IROS_DATA_DIR = os.getenv("IROS_DATA_DIR")
 
-task_file = osp.join(IROS_DATA_DIR, "suture_demos_old.yaml")
+import iros
+IROS_DIR = osp.dirname(iros.__file__)
+task_file = osp.join(IROS_DIR, "suture_demos.yaml")
 
 with open(osp.join(IROS_DATA_DIR,task_file),"r") as fh:
     task_info = yaml.load(fh)
 
-jtf = osp.join(IROS_DATA_DIR, 'joint_trajectories', args.task, 'pt' + str(task_info[args.task][args.part_name]["pt_num"])) 
-kpf = osp.join(IROS_DATA_DIR, 'key_points', args.task, 'pt' + str(task_info[args.task][args.part_name]["pt_num"]))
-pcf = osp.join(IROS_DATA_DIR, 'point_clouds', args.task, 'pt' + str(task_info[args.task][args.part_name]["pt_num"]))
+jtf = osp.join(IROS_DATA_DIR, 'joint_trajectories', args.task, 'pt' + str(args.part_index)) 
+kpf = osp.join(IROS_DATA_DIR, 'key_points', args.task, 'pt' + str(args.part_index))
+pcf = osp.join(IROS_DATA_DIR, 'point_clouds', args.task, 'pt' + str(args.part_index))
 
 if args.mode == "openrave":
     env = openravepy.Environment()
@@ -63,28 +67,41 @@ else:
     from brett2.PR2 import PR2
     if rospy.get_name() == "/unnamed": rospy.init_node("follow_pose_traj", disable_signals=True)
     rviz = ru.RvizWrapper()
-    brett = PR2()
-    env = brett.env
-    robot = brett.robot
-    if args.mode == "gazebo":
-        brett.torso.go_up()
-        rospy.sleep(1)
-    brett.update_rave()
+    
+brett = PR2()
+env = brett.env
+robot = brett.robot
+if args.mode == "gazebo":
+    brett.torso.go_up()
+    rospy.sleep(1)
+brett.head.set_pan_tilt(0,1)
+brett.join_all()
+brett.update_rave()
 
-    if False:#args.mode == "reality":
-        table_bounds = map(float, rospy.get_param("table_bounds").split())
-        mk.create_box_from_bounds(env,table_bounds, name="table")       
-    else:
-        import lfd
-        env.Load(osp.join(osp.dirname(lfd.__file__), "data/table2.xml"))
+needle_tip = mk.create_dummy_body(env, name="needle_tip")
+
+demo_env=env.CloneSelf(1)
+demo_env.StopSimulation()
+demo_robot = demo_env.GetRobot("pr2")
+demo_needle_tip = demo_env.GetKinBody("needle_tip")
+
+trajoptpy.SetInteractive(args.interactive)
+
+if False:#args.mode == "reality":
+    table_bounds = map(float, rospy.get_param("table_bounds").split())
+    mk.create_box_from_bounds(env,table_bounds, name="table")       
+else:
+    import lfd
+    env.Load(osp.join(osp.dirname(lfd.__file__), "data/table2.xml"))
 
 #######################
 
 from collections import namedtuple
 TrajSegment = namedtuple("TrajSegment", "larm_traj rarm_traj lgrip_angle rgrip_angle") # class to describe trajectory segments
 
-PARTNUM = task_info[args.task][args.part_name]["pt_num"]
-SEGNUM = task_info[args.task][args.part_name]["seg_num"]
+PARTNUM = args.part_index
+SEGNUM = len(task_info[args.task][args.part_index]["segments"])
+print 'number of segments', SEGNUM
 OPEN_ANGLE = .08
 CLOSED_ANGLE = 0
 
@@ -107,6 +124,7 @@ def transform_hmats(f, hmats):
 def translation_matrix(xyz):
     out = np.eye(4)
     out[:3,3] = xyz
+    return out
 
 def adaptive_resample(x, tol, max_change=None, min_steps=3):
     """
@@ -199,11 +217,11 @@ def segment_trajectory(larm, rarm, lgrip, rgrip):
     for (i_start, i_end) in zip(seg_starts, seg_ends):
         l_angle = binarize_gripper(lgrip[i_start])
         r_angle = binarize_gripper(rgrip[i_start])
-        traj_segments.append(TrajSegment( larm[i_start:i_end], rarm[i_start:i_end], l_angle, r_angle ))
+        traj_segments.append(TrajSegment( larm[i_start:i_end+1], rarm[i_start:i_end+1], l_angle, r_angle ))
 
     return traj_segments
 
-def get_holes_cut_cloud(listener):
+def get_kp_cloud(listener):
     print "waiting for messages on cloud topic %s"%args.cloud_topic
     msg = rospy.wait_for_message(args.cloud_topic, sm.PointCloud2)
     print "got msg!"
@@ -231,7 +249,7 @@ def get_holes_cut_cloud(listener):
 def get_needle_clouds(listener):
     xyz_tfs = []
     rgb_plots = []
-    num_clouds = 10
+    num_clouds = 30
     
     if args.cloud_topic == 'test': num_clouds = 5
     
@@ -245,7 +263,6 @@ def get_needle_clouds(listener):
         if (xyz.shape[0] == 1 or xyz.shape[1] == 1): raise Exception("needs to be an organized point cloud")
 
         xyz_tf = ru.transform_points(xyz, listener, "base_footprint", "/camera_rgb_optical_frame")        
-        #xyz_tf[np.isnan(xyz_tf)] = -2
     
         xyz_tfs.append(xyz_tf)
         rgb_plots.append(rgb)
@@ -302,7 +319,7 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, other_mani
             })
         if other_manip_name is not None:
             request["scene_states"].append(
-                {"timestep": i_step, "obj_states": [{"name": "pr2", "dof_vals":other_manip_traj[i], "dof_inds":other_dof_inds}] })
+                {"timestep": i_step, "obj_states": [{"name": "pr2", "dof_vals":other_manip_traj[i_step].tolist(), "dof_inds":other_dof_inds.tolist()}] })
 
 
     s = json.dumps(request)
@@ -315,16 +332,14 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, other_mani
     return traj         
 
 
+
+
 #######################################
 ###### Load demo from np files
 #######################################
 
 demo_keypts = np.load(osp.join(IROS_DATA_DIR, kpf + "_keypoints.npy"))
 demo_keypts_names = np.load(osp.join(IROS_DATA_DIR, kpf + "_keypoints_names.npy"))
-demo_needle_tip_loc = np.load(osp.join(IROS_DATA_DIR, kpf + "_needle_world_loc.npy"))
-
-needletip = openravepy.RaveCreateKinBody(env, "")
-needletip.SetName("needletip")
 
 def keyfunc(fname): 
     return int(osp.basename(fname).split("_")[0][6:]) # sort files with names like pt1_larm.npy
@@ -357,10 +372,22 @@ for s in range(SEGNUM):
 ###     execute new trajectory
 
 listener = ru.get_tf_listener()
-
 handles = []
 
-for s in range(SEGNUM):
+if args.segment_index > 0: #HACK so we can start in the middle
+    start_segment_info = task_info[args.task][args.part_index]["segments"][args.segment_index]
+    if "left_end_effector" in start_segment_info:
+        needle_tip.SetTransform(robot.GetManipulator("leftarm").GetTransform())
+        robot.Grab(needle_tip)
+        demo_needle_tip.SetTransform(demo_robot.GetManipulator("leftarm").GetTransform())
+        demo_robot.Grab(demo_needle_tip)
+        
+    
+
+for s in range(args.segment_index, SEGNUM):
+    
+    segment_info = task_info[args.task][args.part_index]["segments"][s]
+    
     print "trajectory segment %i"%s
 
     num_kps = len(demo_keypts_names[s])
@@ -368,32 +395,50 @@ for s in range(SEGNUM):
     
     # this is the frame whose trajectory we'll adapt to the new situation
     # in some segments it's the needle tip
-    left_ee_link = "l_gripper_tool_frame"
-    right_ee_link = "r_gripper_tool_frame"
+    left_ee_linkname = segment_info.get("left_end_effector", "l_gripper_tool_frame")
+    right_ee_linkname = segment_info.get("right_end_effector", "r_gripper_tool_frame")
     
+    
+    if left_ee_linkname == "needle_tip":
+        left_ee_link = needle_tip.GetLinks()[0]
+        demo_left_ee_link = demo_needle_tip
+    else:
+        left_ee_link = robot.GetLink(left_ee_linkname)
+        demo_left_ee_link = demo_robot.GetLink(left_ee_linkname)
+    if right_ee_linkname == "needle_tip":
+        right_ee_link = needle_tip.GetLinks()[0]
+        demo_right_ee_link = demo_needle_tip
+    else:
+        right_ee_link = robot.GetLink(right_ee_linkname)
+        demo_right_ee_link = demo_robot.GetLink(right_ee_linkname)
+    
+    brett.update_rave()
     for k in range(num_kps):
         print colorize("Key point from demo is: " + demo_keypts_names[s][k] + ". Looking for this key point now...", 'green', bold=True)
         
-        if demo_keypts_names[s][k] in ['left_hole', 'right_hole']:
+        if demo_keypts_names[s][k] in ['left_hole', 'right_hole', 'stand']:
             if args.cloud_topic == 'test':
                 if demo_keypts_names[s][k] == 'left_hole':
                     xyz_tf = np.load(pcf + 'seg%s_lh_xyz_tf.npy'%s)
                     rgb_plot = np.load(pcf + 'seg%s_lh_rgb_pl.npy'%s)
-                else: 
+                elif demo_keypts_names[s][k] == 'right_hole': 
                     xyz_tf = np.load(pcf + 'seg%s_rh_xyz_tf.npy'%s)
                     rgb_plot = np.load(pcf + 'seg%s_rh_rgb_pl.npy'%s)                    
+                else:
+                    xyz_tf = np.load(pcf + 'seg%s_stand_xyz_tf.npy'%s)
+                    rgb_plot = np.load(pcf + 'seg%s_stand_rgb_pl.npy'%s)                                        
             else:
-                xyz_tf, rgb_plot = get_holes_cut_cloud(listener)      
+                xyz_tf, rgb_plot = get_kp_cloud(listener)      
                 
-            hole_loc = sc.find_hole(demo_keypts_names[s][k], xyz_tf, rgb_plot, window_name)
-            exec_keypts.append(hole_loc) 
+            kp_loc = sc.find_kp(demo_keypts_names[s][k], xyz_tf, rgb_plot, window_name)
+            exec_keypts.append(kp_loc) 
 
         elif demo_keypts_names[s][k] == 'cut':
             if args.cloud_topic == 'test':
                 xyz_tf = np.load(pcf + 'seg%s_ct_xyz_tf.npy'%s)
                 rgb_plot = np.load(pcf + 'seg%s_ct_rgb_pl.npy'%s)
             else:
-                xyz_tf, rgb_plot = get_holes_cut_cloud(listener)      
+                xyz_tf, rgb_plot = get_kp_cloud(listener)      
                 
             tcut_loc, mcut_loc, bcut_loc = sc.find_cut(xyz_tf, rgb_plot, window_name)
             exec_keypts.append(tcut_loc)
@@ -410,28 +455,60 @@ for s in range(SEGNUM):
             nl = sc.find_needle_end(xyz_tfs, rgb_plots, window_name)          
             exec_keypts.append(nl)
 
-        elif demo_keypts_names[s][k] in ['needle_tip', 'empty']:
-
+        elif demo_keypts_names[s][k] == 'needle_tip':
             if args.cloud_topic == 'test':
-                if demo_keypts_names[s][k] == 'needle_tip':            
-                    xyz_tfs = np.load(pcf + 'seg%s_nt_xyz_tfs.npy'%s)
-                    rgb_plots = np.load(pcf + 'seg%s_nt_rgb_pls.npy'%s)
-                else:
-                    xyz_tfs = np.load(pcf + 'seg%s_ntt_xyz_tfs.npy'%s)
-                    rgb_plots = np.load(pcf + 'seg%s_ntt_rgb_pls.npy'%s)                    
+                xyz_tfs = np.load(pcf + 'seg%s_nt_xyz_tfs.npy'%s)
+                rgb_plots = np.load(pcf + 'seg%s_nt_rgb_pls.npy'%s)
+                    
             else:
-                xyz_tfs, rgb_plots = get_needle_clouds(listener)
+                while True:
+                    xyz_tfs, rgb_plots = get_needle_clouds(listener)
+                    nl = sc.find_needle_tip(xyz_tfs, rgb_plots, window_name)
+                    if (nl[2] > 0.8) and (demo_keypts_names[s][k] == 'needle_tip'): 
+                        break                
+                    else:
+                        print colorize("didn't find a high enough point! trying again","red", True, True)                    
             
-            nl = sc.find_needle_tip(xyz_tfs, rgb_plots, window_name)
+            exec_keypts.append(nl)
+                
+        elif demo_keypts_names[s][k] == 'empty': # this is segment where robot looks for tip
+            demo_needle_tip_loc = np.load(osp.join(IROS_DATA_DIR, kpf + "seg%s_needle_world_loc.npy"%s))
             
-            if demo_keypts_names[s][k] == 'empty': # this is segment where robot looks for tip
+            if args.cloud_topic == 'test':
+                xyz_tfs = np.load(pcf + 'seg%s_ntt_xyz_tfs.npy'%s)
+                rgb_plots = np.load(pcf + 'seg%s_ntt_rgb_pls.npy'%s)  
+            else:
+                while True:
+                    xyz_tfs, rgb_plots = get_needle_clouds(listener)
+                    nl = sc.find_needle_tip(xyz_tfs, rgb_plots, window_name)
+                    if (nl[2] > 1) and (demo_keypts_names[s][k] == 'empty'): 
+                        break                
+                    else:
+                        print colorize("didn't find a high enough point! trying again","red", True, True)
+            
                 exec_needle_tip_loc = nl
                 exec_keypts.append((0,0,0))
-                needletip.SetTransform(translation_matrix(nl))
-                robot.Grab(needletip)
-            else:
-                exec_keypts.append(nl)
-   
+                
+                def grab_needle_tip(lr):
+                    for demo in [False, True]:
+                        if demo: 
+                            tip_loc = demo_needle_tip_loc
+                            grabbing_robot = demo_robot
+                            grabbed_needle_tip = demo_needle_tip
+                        else: 
+                            tip_loc = exec_needle_tip_loc
+                            grabbing_robot = robot
+                            grabbed_needle_tip = needle_tip
+                        grabbed_needle_tip.SetTransform(translation_matrix(tip_loc))
+                        grabbing_robot.Grab(grabbed_needle_tip, grabbing_robot.GetLink("%s_gripper_tool_frame"%lr))                
+                
+                if "extra_info" in segment_info:
+                    if "left_grab" in segment_info["extra_info"]: 
+                        grab_needle_tip('l')
+                    elif "right_grab" in segment_info["extra_info"]:
+                        grab_needle_tip('r')            
+                
+                        
     #print 'exec_keypts', exec_keypts
 
     demopoints_m3 = np.array(demo_keypts[s])
@@ -456,8 +533,12 @@ for s in range(SEGNUM):
     print "residual", f.transform_points(demopoints_m3) - newpoints_m3
 
 
+
     for (i,mini_segment) in enumerate(mini_segments[s]):
-        print "mini-segment %i"%i
+
+        brett.update_rave()
+        
+        print colorize("mini-segment %i"%i, 'red', bold=True, highlight=True)
 
         full_traj = np.c_[mini_segment.larm_traj, mini_segment.rarm_traj]
         full_traj = mu.remove_duplicate_rows(full_traj)
@@ -472,14 +553,20 @@ for s in range(SEGNUM):
         ################################################
 
         robot.SetActiveDOFs(np.r_[robot.GetManipulator("leftarm").GetArmIndices(), robot.GetManipulator("rightarm").GetArmIndices()])
+        demo_robot.SetActiveDOFs(np.r_[robot.GetManipulator("leftarm").GetArmIndices(), robot.GetManipulator("rightarm").GetArmIndices()])        
+        
+        demo_robot.SetDOFValues(robot.GetDOFValues())
+        
         # let's get cartesian trajectory
         left_hmats = []
         right_hmats = []
 
+            
         for row in ds_traj:
-            robot.SetActiveDOFValues(row)
-            left_hmats.append(robot.GetLink(left_ee_link).GetTransform())
-            right_hmats.append(robot.GetLink(right_ee_link).GetTransform())
+            demo_robot.SetActiveDOFValues(row)
+            left_hmats.append(demo_left_ee_link.GetTransform())
+            right_hmats.append(demo_right_ee_link.GetTransform())
+
 
         left_hmats_old = left_hmats
         left_hmats = transform_hmats(f, left_hmats)
@@ -500,7 +587,6 @@ for s in range(SEGNUM):
 
 
         ################################################
-        brett.update_rave()
         
         leftarm_inds = robot.GetManipulator("leftarm").GetArmIndices()
         rightarm_inds = robot.GetManipulator("rightarm").GetArmIndices()
@@ -514,11 +600,17 @@ for s in range(SEGNUM):
                 arm_traj[:,i] += winds * 2 * np.pi               
             return arm_traj
 
-        trajoptpy.SetInteractive(False)
 
-        best_left_path = plan_follow_traj(robot, "leftarm", left_hmats, remove_winding(ds_traj[:,:7], robot.GetDOFValues(leftarm_inds)))
-
-        best_right_path = plan_follow_traj(robot, "rightarm", right_hmats, remove_winding(ds_traj[:,7:], robot.GetDOFValues(rightarm_inds)))
+        seg_arms = task_info[args.task][args.part_index]["segments"][s]["mini-segments"][i]["arms_used"]
+        
+        if 'l' in seg_arms:
+            best_left_path = plan_follow_traj(robot, "leftarm", left_ee_linkname, left_hmats, remove_winding(ds_traj[:,:7], robot.GetDOFValues(leftarm_inds)))
+        else:
+            best_left_path = ds_traj[:,:7]
+        if 'r' in seg_arms:
+            best_right_path = plan_follow_traj(robot, "rightarm", right_ee_linkname, right_hmats, remove_winding(ds_traj[:,7:], robot.GetDOFValues(rightarm_inds)), "leftarm", best_left_path)
+        else:
+            best_right_path = ds_traj[:,7:]
 
 
         left_diffs = np.abs(best_left_path[1:] - best_left_path[:-1])        
@@ -526,7 +618,8 @@ for s in range(SEGNUM):
         print "max joint discontinuities in left arm:", left_diffs.max(), "per joint: ", left_diffs.max(axis=0)
         print "max joint discontinuities in right arm:", right_diffs.max(), "per joint: ", right_diffs.max(axis=0)
 
-        raw_input(colorize("look at markers in rviz. red=demo, blue=new. press enter to continue","red"))
+        print(colorize("look at markers in rviz. red=demo, blue=new. press enter to continue","red"))
+        raw_input()
 
         ######################################
         ### Now view/execute the trajectory
@@ -540,16 +633,25 @@ for s in range(SEGNUM):
             for (i,row) in enumerate(joint_traj):
                 print "step",i
                 robot.SetActiveDOFValues(row)
-                lhandle = env.drawarrow(robot.GetLink(left_ee_link).GetTransform()[:3,3], left_hmats[i][:3,3])
-                rhandle = env.drawarrow(robot.GetLink(right_ee_link).GetTransform()[:3,3], right_hmats[i][:3,3])
+                lhandle = env.drawarrow(left_ee_link.GetTransform()[:3,3], left_hmats[i][:3,3])
+                rhandle = env.drawarrow(right_ee_link.GetTransform()[:3,3], right_hmats[i][:3,3])
                 viewer.Idle()
         else:
             from brett2 import trajectories
             #def follow_body_traj2(pr2, bodypart2traj, times=None, wait=True, base_frame = "/base_footprint"):
             bodypart2traj = {}
+            print "lgrip, rgrip", mini_segment.lgrip_angle, mini_segment.rgrip_angle
             brett.lgrip.set_angle(mini_segment.lgrip_angle)
             brett.rgrip.set_angle(mini_segment.rgrip_angle)
             brett.join_all()
-            bodypart2traj["l_arm"] = best_left_path
-            bodypart2traj["r_arm"] = best_right_path
+            sleep(.4)
+            if 'l' in seg_arms:    
+                bodypart2traj["l_arm"] = best_left_path
+            else:
+                print colorize("skipping left arm", 'yellow', bold=True, highlight=True)
+            if 'r' in seg_arms:    
+                bodypart2traj["r_arm"] = best_right_path                    
+            else:
+                print colorize("skipping right arm", 'yellow', bold=True, highlight=True)
+                
             trajectories.follow_body_traj2(brett, bodypart2traj, speed_factor=.5)

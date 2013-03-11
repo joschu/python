@@ -9,11 +9,12 @@ InterruptedSuture6:
       - description: pierce 
         left_end_effector: needle_tip
       - description: push needle through
-      - description: grab needle with right hand     
-
+      - description: grab needle with right hand 
+      
     - part_name: two_loop_knot
     
-InterruptedSuture7:  #includes look time for after needle grab with right hand    
+#includes look time for after needle grab with right hand
+InterruptedSuture7:    
     - part_name: pierce
       demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg7.bag
       segments:
@@ -28,10 +29,11 @@ InterruptedSuture7:  #includes look time for after needle grab with right hand
       - description: pass needle back to left hand
       - description: pull thread 
       - description: pull thread, put needle back in stand
-
+      
     - part_name: two_loop_knot
 
-InterruptedSuture8: #includes additional look time for after passing the needle back to the left hand ##NOT processed yet    
+#includes additional look time for after passing the needle back to the left hand
+InterruptedSuture8:    
     - part_name: pierce
       demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg8.bag
       segments:
@@ -42,6 +44,203 @@ InterruptedSuture8: #includes additional look time for after passing the needle 
       - description: pierce 
         left_end_effector: needle_tip
       - description: push needle through
-      - description: grab needle with right hand      
+      - description: grab needle with right hand
+      - description: pass needle back to left hand
+      - description: look at needle tip
+      - description: pull thread 
+      - description: pull thread, put needle back in stand
+        left_end_effector: needle_tip
+        extra_info: [left_grab]
+        
+    - part_name: two_loop_knot
+    
+#combination of 7 and 8 -- doesn't have it's own bag file
+InterruptedSuture9:    
+    - part_name: pierce
+      demo_bag: 
+      segments:
+      # seg0
+      - description: grab needle from stand
+        mini-segments:
+        - arms_used: [l]
+        - arms_used: [l]
+      # seg1
+      - description: look at needle tip
+        mini-segments:
+        - arms_used: [l]
+        extra_info: [left_grab]
+      # seg2
+      - description: grab flap
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+      # seg3
+      - description: pierce 
+        mini-segments:
+        - arms_used: [l]
+        - arms_used: [r]
+        left_end_effector: needle_tip
+      # seg4
+      - description: push needle through
+        mini-segments:
+        - arms_used: [l,r]
+      # seg5
+      - description: grab needle with right hand
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [l,r]
+      # seg6
+      - description: pass needle back to left hand
+        mini-segments:
+        - arms_used: [l]
+        - arms_used: [l]
+        - arms_used: [l,r]
+      # seg7
+      - description: look at needle tip
+        mini-segments:
+        - arms_used: [l]
+      # seg8
+      - description: pull thread 
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [r]
+      # seg9
+      - description: pull thread, put needle back in stand
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [l]
+        left_end_effector: needle_tip
+        extra_info: [left_grab]
+        
+    - part_name: two_loop_knot
+    
+InterruptedSuture10:    
+    - part_name: pierce
+      demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg10.bag
+      segments:
+      # seg0
+      - description: grab needle from stand
+        mini-segments:
+        - arms_used: [l]
+        - arms_used: [l]
+      # seg1
+      - description: look at needle tip
+        mini-segments:
+        - arms_used: [l]
+        extra_info: [left_grab]
+      # seg2
+      - description: grab flap
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+      # seg3
+      - description: pierce 
+        mini-segments:
+        - arms_used: [l]
+        - arms_used: [r]
+        left_end_effector: needle_tip
+      # seg4
+      - description: push needle through
+        mini-segments:
+        - arms_used: [l,r]
+      # seg5
+      - description: grab needle with right hand
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [l,r]
+      # seg6
+      - description: pass needle back to left hand
+        mini-segments:
+        - arms_used: [l]
+        - arms_used: [l]
+        - arms_used: [l,r]
+      # seg7
+      - description: look at needle tip
+        mini-segments:
+        - arms_used: [l]
+      # seg8
+      - description: pull thread 
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [r]
+      # seg9
+      - description: pull thread, put needle back in stand
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [l]
+        left_end_effector: needle_tip
+        extra_info: [left_grab]
+        
+    - part_name: two_loop_knot
+    
+InterruptedSuture11:    
+    - part_name: pierce
+      demo_bag: /mnt/storage/mtayfred/data/bags/pierce_w_startstopseg11.bag
+      segments:
+      # seg0
+      - description: grab needle from stand
+        mini-segments:
+        - arms_used: [l]
+        - arms_used: [l]
+      # seg1
+      - description: look at needle tip
+        mini-segments:
+        - arms_used: [l]
+        extra_info: [left_grab]
+      # seg2
+      - description: grab flap
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+      # seg3
+      - description: pierce 
+        mini-segments:
+        - arms_used: [l]
+        - arms_used: [r]
+        left_end_effector: needle_tip
+      # seg4
+      - description: push needle through
+        mini-segments:
+        - arms_used: [l,r]
+      # seg5
+      - description: grab needle with right hand
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [l,r]
+      # seg6
+      - description: pass needle back to left hand
+        mini-segments:
+        - arms_used: [l]
+        - arms_used: [l]
+        - arms_used: [l,r]
+      # seg7
+      - description: look at needle tip
+        mini-segments:
+        - arms_used: [l]
+        extra_info: [left_grab]
+      # seg8
+      - description: pull thread 
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [r]
+      # seg9
+      - description: pull thread, put needle back in stand
+        mini-segments:
+        - arms_used: [r]
+        - arms_used: [r]
+        - arms_used: [r,l]
+        - arms_used: [l]
+        left_end_effector: needle_tip
 
+        
     - part_name: two_loop_knot
