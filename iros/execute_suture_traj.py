@@ -6,6 +6,7 @@ parser.add_argument("task")
 parser.add_argument("part_index",type=int)
 parser.add_argument("--segment_index", type=int, default=0)
 parser.add_argument("--interactive",action="store_true")
+parser.add_argument("--no_movement",action="store_true")
 args = parser.parse_args()
 
 import numpy as np
@@ -106,11 +107,6 @@ SEGNUM = len(task_info[args.task][args.part_index]["segments"])
 print 'number of segments', SEGNUM
 OPEN_ANGLE = .08
 CLOSED_ANGLE = 0
-
-
-def call_and_print(cmd,color='green'):
-    print colorize(cmd, color, bold=True)
-    subprocess.check_call(cmd, shell=True)
 
 
 def transform_hmats(f, hmats):
@@ -223,83 +219,6 @@ def segment_trajectory(larm, rarm, lgrip, rgrip):
         traj_segments.append(TrajSegment( larm[i_start:i_end+1], rarm[i_start:i_end+1], l_angle, r_angle ))
 
     return traj_segments
-
-#def get_kp_clouds(listener, num_clouds):
-    #xyz_tfs = []
-    #rgb_plots = []
-       
-    #class MessageGetter:
-        
-        #def __init__(self, n_msgs):
-            #self.n_msgs = n_msgs
-            #self.msgs = []
-            #self.done = False
-        #def callback(self,msg):
-            #if self.done:
-                #return
-            #elif len(self.msgs) < self.n_msgs:
-                #self.msgs.append(msg)
-            #else:
-                #self.done = True
-                
-    #def get_msgs(n_msgs, topic, msgtype):
-        #print "waiting for %i messages on topic %s"%(n_msgs, topic)
-        #mg = MessageGetter(n_msgs)
-        #sub = rospy.Subscriber(topic, msgtype, mg.callback)
-        #while not mg.done:
-            #rospy.sleep(.05)
-        #sub.unregister()
-        #return mg.msgs
-              
-    #msgs = get_msgs(num_clouds, args.cloud_topic, sm.PointCloud2)
-    
-    #if num_clouds == 1:
-        #msg = msgs[0]
-        #xyz, rgb = ru.pc2xyzrgb(msg)
-    
-        #if (xyz.shape[0] == 1 or xyz.shape[1] == 1): raise Exception("needs to be an organized point cloud")	
-    
-        #xyz_tf = ru.transform_points(xyz, listener, "base_footprint", "/camera_rgb_optical_frame")        
-        #rgb_plot = rgb.copy() 
-        
-        #return xyz_tf, rgb_plot
-
-    #else:    
-        #for i in range(num_clouds):
-            #msg = msgs[i]            
-            #xyz, rgb = ru.pc2xyzrgb(msg)
-           
-            #if (xyz.shape[0] == 1 or xyz.shape[1] == 1): raise Exception("needs to be an organized point cloud")
-    
-            #xyz_tf = ru.transform_points(xyz, listener, "base_footprint", "/camera_rgb_optical_frame")        
-        
-            #xyz_tfs.append(xyz_tf)
-            #rgb_plots.append(rgb)
-    
-        #return xyz_tfs, rgb_plots
-
-
-#def find_last_kp_loc(exec_keypts, desired_keypt, current_seg):        
-    
-    #if search_seg < 1:
-        #print "Reached beginning of execution and couldn't find desired keypoint! Aborting..."
-        #sys.exit(1)
-    #else:
-        #search_seg = current_seg - 1
-    
-    #while(True):
-        #search_seg_names = exec_keypts[search_seg]["names"]
-        #search_seg_locs = exec_keypts[search_seg]["locations"]
-    
-        #for k in range(len(search_seg_names)):
-            #if search_seg_names[k] == desired_keypt:
-                #kp_loc = search_seg_locs[k]
-                #kp_found = True
-        
-        #if kp_found:        
-            #return kp_loc, search_seg
-        #else:
-            #search_seg -= 1
                    
 
 #def GetLinkMaybeAttached(robot,ee_link):
@@ -441,77 +360,100 @@ if args.segment_index > 0: #HACK so we can start in the middle
         demo_robot.Grab(demo_needle_tip)
 
 for s in range(args.segment_index, SEGNUM):
-    
-    segment_info = task_info[args.task][args.part_index]["segments"][s]
-    keypt_names = segment_info["keypts_to_look_for"]
-    num_kps = len(keypt_names)
-    
-    print colorize("trajectory segment %i"%s, 'blue', bold=True, highlight=True)    
-
-    # keep track of keypts seen during each segment
-    exec_keypts[s] = {}
-    exec_keypts[s]["names"] = []
-    exec_keypts[s]["locations"] = []
-    
-    # this is the frame whose trajectory we'll adapt to the new situation
-    # in some segments it's the needle tip
-    left_ee_linkname = segment_info.get("left_end_effector", "l_gripper_tool_frame")
-    right_ee_linkname = segment_info.get("right_end_effector", "r_gripper_tool_frame")
-       
-    if left_ee_linkname == "needle_tip":
-        left_ee_link = needle_tip.GetLinks()[0]
-        demo_left_ee_link = demo_needle_tip
-    else:
-        left_ee_link = robot.GetLink(left_ee_linkname)
-        demo_left_ee_link = demo_robot.GetLink(left_ee_linkname)
-    if right_ee_linkname == "needle_tip":
-        right_ee_link = needle_tip.GetLinks()[0]
-        demo_right_ee_link = demo_needle_tip
-    else:
-        right_ee_link = robot.GetLink(right_ee_linkname)
-        demo_right_ee_link = demo_robot.GetLink(right_ee_linkname)
-    
-    brett.update_rave()
-    
-    print colorize("Key points from demo: %s"%keypt_names, 'green', bold=True)                       
-    time.sleep(1) #time.sleep or rospy.sleep??
+  
+    snapshot_count = 0
+    while True:    
+        segment_info = task_info[args.task][args.part_index]["segments"][s]
+        keypt_names = segment_info["keypts_to_look_for"]
+        num_kps = len(keypt_names)
         
-    #if args.cloud_topic == 'test':
-        #xyz_tf = np.load(pcf + '/seg%s_' + keypt_names[k] + '_xyz_tf.npy'%s)
-        #rgb_plot = np.load(pcf + '/seg%s_' + keypt_names[k] + '_rgb_pl.npy'%s)
-        #kp_loc = sc.find_kp(keypt_names[k], xyz_tf, rgb_plot, window_name)                           
-                
-    if keypt_names[0] == 'tip_transform': # this is segment where robot looks for tip
-        demo_needle_tip_loc = np.load(osp.join(IROS_DATA_DIR, kpf, "seg%s_needle_world_loc.npy"%s))
-        exec_needle_tip_loc, _ = sc.get_kp_locations(keypt_names, exec_keypts, s, args.cloud_topic)
+        print colorize("trajectory segment %i"%s, 'blue', bold=True, highlight=True)    
+    
+        # keep track of keypts seen during each segment
+        exec_keypts[s] = {}
+        exec_keypts[s]["names"] = []
+        exec_keypts[s]["locations"] = []
+        
+        # this is the frame whose trajectory we'll adapt to the new situation
+        # in some segments it's the needle tip
+        left_ee_linkname = segment_info.get("left_end_effector", "l_gripper_tool_frame")
+        right_ee_linkname = segment_info.get("right_end_effector", "r_gripper_tool_frame")
+           
+        if left_ee_linkname == "needle_tip":
+            left_ee_link = needle_tip.GetLinks()[0]
+            demo_left_ee_link = demo_needle_tip
+        else:
+            left_ee_link = robot.GetLink(left_ee_linkname)
+            demo_left_ee_link = demo_robot.GetLink(left_ee_linkname)
+        if right_ee_linkname == "needle_tip":
+            right_ee_link = needle_tip.GetLinks()[0]
+            demo_right_ee_link = demo_needle_tip
+        else:
+            right_ee_link = robot.GetLink(right_ee_linkname)
+            demo_right_ee_link = demo_robot.GetLink(right_ee_linkname)
+        
+        brett.update_rave()
+        
+        print colorize("Key points from demo: %s"%keypt_names, 'green', bold=True)                       
+        time.sleep(1) #time.sleep or rospy.sleep??
             
-        exec_keypts[s]["locations"].append((0, 0, 0))
-                            
-        def grab_needle_tip(lr):
-            for demo in [False, True]:
-                if demo: 
-                    tip_loc = demo_needle_tip_loc
-                    grabbing_robot = demo_robot
-                    grabbed_needle_tip = demo_needle_tip
-                else: 
-                    tip_loc = exec_needle_tip_loc
-                    grabbing_robot = robot
-                    grabbed_needle_tip = needle_tip
-                grabbed_needle_tip.SetTransform(translation_matrix(tip_loc))
-                grabbing_robot.Grab(grabbed_needle_tip, grabbing_robot.GetLink("%s_gripper_tool_frame"%lr))                
+        #if args.cloud_topic == 'test':
+            #xyz_tf = np.load(pcf + '/seg%s_' + keypt_names[k] + '_xyz_tf.npy'%s)
+            #rgb_plot = np.load(pcf + '/seg%s_' + keypt_names[k] + '_rgb_pl.npy'%s)
+            #kp_loc = sc.find_kp(keypt_names[k], xyz_tf, rgb_plot, window_name)                           
+                    
+        if keypt_names[0] == 'tip_transform': # this is segment where robot looks for tip
+            demo_needle_tip_loc = np.load(osp.join(IROS_DATA_DIR, kpf, "seg%s_needle_world_loc.npy"%s))
+            exec_needle_tip_loc = sc.get_kp_locations(keypt_names, exec_keypts, s, args.cloud_topic)
+                
+            exec_keypts[s]["locations"].append((0, 0, 0))
+                                
+            def grab_needle_tip(lr):
+                for demo in [False, True]:
+                    if demo: 
+                        tip_loc = demo_needle_tip_loc
+                        grabbing_robot = demo_robot
+                        grabbed_needle_tip = demo_needle_tip
+                    else: 
+                        tip_loc = exec_needle_tip_loc
+                        grabbing_robot = robot
+                        grabbed_needle_tip = needle_tip
+                    grabbed_needle_tip.SetTransform(translation_matrix(tip_loc))
+                    grabbing_robot.Grab(grabbed_needle_tip, grabbing_robot.GetLink("%s_gripper_tool_frame"%lr))                
+            
+            if "extra_info" in segment_info:
+                if "left_grab" in segment_info["extra_info"]: 
+                    grab_needle_tip('l')
+                elif "right_grab" in segment_info["extra_info"]:
+                    grab_needle_tip('r') 
+                                   
+        else:
+            keypt_locs = sc.get_kp_locations(keypt_names, exec_keypts, s, args.cloud_topic)
+            exec_keypts[s]["locations"] = keypt_locs
+                                
+        for (n, name) in enumerate(keypt_names): exec_keypts[s]["names"].append(keypt_names[n]) 
         
-        if "extra_info" in segment_info:
-            if "left_grab" in segment_info["extra_info"]: 
-                grab_needle_tip('l')
-            elif "right_grab" in segment_info["extra_info"]:
-                grab_needle_tip('r') 
-                               
-    else:
-        keypt_locs, keypt_pixels = sc.get_kp_locations(keypt_names, exec_keypts, s, args.cloud_topic)
-        exec_keypts[s]["locations"] = keypt_locs
-                            
-    for (n, name) in enumerate(keypt_names): exec_keypts[s]["names"].append(keypt_names[n])                
-    print 'exec_kp_names', exec_keypts[s]["names"]
+        rgbfile = glob(osp.join(IROS_DATA_DIR, args.task, 'point_clouds', 'pt%i/seg%i_*_rgb_*.npy'%(PARTNUM, s)))[0]
+        xyzfile = glob(osp.join(IROS_DATA_DIR, args.task, 'point_clouds', 'pt%i/seg%i_*_xyz_tf*.npy'%(PARTNUM, s)))[0]                
+    
+        if keypt_names[0] not in [ "needle_end", "needle_tip", "razor", "tip_transform"]:
+            np.savez(osp.join(IROS_DATA_DIR, "segment%.2i_snapshot%.2i_time%i"%(s,snapshot_count,int(time.time()))),
+                     demo_rgb = np.load(rgbfile),
+                     demo_xyz = np.load(xyzfile),
+                     current_rgb = np.load("/tmp/rgb.npy"),
+                     current_xyz = np.load("/tmp/xyz_tf.npy"),
+                     keypts_names = keypt_names,
+                     demo_keypts = demo_keypts[s],
+                     exec_keypts = exec_keypts[s]["locations"]
+                     )
+            snapshot_count += 1
+            if yes_or_no("done with snapshots?"):
+                print colorize("going on to next segment","red")
+                break
+        else:
+            print colorize("this segment doesn't have image keypoints. moving on","red")
+            break
+        print colorize("acquiring another snapshot", "blue")
             
     demopoints_m3 = np.array(demo_keypts[s])
     newpoints_m3 = np.array(exec_keypts[s]["locations"])
@@ -653,4 +595,7 @@ for s in range(args.segment_index, SEGNUM):
             else:
                 print colorize("skipping right arm", 'yellow', bold=True, highlight=True)
                 
-            trajectories.follow_body_traj2(brett, bodypart2traj, speed_factor=.5)
+            if args.no_movement:
+                print colorize("skipping arm movement","yellow",bold=True,highlight=True)
+            else:
+                trajectories.follow_body_traj2(brett, bodypart2traj, speed_factor=.5)

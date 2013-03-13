@@ -109,7 +109,7 @@ def show_pointclouds(clouds, WIN_NAME):
 def get_kp_locations(kp_names, exec_keypts, current_seg, cloud_topic):
     listener = ru.get_tf_listener()
     kp_locations = []
-    kp_xypixels = []
+    #kp_xypixels = []
     
     seg_kps = []
     if kp_names[0] == "tip_transform":         
@@ -117,7 +117,7 @@ def get_kp_locations(kp_names, exec_keypts, current_seg, cloud_topic):
             xyz_tfs, rgb_plots = get_kp_clouds(listener, cloud_topic, 30)
             needle_tip_loc = find_needle_tip(xyz_tfs, rgb_plots, WIN_NAME)
             if needle_tip_loc[2] > 1:   
-                return needle_tip_loc, kp_xypixels.append((0,0))                
+                return needle_tip_loc              
             else: 
                 print colorize("Didn't find a high enough point! Trying again","red", True, True)
         
@@ -127,7 +127,7 @@ def get_kp_locations(kp_names, exec_keypts, current_seg, cloud_topic):
             kp_loc, pts = find_red_block(xyz_tfs, rgb_plots, WIN_NAME)
             if pts > 0: 
                 seg_kps.append(kp_loc)
-                kp_xypixels.append((0,0))
+                #kp_xypixels.append((0,0))
                 break
             else: 
                 print colorize("Couldn't find the keypoint! Trying again","red", True, True)             
@@ -138,26 +138,28 @@ def get_kp_locations(kp_names, exec_keypts, current_seg, cloud_topic):
             kp_loc = find_needle_tip(xyz_tfs, rgb_plots, WIN_NAME)
             if kp_loc[2] > 0.8: 
                 seg_kps.append(kp_loc)
-                kp_xypixels.append((0,0))
+                #kp_xypixels.append((0,0))
                 break                
             else: 
                 print colorize("Didn't find a high enough point! Trying again","red", True, True)              
             
     else:
         xyz_tf, rgb_plot = get_kp_clouds(listener, cloud_topic, 1)
+        np.save("/tmp/xyz_tf.npy",xyz_tf)
+        np.save("/tmp/rgb.npy",rgb_plot)
         for k in range(len(kp_names)):
-            kp_loc, kp_xypix = find_kp(kp_names[k], xyz_tf, rgb_plot, WIN_NAME)
-            kp_xypixels.append(kp_xypix)
+            kp_loc = find_kp(kp_names[k], xyz_tf, rgb_plot, exec_keypts, current_seg, WIN_NAME)
+            #kp_xypixels.append(kp_xypix)
             seg_kps.append(kp_loc)
                 
-    return seg_kps, kp_xypixels
+    return seg_kps
 
 
 
 #########################################
 ### find a single keypoint
 #########################################
-def find_kp(kp, xyz_tf, rgb_plot, WIN_NAME):
+def find_kp(kp, xyz_tf, rgb_plot, past_keypts, current_seg, WIN_NAME):
     ### clicking set-up 
     class GetClick:
         x = None
@@ -170,13 +172,22 @@ def find_kp(kp, xyz_tf, rgb_plot, WIN_NAME):
                 self.x = x
                 self.y = y
                 self.done = True
-
-    print colorize("click on the center of the " + kp, 'red', bold=True)
+    
+    print colorize("Click on the center of the %s."%kp, 'red', bold=True)
+    print colorize("If this keypont is occluded, select the image window and press any key", 'red', bold=True)
+    
     gc = GetClick()
     cv2.setMouseCallback(WIN_NAME, gc.callback)
     while not gc.done:
         cv2.imshow(WIN_NAME, rgb_plot)
-        cv2.waitKey(10)
+        k = cv2.waitKey(100)
+        if k == -1:
+            continue
+        else:
+            last_loc, found_seg = get_last_kp_loc(past_keypts, kp, current_seg)
+            print kp, "found in segment %s at location %s"%(found_seg, last_loc)
+            return last_loc
+
     row_kp = gc.x
     col_kp = gc.y
     
@@ -189,7 +200,8 @@ def find_kp(kp, xyz_tf, rgb_plot, WIN_NAME):
 
     print kp, "3d location", x, y, z
 
-    return (x, y, z), (col_kp, row_kp)
+    #return (x, y, z), (col_kp, row_kp)
+    return (x, y, z)
 
 
 #########################################
