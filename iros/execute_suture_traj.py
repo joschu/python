@@ -224,82 +224,82 @@ def segment_trajectory(larm, rarm, lgrip, rgrip):
 
     return traj_segments
 
-def get_kp_clouds(listener, num_clouds):
-    xyz_tfs = []
-    rgb_plots = []
+#def get_kp_clouds(listener, num_clouds):
+    #xyz_tfs = []
+    #rgb_plots = []
        
-    class MessageGetter:
+    #class MessageGetter:
         
-        def __init__(self, n_msgs):
-            self.n_msgs = n_msgs
-            self.msgs = []
-            self.done = False
-        def callback(self,msg):
-            if self.done:
-                return
-            elif len(self.msgs) < self.n_msgs:
-                self.msgs.append(msg)
-            else:
-                self.done = True
+        #def __init__(self, n_msgs):
+            #self.n_msgs = n_msgs
+            #self.msgs = []
+            #self.done = False
+        #def callback(self,msg):
+            #if self.done:
+                #return
+            #elif len(self.msgs) < self.n_msgs:
+                #self.msgs.append(msg)
+            #else:
+                #self.done = True
                 
-    def get_msgs(n_msgs, topic, msgtype):
-        print "waiting for %i messages on topic %s"%(n_msgs, topic)
-        mg = MessageGetter(n_msgs)
-        sub = rospy.Subscriber(topic, msgtype, mg.callback)
-        while not mg.done:
-            rospy.sleep(.05)
-        sub.unregister()
-        return mg.msgs
+    #def get_msgs(n_msgs, topic, msgtype):
+        #print "waiting for %i messages on topic %s"%(n_msgs, topic)
+        #mg = MessageGetter(n_msgs)
+        #sub = rospy.Subscriber(topic, msgtype, mg.callback)
+        #while not mg.done:
+            #rospy.sleep(.05)
+        #sub.unregister()
+        #return mg.msgs
               
-    msgs = get_msgs(num_clouds, args.cloud_topic, sm.PointCloud2)
+    #msgs = get_msgs(num_clouds, args.cloud_topic, sm.PointCloud2)
     
-    if num_clouds == 1:
-        msg = msgs[0]
-        xyz, rgb = ru.pc2xyzrgb(msg)
+    #if num_clouds == 1:
+        #msg = msgs[0]
+        #xyz, rgb = ru.pc2xyzrgb(msg)
     
-        if (xyz.shape[0] == 1 or xyz.shape[1] == 1): raise Exception("needs to be an organized point cloud")	
+        #if (xyz.shape[0] == 1 or xyz.shape[1] == 1): raise Exception("needs to be an organized point cloud")	
     
-        xyz_tf = ru.transform_points(xyz, listener, "base_footprint", "/camera_rgb_optical_frame")        
-        rgb_plot = rgb.copy() 
+        #xyz_tf = ru.transform_points(xyz, listener, "base_footprint", "/camera_rgb_optical_frame")        
+        #rgb_plot = rgb.copy() 
         
-        return xyz_tf, rgb_plot
+        #return xyz_tf, rgb_plot
 
-    else:    
-        for i in range(num_clouds):
-            msg = msgs[i]            
-            xyz, rgb = ru.pc2xyzrgb(msg)
+    #else:    
+        #for i in range(num_clouds):
+            #msg = msgs[i]            
+            #xyz, rgb = ru.pc2xyzrgb(msg)
            
-            if (xyz.shape[0] == 1 or xyz.shape[1] == 1): raise Exception("needs to be an organized point cloud")
+            #if (xyz.shape[0] == 1 or xyz.shape[1] == 1): raise Exception("needs to be an organized point cloud")
     
-            xyz_tf = ru.transform_points(xyz, listener, "base_footprint", "/camera_rgb_optical_frame")        
+            #xyz_tf = ru.transform_points(xyz, listener, "base_footprint", "/camera_rgb_optical_frame")        
         
-            xyz_tfs.append(xyz_tf)
-            rgb_plots.append(rgb)
+            #xyz_tfs.append(xyz_tf)
+            #rgb_plots.append(rgb)
     
-        return xyz_tfs, rgb_plots
+        #return xyz_tfs, rgb_plots
 
 
-def find_last_kp_loc(exec_keypts, desired_keypt, current_seg):        
+#def find_last_kp_loc(exec_keypts, desired_keypt, current_seg):        
     
-    if search_seg < 1:
-        print "Reached beginning of execution and couldn't find desired keypoint! Aborting..."
-        sys.exit(1)
-    else:
-        search_seg = current_seg - 1
+    #if search_seg < 1:
+        #print "Reached beginning of execution and couldn't find desired keypoint! Aborting..."
+        #sys.exit(1)
+    #else:
+        #search_seg = current_seg - 1
     
-    while(True):
-        search_seg_names = exec_keypts[search_seg]["names"]
-        search_seg_locs = exec_keypts[search_seg]["locations"]
+    #while(True):
+        #search_seg_names = exec_keypts[search_seg]["names"]
+        #search_seg_locs = exec_keypts[search_seg]["locations"]
     
-        for k in range(len(search_seg_names)):
-            if search_seg_names[k] == desired_keypt:
-                kp_loc = search_seg_locs[k]
-                kp_found = True
+        #for k in range(len(search_seg_names)):
+            #if search_seg_names[k] == desired_keypt:
+                #kp_loc = search_seg_locs[k]
+                #kp_found = True
         
-        if kp_found:        
-            return kp_loc, search_seg
-        else:
-            search_seg -= 1
+        #if kp_found:        
+            #return kp_loc, search_seg
+        #else:
+            #search_seg -= 1
                    
 
 #def GetLinkMaybeAttached(robot,ee_link):
@@ -457,8 +457,7 @@ for s in range(args.segment_index, SEGNUM):
     # in some segments it's the needle tip
     left_ee_linkname = segment_info.get("left_end_effector", "l_gripper_tool_frame")
     right_ee_linkname = segment_info.get("right_end_effector", "r_gripper_tool_frame")
-    
-    
+       
     if left_ee_linkname == "needle_tip":
         left_ee_link = needle_tip.GetLinks()[0]
         demo_left_ee_link = demo_needle_tip
@@ -473,81 +472,47 @@ for s in range(args.segment_index, SEGNUM):
         demo_right_ee_link = demo_robot.GetLink(right_ee_linkname)
     
     brett.update_rave()
-    for k in range(num_kps):
-        print colorize("Key point from demo is: " + keypt_names[k] + ". Looking for this key point now...", 'green', bold=True)                       
-        time.sleep(1) #time.sleep or rospy.sleep??
-        sc.show_pointclouds(get_kp_clouds(listener, 1), window_name)
-        
-        if yes_or_no(colorize("Is the keypoint visible?", "red")):
-           
-            if keypt_names[k] == 'none':
-                kp_loc = ((0, 0, 0))
-                print colorize("No keypoint for this segment", 'green', bold=True)
-            
-            elif args.cloud_topic == 'test':
-                xyz_tf = np.load(pcf + '/seg%s_' + keypt_names[k] + '_xyz_tf.npy'%s)
-                rgb_plot = np.load(pcf + '/seg%s_' + keypt_names[k] + '_rgb_pl.npy'%s)  
     
-            elif keypt_names[k] in ['left_hole', 'right_hole', 'stand', 'top_cut', 'mid_cut', 'bot_cut']:
-                xyz_tf, rgb_plot = get_kp_clouds(listener, 1)                     
-                kp_loc = sc.find_kp(keypt_names[k], xyz_tf, rgb_plot, window_name)            
-                   
-            elif keypt_names[k] in ['needle_end', 'razor']:
-                while True:
-                    xyz_tfs, rgb_plots = get_kp_clouds(listener, 30)        
-                    kp_loc, pts = sc.find_needle_end(xyz_tfs, rgb_plots, window_name)
-                    if pts > 0: break
-                    else: print colorize("Couldn't find the keypoint! Trying again","red", True, True)                       
-                
-            elif keypt_names[k] == 'needle_tip':
-                while True:
-                    xyz_tfs, rgb_plots = get_kp_clouds(listener, 30)
-                    kp_loc = sc.find_needle_tip(xyz_tfs, rgb_plots, window_name, 'execute')
-                    if kp_loc[2] > 0.8: break                
-                    else: print colorize("Didn't find a high enough point! Trying again","red", True, True)                    
-                    
-            elif keypt_names[k] == 'tip_transform': # this is segment where robot looks for tip
-                demo_needle_tip_loc = np.load(osp.join(IROS_DATA_DIR, kpf, "seg%s_needle_world_loc.npy"%s))
-    
-                while True:
-                    xyz_tfs, rgb_plots = get_kp_clouds(listener, 30)
-                    exec_needle_tip_loc = sc.find_needle_tip(xyz_tfs, rgb_plots, window_name, 'execute')
-                    if exec_needle_tip_loc[2] > 1: break                
-                    else: print colorize("Didn't find a high enough point! Trying again","red", True, True)
-                
-                kp_loc = ((0, 0, 0))
-                                    
-                def grab_needle_tip(lr):
-                    for demo in [False, True]:
-                        if demo: 
-                            tip_loc = demo_needle_tip_loc
-                            grabbing_robot = demo_robot
-                            grabbed_needle_tip = demo_needle_tip
-                        else: 
-                            tip_loc = exec_needle_tip_loc
-                            grabbing_robot = robot
-                            grabbed_needle_tip = needle_tip
-                        grabbed_needle_tip.SetTransform(translation_matrix(tip_loc))
-                        grabbing_robot.Grab(grabbed_needle_tip, grabbing_robot.GetLink("%s_gripper_tool_frame"%lr))                
-                
-                if "extra_info" in segment_info:
-                    if "left_grab" in segment_info["extra_info"]: 
-                        grab_needle_tip('l')
-                    elif "right_grab" in segment_info["extra_info"]:
-                        grab_needle_tip('r') 
-                        
-            else:
-                print "Invalid keypoint name! Aborting..."
-                sys.exit(1)
-            
-        else: # keypoint occluded
-            kp_loc, found_seg = find_last_kp_loc(exec_keypts, keypt_names[k], s)            
-            print "keypoint %s found in seg %s at %s" %(keypt_names[k], found_seg, kp_loc)
+    print colorize("Key points from demo: %s"%keypt_names, 'green', bold=True)                       
+    time.sleep(1) #time.sleep or rospy.sleep??
         
-                    
-        exec_keypts[s]["names"].append(keypt_names[k])
-        exec_keypts[s]["locations"].append(kp_loc)                
+    #if args.cloud_topic == 'test':
+        #xyz_tf = np.load(pcf + '/seg%s_' + keypt_names[k] + '_xyz_tf.npy'%s)
+        #rgb_plot = np.load(pcf + '/seg%s_' + keypt_names[k] + '_rgb_pl.npy'%s)
+        #kp_loc = sc.find_kp(keypt_names[k], xyz_tf, rgb_plot, window_name)                           
                 
+    if keypt_names[0] == 'tip_transform': # this is segment where robot looks for tip
+        demo_needle_tip_loc = np.load(osp.join(IROS_DATA_DIR, kpf, "seg%s_needle_world_loc.npy"%s))
+        exec_needle_tip_loc, _ = sc.get_kp_locations(keypt_names, exec_keypts, s, args.cloud_topic)
+            
+        exec_keypts[s]["locations"].append((0, 0, 0))
+                            
+        def grab_needle_tip(lr):
+            for demo in [False, True]:
+                if demo: 
+                    tip_loc = demo_needle_tip_loc
+                    grabbing_robot = demo_robot
+                    grabbed_needle_tip = demo_needle_tip
+                else: 
+                    tip_loc = exec_needle_tip_loc
+                    grabbing_robot = robot
+                    grabbed_needle_tip = needle_tip
+                grabbed_needle_tip.SetTransform(translation_matrix(tip_loc))
+                grabbing_robot.Grab(grabbed_needle_tip, grabbing_robot.GetLink("%s_gripper_tool_frame"%lr))                
+        
+        if "extra_info" in segment_info:
+            if "left_grab" in segment_info["extra_info"]: 
+                grab_needle_tip('l')
+            elif "right_grab" in segment_info["extra_info"]:
+                grab_needle_tip('r') 
+                               
+    else:
+        keypt_locs, keypt_pixels = sc.get_kp_locations(keypt_names, exec_keypts, s, args.cloud_topic)
+        exec_keypts[s]["locations"] = keypt_locs
+                            
+    for (n, name) in enumerate(keypt_names): exec_keypts[s]["names"].append(keypt_names[n])                
+    print 'exec_kp_names', exec_keypts[s]["names"]
+            
     demopoints_m3 = np.array(demo_keypts[s])
     newpoints_m3 = np.array(exec_keypts[s]["locations"])
     
@@ -567,7 +532,6 @@ for s in range(args.segment_index, SEGNUM):
     print "affine part", f.lin_ag
     print "translation part", f.trans_g
     print "residual", f.transform_points(demopoints_m3) - newpoints_m3
-
 
 
     for (i, mini_segment) in enumerate(mini_segments[s]):

@@ -2,28 +2,162 @@
 import cv2
 import numpy as np
 import sys
+import rospy
 
 from jds_utils.colorize import colorize
+import brett2.ros_utils as ru
+import sensor_msgs.msg as sm
 
 
-def show_pointclouds(clouds, window_name):
+WIN_NAME = "Find Keypoints"
+
+def get_kp_clouds(listener, cloud_topic, num_clouds):
+       
+    class MessageGetter:
+        
+        def __init__(self, n_msgs):
+            self.n_msgs = n_msgs
+            self.msgs = []
+            self.done = False
+        def callback(self,msg):
+            if self.done:
+                return
+            elif len(self.msgs) < self.n_msgs:
+                self.msgs.append(msg)
+            else:
+                self.done = True
+                
+    def get_msgs(n_msgs, topic, msgtype):
+        print "waiting for %i messages on topic %s"%(n_msgs, topic)
+        mg = MessageGetter(n_msgs)
+        sub = rospy.Subscriber(topic, msgtype, mg.callback)
+        while not mg.done:
+            rospy.sleep(.05)
+        sub.unregister()
+        return mg.msgs
+              
+    msgs = get_msgs(num_clouds, cloud_topic, sm.PointCloud2)
+    
+    if num_clouds == 1:
+        msg = msgs[0]
+        xyz, rgb = ru.pc2xyzrgb(msg)
+    
+        if (xyz.shape[0] == 1 or xyz.shape[1] == 1): raise Exception("needs to be an organized point cloud")	
+    
+        xyz_tf = ru.transform_points(xyz, listener, "base_footprint", "/camera_rgb_optical_frame")        
+        rgb_plot = rgb.copy() 
+        
+        return xyz_tf, rgb_plot
+
+    else:    
+        xyz_tfs = []
+        rgb_plots = []        
+        for i in range(num_clouds):
+            msg = msgs[i]            
+            xyz, rgb = ru.pc2xyzrgb(msg)
+           
+            if (xyz.shape[0] == 1 or xyz.shape[1] == 1): raise Exception("needs to be an organized point cloud")
+    
+            xyz_tf = ru.transform_points(xyz, listener, "base_footprint", "/camera_rgb_optical_frame")        
+        
+            xyz_tfs.append(xyz_tf)
+            rgb_plots.append(rgb)
+    
+        return xyz_tfs, rgb_plots
+
+
+def get_last_kp_loc(exec_keypts, desired_keypt, current_seg):        
+    
+    search_seg = current_seg - 1
+       
+    while(True):
+        if search_seg < 0:
+            print "Reached beginning of execution and couldn't find desired keypoint! Aborting..."
+            sys.exit(1)            
+        else:
+            search_seg_names = exec_keypts[search_seg]["names"]
+            search_seg_locs = exec_keypts[search_seg]["locations"]
+        
+            for k in range(len(search_seg_names)):
+                if search_seg_names[k] == desired_keypt:
+                    kp_loc = search_seg_locs[k]
+                    kp_found = True
+            
+        if kp_found:        
+            return kp_loc, search_seg
+        else:
+            search_seg -= 1
+
+
+def show_pointclouds(clouds, WIN_NAME):
     nc = len(clouds)
 
     if nc == 2:
         rgb_plot = clouds[1].copy()
-        cv2.imshow(window_name, rgb_plot)
+        cv2.imshow(WIN_NAME, rgb_plot)
         cv2.waitKey(100)
     else:
         rgb_plot_multi = []
         for i in range(nc):
             rgb_plot_multi.append(clouds[i][1].copy())
-            cv2.imshow(window_name, rgb_plot_multi[i])
+            cv2.imshow(WIN_NAME, rgb_plot_multi[i])
             cv2.waitKey(100)
+
+#########################################
+### find all keypoints
+#########################################
+def get_kp_locations(kp_names, exec_keypts, current_seg, cloud_topic):
+    listener = ru.get_tf_listener()
+    kp_locations = []
+    kp_xypixels = []
+    
+    seg_kps = []
+    if kp_names[0] == "tip_transform":         
+        while True:
+            xyz_tfs, rgb_plots = get_kp_clouds(listener, cloud_topic, 30)
+            needle_tip_loc = find_needle_tip(xyz_tfs, rgb_plots, WIN_NAME)
+            if needle_tip_loc[2] > 1:   
+                return needle_tip_loc, kp_xypixels.append((0,0))                
+            else: 
+                print colorize("Didn't find a high enough point! Trying again","red", True, True)
+        
+    elif kp_names[0] in ["needle_end", "razor"]:
+        while True:
+            xyz_tfs, rgb_plots = get_kp_clouds(listener, cloud_topic, 30)        
+            kp_loc, pts = find_red_block(xyz_tfs, rgb_plots, WIN_NAME)
+            if pts > 0: 
+                seg_kps.append(kp_loc)
+                kp_xypixels.append((0,0))
+                break
+            else: 
+                print colorize("Couldn't find the keypoint! Trying again","red", True, True)             
+    
+    elif kp_names[0] == "needle_tip":
+        while True:
+            xyz_tfs, rgb_plots = get_kp_clouds(listener, cloud_topic, 30)
+            kp_loc = find_needle_tip(xyz_tfs, rgb_plots, WIN_NAME)
+            if kp_loc[2] > 0.8: 
+                seg_kps.append(kp_loc)
+                kp_xypixels.append((0,0))
+                break                
+            else: 
+                print colorize("Didn't find a high enough point! Trying again","red", True, True)              
+            
+    else:
+        xyz_tf, rgb_plot = get_kp_clouds(listener, cloud_topic, 1)
+        for k in range(len(kp_names)):
+            kp_loc, kp_xypix = find_kp(kp_names[k], xyz_tf, rgb_plot, WIN_NAME)
+            kp_xypixels.append(kp_xypix)
+            seg_kps.append(kp_loc)
+                
+    return seg_kps, kp_xypixels
+
+
 
 #########################################
 ### find a single keypoint
 #########################################
-def find_kp(kp, xyz_tf, rgb_plot, window_name):
+def find_kp(kp, xyz_tf, rgb_plot, WIN_NAME):
     ### clicking set-up 
     class GetClick:
         x = None
@@ -39,15 +173,15 @@ def find_kp(kp, xyz_tf, rgb_plot, window_name):
 
     print colorize("click on the center of the " + kp, 'red', bold=True)
     gc = GetClick()
-    cv2.setMouseCallback(window_name, gc.callback)
+    cv2.setMouseCallback(WIN_NAME, gc.callback)
     while not gc.done:
-        cv2.imshow(window_name, rgb_plot)
+        cv2.imshow(WIN_NAME, rgb_plot)
         cv2.waitKey(10)
     row_kp = gc.x
     col_kp = gc.y
     
     cv2.circle(rgb_plot, (row_kp, col_kp), 5, (0, 0, 255), -1)
-    cv2.imshow(window_name, rgb_plot)    
+    cv2.imshow(WIN_NAME, rgb_plot)    
     cv2.waitKey(100)
 
     xyz_tf[np.isnan(xyz_tf)] = -2
@@ -55,90 +189,13 @@ def find_kp(kp, xyz_tf, rgb_plot, window_name):
 
     print kp, "3d location", x, y, z
 
-    return (x, y, z)
-
-
-#########################################
-### find cut
-#########################################
-def find_cut(xyz_tf, rgb_plot, window_name):
-    
-    ### clicking set-up 
-    class GetClick:
-        x = None
-        y = None
-        xy = None
-        done = False
-        def callback(self, event, x, y, flags, param):
-            if self.done:
-                return
-            elif event == cv2.EVENT_LBUTTONDOWN:
-                self.x = x
-                self.y = y
-                self.xy = (x,y)
-                self.done = True    
-    
-    xy_t = []
-    xy_m = []
-    xy_b = []    
-    
-    #print colorize("click at the top of the cut line", 'red', bold=True)
-    #gc = GetClick()
-    #cv2.setMouseCallback(window_name, gc.callback)
-    #while not gc.done:
-        #cv2.imshow(window_name, rgb_plot)
-        #cv2.waitKey(10)
-    #xy_t.append(gc.x)
-    #xy_t.append(gc.y)
-    
-    #x_tcut, y_tcut, z_tcut = xyz_tf[xy_t[1], xy_t[0]]
-    #tcut_loc = (x_tcut, y_tcut, z_tcut)
-    #cv2.circle(rgb_plot, (xy_t[0], xy_t[1]), 5, (0, 0, 255), -1)
-    #cv2.imshow(window_name, rgb_plot)
-    #cv2.waitKey(100)
-
-    print colorize("click the cut line in between the holes", 'red', bold=True)
-    gc = GetClick()
-    cv2.setMouseCallback(window_name, gc.callback)
-    while not gc.done:
-        cv2.imshow(window_name, rgb_plot)
-        cv2.waitKey(10)
-    xy_m.append(gc.x)
-    xy_m.append(gc.y)
-    
-    x_mcut, y_mcut, z_mcut = xyz_tf[xy_m[1], xy_m[0]]
-    mcut_loc = (x_mcut, y_mcut, z_mcut)
-    cv2.circle(rgb_plot, (xy_m[0], xy_m[1]), 5, (0,0, 255), -1)    
-    cv2.imshow(window_name, rgb_plot)
-    cv2.waitKey(100)
-
-    #print colorize("click the bottom of the cut line", 'red', bold=True)
-    #gc = GetClick()
-    #cv2.setMouseCallback(window_name, gc.callback)
-    #while not gc.done:
-        #cv2.imshow(window_name, rgb_plot)
-        #cv2.waitKey(10)
-    #xy_b.append(gc.x)
-    #xy_b.append(gc.y)
-
-    #x_bcut, y_bcut, z_bcut = xyz_tf[xy_b[1], xy_b[0]]
-    #bcut_loc = (x_bcut, y_bcut, z_bcut) 
-      
-    #cv2.circle(rgb_plot, (xy_b[0], xy_b[1]), 5, (0, 0, 255), -1)
-    #cv2.imshow(window_name, rgb_plot)
-    #cv2.waitKey(100)
-
-    #print 'cut top 3d location', x_tcut, y_tcut, z_tcut
-    print 'cut middle cut 3d location', x_mcut, y_mcut, z_mcut
-    #print 'cut bottom 3d location', x_bcut, y_bcut, z_bcut
-
-    return mcut_loc
+    return (x, y, z), (col_kp, row_kp)
 
 
 #########################################
 ### find needle
 #########################################
-def find_needle_tip(xyz_tfs, rgb_plots, window_name, caller):
+def find_needle_tip(xyz_tfs, rgb_plots, WIN_NAME):
 
     ### clicking set-up 
     class GetClick:
@@ -159,9 +216,9 @@ def find_needle_tip(xyz_tfs, rgb_plots, window_name, caller):
 
     for i in xrange(2):
         gc = GetClick()
-        cv2.setMouseCallback(window_name, gc.callback)
+        cv2.setMouseCallback(WIN_NAME, gc.callback)
         while not gc.done:
-            cv2.imshow(window_name, rgb_plot)
+            cv2.imshow(WIN_NAME, rgb_plot)
             cv2.waitKey(10)
         needle_rect_corners.append(gc.xy)
 
@@ -169,7 +226,7 @@ def find_needle_tip(xyz_tfs, rgb_plots, window_name, caller):
     xy_br = np.array(needle_rect_corners).max(axis=0)
 
     cv2.rectangle(rgb_plot, tuple(xy_tl), tuple(xy_br), (0, 255, 0))
-    cv2.imshow(window_name, rgb_plot)
+    cv2.imshow(WIN_NAME, rgb_plot)
     cv2.waitKey(10)
 
     colmin, rowmin = xy_tl
@@ -206,15 +263,14 @@ def find_needle_tip(xyz_tfs, rgb_plots, window_name, caller):
     max_needle.append(yneedle[ind])
     max_needle.append(zneedle[ind])
 
-    if caller == 'process':
-        cv2.circle(rgb_plots[ind], (col_needle[ind], row_needle[ind]), 3, (255, 0, 0), 2)
-        cv2.imshow(window_name, rgb_plots[ind])
-        cv2.waitKey(100)
+    #cv2.circle(rgb_plots[ind], (col_needle[ind], row_needle[ind]), 3, (255, 0, 0), 2)
+    #cv2.imshow(WIN_NAME, rgb_plots[ind])
+    #cv2.waitKey(100)
         
-    else:
-        cv2.circle(rgb_plot, (col_needle[ind], row_needle[ind]), 3, (255, 0, 0), 2)
-        cv2.imshow(window_name, rgb_plot)
-        cv2.waitKey(100)    
+
+    cv2.circle(rgb_plot, (col_needle[ind], row_needle[ind]), 3, (255, 0, 0), 2)
+    cv2.imshow(WIN_NAME, rgb_plot)
+    cv2.waitKey(100)    
        
     print 'needle tip 3d location', max_needle
 
@@ -233,7 +289,7 @@ def find_needle_tip(xyz_tfs, rgb_plots, window_name, caller):
 #########################################
 ### find needle
 #########################################
-def find_needle_end(xyz_tfs, rgbs, window_name):
+def find_red_block(xyz_tfs, rgbs, WIN_NAME):
 
     ### clicking set-up 
     class GetClick:
@@ -253,9 +309,9 @@ def find_needle_end(xyz_tfs, rgbs, window_name):
 
     for i in xrange(2):
         gc = GetClick()
-        cv2.setMouseCallback(window_name, gc.callback)
+        cv2.setMouseCallback(WIN_NAME, gc.callback)
         while not gc.done:
-            cv2.imshow(window_name, rgb_plot)
+            cv2.imshow(WIN_NAME, rgb_plot)
             cv2.waitKey(10)
         needle_rect_corners.append(gc.xy)
 
@@ -263,7 +319,7 @@ def find_needle_end(xyz_tfs, rgbs, window_name):
     xy_br = np.array(needle_rect_corners).max(axis=0)
 
     cv2.rectangle(rgb_plot, tuple(xy_tl), tuple(xy_br), (0, 255, 0))
-    cv2.imshow(window_name, rgb_plot)
+    cv2.imshow(WIN_NAME, rgb_plot)
     cv2.waitKey(100)
 
     colmin, rowmin = xy_tl
@@ -300,7 +356,7 @@ def find_needle_end(xyz_tfs, rgbs, window_name):
     row, col = xyz2uv(xyz_avg).astype('int')[0]      
 
     cv2.circle(rgb_plot, (row, col), 3, (255, 0, 0), 2)
-    cv2.imshow(window_name, rgb_plot)
+    cv2.imshow(WIN_NAME, rgb_plot)
     cv2.waitKey(100)    
 
     print 'Needle end location', xyz_avg
