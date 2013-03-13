@@ -50,6 +50,7 @@ def find_kp(kp, xyz_tf, rgb_plot, window_name):
     cv2.imshow(window_name, rgb_plot)    
     cv2.waitKey(100)
 
+    xyz_tf[np.isnan(xyz_tf)] = -2
     x, y, z = xyz_tf[col_kp, row_kp]
 
     print kp, "3d location", x, y, z
@@ -81,22 +82,22 @@ def find_cut(xyz_tf, rgb_plot, window_name):
     xy_m = []
     xy_b = []    
     
-    print colorize("click at the top of the cut line", 'red', bold=True)
-    gc = GetClick()
-    cv2.setMouseCallback(window_name, gc.callback)
-    while not gc.done:
-        cv2.imshow(window_name, rgb_plot)
-        cv2.waitKey(10)
-    xy_t.append(gc.x)
-    xy_t.append(gc.y)
+    #print colorize("click at the top of the cut line", 'red', bold=True)
+    #gc = GetClick()
+    #cv2.setMouseCallback(window_name, gc.callback)
+    #while not gc.done:
+        #cv2.imshow(window_name, rgb_plot)
+        #cv2.waitKey(10)
+    #xy_t.append(gc.x)
+    #xy_t.append(gc.y)
     
-    x_tcut, y_tcut, z_tcut = xyz_tf[xy_t[1], xy_t[0]]
-    tcut_loc = (x_tcut, y_tcut, z_tcut)
-    cv2.circle(rgb_plot, (xy_t[0], xy_t[1]), 5, (0, 0, 255), -1)
-    cv2.imshow(window_name, rgb_plot)
-    cv2.waitKey(100)
+    #x_tcut, y_tcut, z_tcut = xyz_tf[xy_t[1], xy_t[0]]
+    #tcut_loc = (x_tcut, y_tcut, z_tcut)
+    #cv2.circle(rgb_plot, (xy_t[0], xy_t[1]), 5, (0, 0, 255), -1)
+    #cv2.imshow(window_name, rgb_plot)
+    #cv2.waitKey(100)
 
-    print colorize("now click the middle of the cut line", 'red', bold=True)
+    print colorize("click the cut line in between the holes", 'red', bold=True)
     gc = GetClick()
     cv2.setMouseCallback(window_name, gc.callback)
     while not gc.done:
@@ -111,36 +112,33 @@ def find_cut(xyz_tf, rgb_plot, window_name):
     cv2.imshow(window_name, rgb_plot)
     cv2.waitKey(100)
 
-    print colorize("now click the bottom of the cut line", 'red', bold=True)
-    gc = GetClick()
-    cv2.setMouseCallback(window_name, gc.callback)
-    while not gc.done:
-        cv2.imshow(window_name, rgb_plot)
-        cv2.waitKey(10)
-    xy_b.append(gc.x)
-    xy_b.append(gc.y)
+    #print colorize("click the bottom of the cut line", 'red', bold=True)
+    #gc = GetClick()
+    #cv2.setMouseCallback(window_name, gc.callback)
+    #while not gc.done:
+        #cv2.imshow(window_name, rgb_plot)
+        #cv2.waitKey(10)
+    #xy_b.append(gc.x)
+    #xy_b.append(gc.y)
 
-    x_bcut, y_bcut, z_bcut = xyz_tf[xy_b[1], xy_b[0]]
-    bcut_loc = (x_bcut, y_bcut, z_bcut) 
-    
-    #cv2.line(rgb_plot, tuple(xy_m), tuple(xy_b), (0, 255, 0), 2)
-    #cv2.line(rgb_plot, tuple(xy_t), tuple(xy_m), (0, 255, 0), 2)
-   
-    cv2.circle(rgb_plot, (xy_b[0], xy_b[1]), 5, (0, 0, 255), -1)
-    cv2.imshow(window_name, rgb_plot)
-    cv2.waitKey(100)
+    #x_bcut, y_bcut, z_bcut = xyz_tf[xy_b[1], xy_b[0]]
+    #bcut_loc = (x_bcut, y_bcut, z_bcut) 
+      
+    #cv2.circle(rgb_plot, (xy_b[0], xy_b[1]), 5, (0, 0, 255), -1)
+    #cv2.imshow(window_name, rgb_plot)
+    #cv2.waitKey(100)
 
-    print 'cut top 3d location', x_tcut, y_tcut, z_tcut
+    #print 'cut top 3d location', x_tcut, y_tcut, z_tcut
     print 'cut middle cut 3d location', x_mcut, y_mcut, z_mcut
-    print 'cut bottom 3d location', x_bcut, y_bcut, z_bcut
+    #print 'cut bottom 3d location', x_bcut, y_bcut, z_bcut
 
-    return tcut_loc, mcut_loc, bcut_loc
+    return mcut_loc
 
 
 #########################################
 ### find needle
 #########################################
-def find_needle_tip(xyz_tfs, rgb_plots, window_name):
+def find_needle_tip(xyz_tfs, rgb_plots, window_name, caller):
 
     ### clicking set-up 
     class GetClick:
@@ -208,14 +206,16 @@ def find_needle_tip(xyz_tfs, rgb_plots, window_name):
     max_needle.append(yneedle[ind])
     max_needle.append(zneedle[ind])
 
-    #cv2.circle(rgb_plots[ind], (col_needle[ind], row_needle[ind]), 3, (255, 0, 0), 2)
-    #cv2.imshow(window_name, rgb_plots[ind])
-    #cv2.waitKey(100)
-    
-    cv2.circle(rgb_plot, (col_needle[ind], row_needle[ind]), 3, (255, 0, 0), 2)
-    cv2.imshow(window_name, rgb_plot)
-    cv2.waitKey(100)    
-   
+    if caller == 'process':
+        cv2.circle(rgb_plots[ind], (col_needle[ind], row_needle[ind]), 3, (255, 0, 0), 2)
+        cv2.imshow(window_name, rgb_plots[ind])
+        cv2.waitKey(100)
+        
+    else:
+        cv2.circle(rgb_plot, (col_needle[ind], row_needle[ind]), 3, (255, 0, 0), 2)
+        cv2.imshow(window_name, rgb_plot)
+        cv2.waitKey(100)    
+       
     print 'needle tip 3d location', max_needle
 
     # plot the point cloud with a circle around "highest" point    
@@ -226,7 +226,6 @@ def find_needle_tip(xyz_tfs, rgb_plots, window_name):
     #mlab.show()
 
     #raw_input("press enter when done looking")        
-
     #print "at end of needle tip func"
 
     return max_needle
@@ -273,6 +272,7 @@ def find_needle_end(xyz_tfs, rgbs, window_name):
     high_red_xyz = []
     high_red_rc = []
 
+    valid_pts = 0
     # extract depths from drawn rectangle
 
     FOAM_HEIGHT = .85
@@ -285,55 +285,24 @@ def find_needle_end(xyz_tfs, rgbs, window_name):
         s=hsv[:,:,1]
         v=hsv[:,:,2]
         
-        color_mask = ((h<10) | (h>150)) & (s > 100) & (v > 100)
-        height_mask = z_rectangle > FOAM_HEIGHT + .05
+        color_mask = ((h<20) | (h>150)) & (s > 100) & (v > 90)
+        height_mask = z_rectangle > FOAM_HEIGHT + .025
         
         total_mask = color_mask & height_mask
-        print "%ith image has %i valid points (above foam and  red)"%(i, total_mask.sum())
+        print "%ith image has %i valid points (above foam and red)"%(i, total_mask.sum())
+        valid_pts += total_mask.sum()
         
         high_red_xyz.extend(xyz_tfs[i][rowmin:rowmax, colmin:colmax, :][total_mask])
     
     xyz_avg = np.median(high_red_xyz,axis=0)
     
-    #from jds_image_proc.pcl_utils import xyz2uv
-    #row, col = xyz2uv(xyz_avg).astype('int')[0]      
+    from jds_image_proc.pcl_utils import xyz2uv
+    row, col = xyz2uv(xyz_avg).astype('int')[0]      
+
+    cv2.circle(rgb_plot, (row, col), 3, (255, 0, 0), 2)
+    cv2.imshow(window_name, rgb_plot)
+    cv2.waitKey(100)    
 
     print 'Needle end location', xyz_avg
  
-    return xyz_avg
-
-#########################################
-### find needle stand
-#########################################
-def find_stand(xyz_tf, rgb_plot, window_name):
-    ### clicking set-up 
-    class GetClick:
-        x = None
-        y = None
-        done = False
-        def callback(self, event, x, y, flags, param):
-            if self.done:
-                return
-            elif event == cv2.EVENT_LBUTTONDOWN:
-                self.x = x
-                self.y = y
-                self.done = True
-
-    print colorize("click on the center of the needle stand", 'red', bold=True)
-    gc = GetClick()
-    cv2.setMouseCallback(window_name, gc.callback)
-    while not gc.done:
-        cv2.imshow(window_name, rgb_plot)
-        cv2.waitKey(10)
-    row_stand = gc.x
-    col_stand = gc.y
-    
-    cv2.circle(rgb_plot, (row_stand, col_stand), 5, (0, 0, 255), -1)
-    cv2.imshow(window_name, rgb_plot)    
-    cv2.waitKey(100)
-
-    x_stand, y_stand, z_stand = xyz_tf[col_stand, row_stand]
-
-    print "needle stand 3d location", x_stand, y_stand, z_stand
-    
-    return (x_stand, y_stand, z_stand)
+    return xyz_avg, valid_pts
