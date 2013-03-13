@@ -151,6 +151,9 @@ xyzfile2 = glob(osp.join(IROS_DATA_DIR, 'point_clouds', task2, 'pt%iseg%i_*_xyz_
 kpf1 = osp.join(IROS_DATA_DIR, 'key_points', task1)
 kpf2 = osp.join(IROS_DATA_DIR, 'key_points', task2)
 
+#xyz1, rgb1 = load_xyzrgb("suture_scene0.pcd")
+#xyz2, rgb2 = load_xyzrgb("suture_scene1.pcd")
+
 rgb1 = np.load(pcf1)
 rgb2 = np.load(pcf2)
 xyz1 = np.load(xyzfile1)

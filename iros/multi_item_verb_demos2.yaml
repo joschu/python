@@ -1,0 +1,8 @@
+    
+# AUTOMATICALLY ADDED BY multi_item_teach_verb.py ON 2013-02-19
+pierce-needle-hole1:
+    stages: ['pierce-needle-hole1-0', 'pierce-needle-hole1-1']
+    verb: pierce
+    items: ['needle', 'hole']
+    arms_used: ['l', 'l']
+    special_pts : ['None', 'None']    

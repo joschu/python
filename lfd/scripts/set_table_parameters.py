@@ -13,7 +13,7 @@ def get_args():
     args = parser.parse_args()
     return args
 
-def move_to_init_pos(pr2, head_angle=1.1):
+def move_to_init_pos(pr2, head_angle=1.0):
     pr2.head.set_pan_tilt(0, head_angle)
     pr2.rarm.goto_posture('side')
     pr2.larm.goto_posture('side')

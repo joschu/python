@@ -2,5 +2,5 @@
   <include file="$(find openni_launch)/launch/openni.launch">
     <arg name="depth_registration" value="true"/>
   </include>
-  <node name="dropper_node" pkg="topic_tools" type="drop" args="/camera/depth_registered/points 4 5 /drop/points"/>
+  <node name="dropper_node" pkg="topic_tools" type="drop" args="/camera/depth_registered/points 19 20 /drop/points"/>
 </launch>
