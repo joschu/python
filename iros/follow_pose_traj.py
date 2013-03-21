@@ -5,6 +5,7 @@ args = parser.parse_args()
 
 import trajoptpy
 import openravepy
+from openravepy import planningutils
 import numpy as np
 import json
 import trajoptpy.math_utils as mu
@@ -50,8 +51,19 @@ else:
         env.Load(osp.join(osp.dirname(lfd.__file__), "data/table2.xml"))
         
 #######################
+def retime_traj(traj, robot):
+    traj_obj = openravepy.RaveCreateTrajectory(env,'')
+    traj_obj.Init(robot.GetActiveConfigurationSpecification())
+    for row in traj:
+        traj_obj.Insert(0,row)
+    planningutils.RetimeActiveDOFTrajectory(traj_obj,robot,hastimestamps=False,maxvelmult=1,maxaccelmult=1,plannername='ParabolicTrajectoryRetimer')
+    new_traj = []
+    durations = []
 
-
+    for i in xrange(traj_obj.GetNumWaypoints()):
+        new_traj.append(traj_obj.GetWaypoint(i)[:14])
+        durations.append(traj_obj.GetWaypoint(i)[-1])
+    return np.array(new_traj), np.cumsum(durations)
 
 def adaptive_resample(x, tol, max_change=None, min_steps=3):
     """
@@ -168,8 +180,7 @@ def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
     result = trajoptpy.OptimizeProblem(prob) # do optimization
     traj = result.GetTraj()    
         
-
-    
+    assert (robot.GetDOFLimits()[0][robot.GetManipulator(manip_name).GetArmIndices()] <= traj.min(axis=0)).all()
     return traj 
         
 ###################################
@@ -178,8 +189,10 @@ def plan_follow_traj(robot, manip_name, new_hmats, old_traj):
 
 
 IROS_DATA_DIR = os.getenv("IROS_DATA_DIR") 
-def keyfunc(fname): return int(osp.basename(fname).split("_")[0][2:]) # sort files with names like pt1_larm.npy
-lgrip_files, rgrip_files, larm_files, rarm_files = [sorted(glob(osp.join(IROS_DATA_DIR, "InterruptedSutureTrajectories/pt*%s.npy"%partname)), 
+PARTNUM = 0
+SEGMENT_NUM = 0
+def keyfunc(fname): return int(osp.basename(fname).split("_")[0][3:]) # sort files with names like pt1_larm.npy
+lgrip_files, rgrip_files, larm_files, rarm_files = [sorted(glob(osp.join(IROS_DATA_DIR, "InterruptedSuture0/joint_trajectories/pt%i/seg*_%s.npy"%(PARTNUM, partname))), 
                                                            key = keyfunc)
                                                          for partname in ("lgrip", "rgrip", "larm", "rarm")]
 
@@ -230,12 +243,11 @@ def segment_trajectory(larm, rarm, lgrip, rgrip):
     #IPython.embed()
     return traj_segments
 
-PARTNUM = 0
 segments = segment_trajectory(
-    np.load(larm_files[PARTNUM]),
-    np.load(rarm_files[PARTNUM]),
-    np.load(lgrip_files[PARTNUM]),
-    np.load(rgrip_files[PARTNUM]))
+    np.load(larm_files[SEGMENT_NUM]),
+    np.load(rarm_files[SEGMENT_NUM]),
+    np.load(lgrip_files[SEGMENT_NUM]),
+    np.load(rgrip_files[SEGMENT_NUM]))
 
 print "trajectory broken into %i segments by gripper transitions"%len(segments)
 
@@ -248,7 +260,7 @@ for (i,segment) in enumerate(segments):
     full_traj = np.c_[segment.larm_traj, segment.rarm_traj]
     full_traj = mu.remove_duplicate_rows(full_traj)
     orig_times = np.arange(len(full_traj))
-    ds_times, ds_traj =  adaptive_resample(full_traj, tol=.025, max_change=.1) # about 2.5 degrees, 10 degrees
+    ds_times, ds_traj =  adaptive_resample(full_traj, tol=.01, max_change=.1) # about 2.5 degrees, 10 degrees
     n_steps = len(ds_traj)
 
     
@@ -280,7 +292,7 @@ for (i,segment) in enumerate(segments):
     trajoptpy.SetInteractive(False)
 
     
-    best_left_path = plan_follow_traj(robot, "rightarm", left_hmats, ds_traj[:,:7])
+    best_left_path = plan_follow_traj(robot, "leftarm", left_hmats, ds_traj[:,:7])
     best_right_path = plan_follow_traj(robot, "rightarm", right_hmats, ds_traj[:,7:])
     
     
@@ -292,11 +304,12 @@ for (i,segment) in enumerate(segments):
     ##################################
     #### Now view/execute the trajectory
     ##################################
-    
+
     if args.mode == "openrave":
         robot.SetActiveDOFs(np.r_[robot.GetManipulator("leftarm").GetArmIndices(), robot.GetManipulator("rightarm").GetArmIndices()])
         viewer = trajoptpy.GetViewer(env)
         joint_traj = np.c_[best_left_path, best_right_path]
+        joints, times = retime_traj(joint_traj,robot)
         # *5 factor is due to an openrave oddity
         robot.SetDOFValues([segment.lgrip_angle*5, segment.rgrip_angle*5], [robot.GetJoint("l_gripper_l_finger_joint").GetDOFIndex(), robot.GetJoint("r_gripper_l_finger_joint").GetDOFIndex()], False)
         for (i,row) in enumerate(joint_traj):
